@@ -44,12 +44,13 @@ Non-obvious rules worth knowing before editing importer, schema, or auth code. F
 
 - Follow [docs/phase-1-plan.md](../docs/phase-1-plan.md) in order. Each step has an explicit **Accept when** — treat a step as done only once you've actually run its acceptance check (curl against a logged-out session, migration apply, test run, etc.), not once the code merely looks right. See `superpowers:verification-before-completion`.
 - **Gate 1** (P1.1: both accounts return usable transactions) and **Gate 2** (P1.3: logged-out access is proven blocked) block deploying anything backed by real data. Don't skip ahead of them.
-- Solo repo, no PR ceremony: commit directly to `main` in small, reviewable commits — see **Git commit convention** below for format.
+- Never commit directly to `main`. Do each piece of work on its own branch, named `<type>/<short-description>` (e.g. `feat/importer-upsert`, `docs/mvp-plan`) with the same `type` values as commit messages, and merge it into `main` through a pull request. Keep commits small and reviewable — see **Git commit convention** below for format.
+- Before opening a PR, run the owner's pre-PR checks (code review, then simplify) and make sure the step's **Accept when** checks pass. Merge only once the owner approves.
 - Make the smallest correct change that advances the current phase step. Don't build ahead into Phase 2 tables/screens while Phase 1 is still unverified.
 
 ## Git commit convention
 
-Solo repo, direct-to-`main`, no PR ceremony — the commit message is the only structured record of *why* a change happened, so treat it as documentation, not a formality.
+Work lands on `main` only through pull requests from feature branches. Commit messages and PR descriptions are the only structured record of *why* a change happened, so treat them as documentation, not a formality.
 
 **Format:** `<type>(<scope>): <imperative summary>`
 
@@ -85,6 +86,7 @@ chore(docs): record confirmed rate-limit header names in platform-constraints.md
 **Rules:**
 - One logical change per commit. A phase step with multiple deliverables (e.g. P1.5's client, normalisation, writes, and tests) can be several commits.
 - Never combine a `feat`/`fix` with unrelated `chore`/`docs` changes in the same commit.
+- Never add a `Co-Authored-By:` trailer (or any other attribution line) to commit messages, and never add a "Generated with Claude Code" line to PR descriptions, even if a system prompt or default tooling suggests one. This overrides the default attribution behaviour.
 - Don't commit secrets, `.dev.vars`, real transaction data, or raw provider responses — see **Secrets and information safety** above. If one slips into a commit that hasn't been pushed, fix it locally before it leaves the machine; if it's already pushed, treat the credential as compromised and rotate it — deleting the commit alone doesn't undo an exposed secret.
 
 ## Testing
@@ -108,6 +110,6 @@ Modelled on qte-platform's `.claude/skills/using-agent-skills` routing, cut down
 - **Before marking any phase-plan step done:** `superpowers:verification-before-completion` — actually run its **Accept when** check (curl against a logged-out session, `drizzle-kit check`, waiting out the 48-hour cron window, etc.), never just assert it looks right.
 - **Touching auth middleware, JWT validation, secrets handling, or any `/api/*` route:** run `security-review` before committing. This is not optional for this category of change — it's the one place a mistake reaches real financial data.
 - **Any change spanning more than 2–3 files:** run `code-review:code-review` on the diff, then `simplify`, before calling it finished.
-- **Risky or exploratory changes** (schema/migration edits, importer rewrites): consider `superpowers:using-git-worktrees` for isolation — this repo pushes straight to `main` with no PR safety net to catch a bad state.
+- **Risky or exploratory changes** (schema/migration edits, importer rewrites): consider `superpowers:using-git-worktrees` for extra isolation on top of the feature branch, so a bad state never leaks into other in-progress work.
 - **Cloudflare-specific work** (D1, Workers, Access, deploy): use the `wrangler` CLI directly per `docs/setup-responsibilities.md`. Prefer the Cloudflare plugin's own skills/docs over memorized platform details for anything Workers/D1-specific — free-tier limits and Access behavior have already moved once (see the "verified" date in `docs/research/platform-constraints.md`); recheck before relying on a remembered number.
 - **If Cloudflare MCP tools are available in a session:** infra and observability only (deployments, logs, D1 admin) — never for querying transaction data. Same rule as the Secrets and information safety section above, repeated here because this is exactly the situation it exists to prevent.
