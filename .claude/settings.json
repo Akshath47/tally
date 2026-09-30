@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.dev.vars)",
+      "Read(./.dev.vars.*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(cat .dev.vars*)",
+      "Bash(cat .env*)",
+      "Bash(grep * .dev.vars*)",
+      "Bash(grep * .env*)"
+    ]
+  }
+}

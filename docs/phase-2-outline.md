@@ -1,0 +1,44 @@
+# Phase 2 outline: make the data useful for budgeting
+
+This is an outline, not a spec. Screens and features will be decided while building. It starts only after the Phase 1 assessment gives a "go".
+
+## Data additions
+
+- `categories`
+- `budgets`: amount in minor units with an effective-from month. No hard-coded amounts.
+- `budget_buckets` (optional): each maps a set of categories to its own budget.
+- `transaction_overrides`, keyed by `transactions.id`:
+  - `category_id`
+  - `excluded`
+  - `counted_amount_minor`
+  - `note`
+  - `updated_at`
+  
+  The importer never touches this table, so edits survive future syncs.
+- If Phase 1 showed that IDs change between pending and posted, add a rule that moves an override from the pending transaction to its posted version.
+
+## Budgeting rules
+
+- A transaction belongs to the month of its calendar date. Month boundaries and "today" are in `Europe/London`.
+- Counted spend = `counted_amount_minor` if set, otherwise the normalised amount. Excluded transactions count as 0.
+- Refunds count as negative spend in the original category.
+- **Amex repayments from Revolut** are auto-detected as a pair (matching amounts within a few days) and excluded by default. The pairing can be edited.
+- Other transfers go into an "excluded by default" category.
+
+## Core screens (subject to iteration)
+
+- A monthly combined feed covering both accounts.
+- A header showing total counted spend and remaining budget, overall and per bucket.
+- Spending by category.
+- A mobile-first transaction editor in a bottom sheet, with category, include/exclude and counted amount.
+- Budget and bucket settings.
+
+## PWA
+
+- Web app manifest, icons, `apple-mobile-web-app-*` meta tags and standalone display.
+- A service worker that caches only the app shell. API calls always go to the network.
+- No offline editing.
+
+## Deferred
+
+Native iOS packaging, AI features, complex forecasting, investments, net worth and offline editing.
