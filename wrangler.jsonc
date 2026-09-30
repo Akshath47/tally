@@ -1,0 +1,33 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "tally",
+	"main": "./src/worker/index.ts",
+	"compatibility_date": "2026-09-30",
+	// React SPA built by Vite. Unknown paths fall back to index.html; only /api/*
+	// runs the Worker first. Access protects assets and API alike at the edge.
+	"assets": {
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	// Version/preview URLs would share production bindings (incl. D1), so they stay off.
+	"workers_dev": true,
+	"preview_urls": false,
+	"observability": {
+		"enabled": true
+	},
+	// Cron is UTC. Hourly during P1.7 verification, every 6h afterwards.
+	"triggers": {
+		"crons": [
+			"0 */6 * * *"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "tally-prod",
+			"database_id": "bde287f4-9f69-4daf-a0a9-8dca055a62c3"
+		}
+	]
+}
