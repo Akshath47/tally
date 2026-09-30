@@ -109,6 +109,12 @@ function summariseTransactions(label: string, c: Call) {
   return txns;
 }
 
+// A posted transaction that plausibly is a previously pending one: same amount, date within 5 days.
+function isLookalike(posted: Json, pending: Json): boolean {
+  return !posted.isPending && posted.amount === pending.amount &&
+    Math.abs(Date.parse(posted.date) - Date.parse(pending.date)) <= 5 * 864e5;
+}
+
 function isoDaysAgo(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
@@ -129,7 +135,7 @@ async function main() {
   }
 
   const previous = existsSync(SNAPSHOT_FILE) ? JSON.parse(readFileSync(SNAPSHOT_FILE, "utf8")) : null;
-  const snapshot: Record<string, { takenAt: string; pending: Json[]; recent: Json[] }> = {};
+  const snapshot: Record<string, { takenAt: string; pending: Json[] }> = {};
 
   // 2. Per-account transactions
   for (const a of accounts) {
@@ -160,8 +166,8 @@ async function main() {
 
     const pending = pendTxns.filter((t) => t.isPending);
     // Minimal snapshot for the pending -> posted diff: id, date, amount only.
-    const slim = (t: Json) => ({ id: String(t.id), date: t.date, amount: t.amount, isPending: !!t.isPending });
-    snapshot[a.id] = { takenAt: new Date().toISOString(), pending: pending.map(slim), recent: pendTxns.filter((t) => t.date >= isoDaysAgo(21)).map(slim) };
+    const slim = (t: Json) => ({ id: String(t.id), date: t.date, amount: t.amount });
+    snapshot[a.id] = { takenAt: new Date().toISOString(), pending: pending.map(slim) };
 
     if (previous?.[a.id]) {
       const nowIds = new Set(pendTxns.map((t) => String(t.id)));
@@ -169,12 +175,11 @@ async function main() {
       const stillPending = prevPending.filter((p) => pendTxns.some((t) => String(t.id) === p.id && t.isPending));
       const nowPosted = prevPending.filter((p) => pendTxns.some((t) => String(t.id) === p.id && !t.isPending));
       const vanished = prevPending.filter((p) => !nowIds.has(p.id));
-      const vanishedWithLookalike = vanished.filter((p) =>
-        pendTxns.some((t) => !t.isPending && t.amount === p.amount && Math.abs(Date.parse(t.date) - Date.parse(p.date)) <= 5 * 864e5));
+      const vanishedWithLookalike = vanished.filter((p) => pendTxns.some((t) => isLookalike(t, p)));
       console.log(`  [pending diff vs ${previous[a.id].takenAt}] previouslyPending=${prevPending.length} stillPending=${stillPending.length} sameIdNowPosted=${nowPosted.length} vanished=${vanished.length} vanishedButPostedLookalike=${vanishedWithLookalike.length}`);
       // Does the date move when a pending transaction posts? (booking vs purchase date)
       for (const p of [...nowPosted, ...vanishedWithLookalike]) {
-        const posted = pendTxns.find((t) => !t.isPending && (String(t.id) === p.id || (t.amount === p.amount && Math.abs(Date.parse(t.date) - Date.parse(p.date)) <= 5 * 864e5)));
+        const posted = pendTxns.find((t) => (!t.isPending && String(t.id) === p.id) || isLookalike(t, p));
         if (posted) console.log(`    pending ${p.date} -> posted ${posted.date} (shift ${(Date.parse(posted.date) - Date.parse(p.date)) / 864e5}d, id ${String(posted.id) === p.id ? "same" : "changed"})`);
       }
     }
