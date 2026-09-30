@@ -13,3 +13,6 @@ dist/
 .DS_Store
 *.log
 coverage/
+
+# Local probe snapshots (real data, never commit)
+.probe/
