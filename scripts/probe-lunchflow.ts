@@ -101,7 +101,7 @@ function summariseTransactions(label: string, c: Call) {
   }
   if (!txns.length) return txns;
   console.log(`    dates ${dates[0]} .. ${dates[dates.length - 1]}`);
-  console.log(`    amounts: negative=${amounts.filter((a) => a < 0).length} positive=${amounts.filter((a) => a > 0).length} zero=${amounts.filter((a) => a === 0).length} maxDecimals=${Math.max(...amounts.map(decimals))}`);
+  console.log(`    amounts: negative=${amounts.filter((a) => a < 0).length} positive=${amounts.filter((a) => a > 0).length} zero=${amounts.filter((a) => a === 0).length} maxDecimals=${amounts.length ? Math.max(...amounts.map(decimals)) : "n/a"} nonNumericAmounts=${txns.length - amounts.length}`);
   console.log(`    currencies=${[...new Set(txns.map((t) => t.currency))].join(",")} pending=${txns.filter((t) => t.isPending).length}`);
   console.log(`    ids: ${idShape(txns.map((t) => String(t.id)))}`);
   const dateFormats = new Set(txns.map((t) => (/^\d{4}-\d{2}-\d{2}$/.test(t.date) ? "YYYY-MM-DD" : String(t.date).slice(0, 25))));
@@ -151,6 +151,13 @@ async function main() {
     const bal = await call(`/accounts/${a.id}/balance`);
     console.log(`  [balance] HTTP ${bal.status} ${bal.ms}ms  keys=${Object.keys(bal.body ?? {}).join(",")}  schema=${JSON.stringify(describeSchema([bal.body?.balance ?? bal.body]))}`);
 
+    if (pend.status !== 200) {
+      // Keep the previous baseline rather than overwriting it with an empty one.
+      if (previous?.[a.id]) snapshot[a.id] = previous[a.id];
+      console.log("  [pending diff] skipped: include_pending call failed, previous snapshot kept");
+      continue;
+    }
+
     const pending = pendTxns.filter((t) => t.isPending);
     // Minimal snapshot for the pending -> posted diff: id, date, amount only.
     const slim = (t: Json) => ({ id: String(t.id), date: t.date, amount: t.amount, isPending: !!t.isPending });
@@ -186,8 +193,10 @@ async function main() {
   console.log(`  invalid key: HTTP ${badKey.status} keys=${Object.keys(badKey.body ?? {}).join(",")} error=${badKey.body?.error} message=${badKey.body?.message}`);
   const badAcc = await call("/accounts/999999999/transactions");
   console.log(`  unknown account: HTTP ${badAcc.status} keys=${Object.keys(badAcc.body ?? {}).join(",")} error=${badAcc.body?.error} message=${badAcc.body?.message}`);
-  const badDate = await call(`/accounts/${accounts[0]?.id}/transactions?from=not-a-date`);
-  console.log(`  bad date param: HTTP ${badDate.status} body=${JSON.stringify(badDate.body).slice(0, 300)}`);
+  if (accounts.length) {
+    const badDate = await call(`/accounts/${accounts[0].id}/transactions?from=not-a-date`);
+    console.log(`  bad date param: HTTP ${badDate.status} body=${JSON.stringify(badDate.body).slice(0, 300)}`);
+  }
 
   // 4. Headers
   console.log("\n=== Response header names seen:", [...headerNamesSeen].sort().join(", "));
