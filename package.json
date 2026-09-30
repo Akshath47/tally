@@ -21,6 +21,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.104.0",
     "hono": "^4.13.12",
+    "jose": "^6.2.12",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

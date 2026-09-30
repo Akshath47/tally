@@ -12,9 +12,10 @@
    - The agent may create the file with the variable name only.
    - The agent never reads it.
 5. **Production key:** run `npx wrangler secret put LUNCHFLOW_API_KEY` in your **own terminal**, not with the `!` prefix, so the value never reaches the agent session.
-6. **Access**
-   - Enable Access on the `tally` Worker in the dashboard, with policy `Emails: <owner>` and a session of about 1 month.
-   - Give the agent the team domain and the Access AUD tag. Neither is secret.
+6. **Access** (done 2026-09-30)
+   - Enabled Access on the `tally` Worker with scope All traffic, the **Cloudflare account** policy and a 7-day session.
+   - Gave the agent the Access AUD tag; the team domain was read from the login redirect. Neither is secret.
+   - Recommended: turn on 2FA for the Cloudflare account.
 7. **Analytics token:** create a scoped **Account Analytics: Read** API token for `scripts/usage-report.ts` and export it in your local shell environment.
 8. **Verification**
    - Compare the sample transactions with the Revolut and Amex apps.

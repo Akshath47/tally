@@ -1,18 +1,20 @@
 import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
-describe("API skeleton", () => {
-  it("GET /api/health returns ok", async () => {
-    const res = await exports.default.fetch("http://tally.test/api/health");
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+// End-to-end through the real Worker: without an Access token nothing is served.
+describe("API without Access token", () => {
+  it.each(["/api", "/api/health", "/api/nope"])("GET %s returns 401", async (path) => {
+    const res = await exports.default.fetch(`https://tally.test${path}`);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
   });
 
-  // Calls the Worker directly, so this covers Hono only. That /api and /api/* reach the
-  // Worker instead of the SPA fallback is run_worker_first in wrangler.jsonc.
-  it.each(["/api", "/api/nope"])("unknown path %s returns JSON 404", async (path) => {
-    const res = await exports.default.fetch(`http://tally.test${path}`);
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: "not_found" });
+  it("rejects cross-site form POSTs before auth (CSRF)", async () => {
+    const res = await exports.default.fetch("https://tally.test/api/import-runs", {
+      method: "POST",
+      headers: { Origin: "https://evil.example", "Content-Type": "application/x-www-form-urlencoded" },
+      body: "a=1",
+    });
+    expect(res.status).toBe(403);
   });
 });

@@ -71,7 +71,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 
 ## [ ] P1.3 Access and auth middleware
 
-- Enable Access on the Worker (Workers & Pages → tally → Access) with a policy of `Emails: <owner>` and a session length of about 1 month.
+- Enable Access on the Worker (Workers & Pages → tally → Access) with scope **All traffic**, the **Cloudflare account** policy and a 7-day session. The dialog offers only "Cloudflare account" and "Email domain", and Email domain would admit a whole domain.
 - Hono middleware checks, in order:
   1. `Cf-Access-Jwt-Assertion` is present;
   2. the signature is valid against the team JWKS (cached per isolate);
@@ -82,9 +82,10 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 - Test locally with `access.dev` in `wrangler.jsonc`.
 
 **Accept when (Gate 2):**
-- Logged out, `curl` on `/`, `/api/health`, `/api/accounts` and `POST /api/import` returns an Access redirect or 403. It never returns JSON.
+- Logged out, `curl` on `/`, `/api/health`, `/api/accounts` and `POST /api/import-runs` returns an Access redirect or 403. It never returns JSON.
 - Preview/version URLs are disabled or don't serve content.
-- Unit tests pass for a missing JWT, a bad signature, a wrong `aud`, a wrong email and an expired token.
+- Unit tests pass for a missing JWT, a bad signature, a wrong `aud`/issuer, a wrong or missing email and an expired token.
+- The local-dev bypass (localhost only, `import.meta.env.DEV`) is absent from the production bundle.
 - Login works in iPhone Safari **and** from a Home Screen shortcut in standalone mode.
 
 ## [ ] P1.4 Schema and migrations
@@ -148,7 +149,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
   - the last 10 import runs;
   - the latest 100 transactions, filterable by account.
 
-**Accept when:** a manual import from the iPhone updates the cards and the list, and a second tap within 60 s gets a friendly 429.
+**Accept when:** a manual import (`POST /api/import-runs`) from the iPhone updates the cards and the list, and a second tap within 60 s gets a friendly 429.
 
 ## [ ] P1.7 Scheduled imports
 

@@ -9,5 +9,5 @@ it("tests run with a dummy Lunch Flow key, never the real one", () => {
 // added there later would silently reach test code. Compares names only, never values.
 it("exposes only known bindings, so new .dev.vars entries can't leak into tests", () => {
   const names = Object.keys(env).filter((name) => !name.startsWith("__VITEST_POOL_WORKERS_"));
-  expect(names.sort()).toEqual(["DB", "LUNCHFLOW_API_KEY"]);
+  expect(names.sort()).toEqual(["ACCESS_AUD", "ACCESS_TEAM_DOMAIN", "ALLOWED_EMAIL", "DB", "LUNCHFLOW_API_KEY"]);
 });
