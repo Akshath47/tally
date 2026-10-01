@@ -1,23 +1,11 @@
 #!/bin/sh
-# Blocks commits that would leak local secrets. Never prints secret values.
+# Blocks commits whose staged changes contain secrets, using gitleaks' default
+# rules plus .gitleaks.toml. --redact keeps secret values out of the output.
 # Installed via `npm install` (the "prepare" script sets core.hooksPath).
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR)
-[ -z "$staged" ] && exit 0
-
-# 1. Secret files and local real-data snapshots must never be committed, even with `git add -f`.
-if printf '%s\n' "$staged" | grep -qE '(^|/)\.dev\.vars|(^|/)\.env(\.|$)|^\.probe/'; then
-  echo "pre-commit: refusing to commit a .dev.vars/.env file or .probe/ snapshot." >&2
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed (brew install gitleaks). Commit blocked." >&2
   exit 1
 fi
 
-# 2. No value from .dev.vars may appear in the staged changes.
-if [ -f .dev.vars ]; then
-  values=$(sed -n 's/^[A-Za-z_][A-Za-z0-9_]*=//p' .dev.vars | tr -d "\"'" | awk 'length >= 12')
-  if [ -n "$values" ] && git diff --cached -U0 | grep '^+' | grep -qF -- "$values"; then
-    echo "pre-commit: staged changes contain a secret value from .dev.vars. Commit blocked." >&2
-    exit 1
-  fi
-fi
-
-exit 0
+exec gitleaks git --pre-commit --staged --redact --no-banner --verbose
