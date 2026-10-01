@@ -64,7 +64,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
   - `observability.enabled: true`;
   - one cron trigger;
   - `preview_urls: false`.
-- Tooling: ESLint (including a ban on `dangerouslySetInnerHTML`), `tsc --noEmit`, Vitest with `@cloudflare/vitest-pool-workers`, and a gitleaks pre-commit hook.
+- Tooling: ESLint (including a ban on `dangerouslySetInnerHTML`), `tsc --noEmit`, Vitest with `@cloudflare/vitest-plugin`, and a gitleaks pre-commit hook.
 - `.claude/settings.json` gets deny rules for reading `.dev.vars` and `.env*`.
 
 **Accept when:** `npm run dev` serves the page and `/api/health` locally, and the empty build deploys.
