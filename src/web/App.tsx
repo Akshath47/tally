@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 async function fetchHealth(): Promise<{ ok: boolean }> {
   const res = await fetch("/api/health");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const body = (await res.json()) as { ok?: unknown } | null;
+  if (body?.ok !== true) throw new Error("unexpected response");
+  return { ok: true };
 }
 
 export function App() {
