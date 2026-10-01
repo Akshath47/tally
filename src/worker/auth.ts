@@ -4,20 +4,13 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 export type AuthVariables = { email: string };
 
 // One key set per isolate: jose caches Access's public keys and refetches on rotation.
-const remoteKeySets = new Map<string, JWTVerifyGetKey>();
+let remoteKeySet: JWTVerifyGetKey | undefined;
 
-function accessKeySet(teamDomain: string): JWTVerifyGetKey {
-  let keySet = remoteKeySets.get(teamDomain);
-  if (!keySet) {
-    keySet = createRemoteJWKSet(new URL("/cdn-cgi/access/certs", teamDomain));
-    remoteKeySets.set(teamDomain, keySet);
-  }
-  return keySet;
-}
-
+// The Worker can't see the real client address under `vite dev`, so this alone isn't a
+// security boundary; vite.config.ts refuses to expose the dev server beyond localhost.
 function isLocalhost(url: string): boolean {
   const { hostname } = new URL(url);
-  return hostname === "localhost" || hostname === "127.0.0.1";
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
 /**
@@ -37,9 +30,12 @@ export function accessAuth(options: { keySet?: JWTVerifyGetKey } = {}) {
     const jwt = c.req.header("Cf-Access-Jwt-Assertion");
     if (!jwt) return c.json({ error: "unauthenticated" }, 401);
 
+    const keySet =
+      options.keySet ?? (remoteKeySet ??= createRemoteJWKSet(new URL("/cdn-cgi/access/certs", c.env.ACCESS_TEAM_DOMAIN)));
+
     let email: unknown;
     try {
-      const { payload } = await jwtVerify(jwt, options.keySet ?? accessKeySet(c.env.ACCESS_TEAM_DOMAIN), {
+      const { payload } = await jwtVerify(jwt, keySet, {
         issuer: c.env.ACCESS_TEAM_DOMAIN,
         audience: c.env.ACCESS_AUD,
         algorithms: ["RS256"],

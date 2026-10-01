@@ -1,13 +1,12 @@
 import { env } from "cloudflare:workers";
-import { Hono } from "hono";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
-import { accessAuth, type AuthVariables } from "../src/worker/auth";
+import { createApp } from "../src/worker";
 
 const ORIGIN = "https://tally.test";
 let trustedKey: CryptoKey;
 let untrustedKey: CryptoKey;
-let app: Hono<{ Bindings: Env; Variables: AuthVariables }>;
+let app: ReturnType<typeof createApp>;
 
 async function token(overrides: { aud?: string; iss?: string; email?: string | null; exp?: number; key?: CryptoKey } = {}) {
   const claims: Record<string, unknown> = { type: "app" };
@@ -26,6 +25,12 @@ function get(path: string, jwt?: string, host = ORIGIN) {
   return app.request(`${host}${path}`, { headers }, env);
 }
 
+async function postJson(path: string, origin?: string) {
+  const headers: Record<string, string> = { "Cf-Access-Jwt-Assertion": await token(), "Content-Type": "application/json" };
+  if (origin) headers.Origin = origin;
+  return app.request(`${ORIGIN}${path}`, { method: "POST", headers, body: "{}" }, env);
+}
+
 beforeAll(async () => {
   const trusted = await generateKeyPair("RS256");
   const untrusted = await generateKeyPair("RS256");
@@ -33,56 +38,85 @@ beforeAll(async () => {
   untrustedKey = untrusted.privateKey;
   const jwk: JWK = { ...(await exportJWK(trusted.publicKey)), kid: "test", alg: "RS256" };
 
-  app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
-  app.use("*", accessAuth({ keySet: createLocalJWKSet({ keys: [jwk] }) }));
-  app.get("/whoami", (c) => c.json({ email: c.get("email") }));
+  app = createApp({ keySet: createLocalJWKSet({ keys: [jwk] }) });
 });
 
 describe("accessAuth", () => {
   it("accepts a valid Access token for the allowed email", async () => {
-    const res = await get("/whoami", await token());
+    const res = await get("/api/health", await token());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ email: env.ALLOWED_EMAIL });
+    expect(await res.json()).toEqual({ ok: true, email: env.ALLOWED_EMAIL });
   });
 
   it("rejects a request with no token (401)", async () => {
-    expect((await get("/whoami")).status).toBe(401);
+    expect((await get("/api/health")).status).toBe(401);
   });
 
   it("rejects a token signed by an untrusted key (401)", async () => {
-    expect((await get("/whoami", await token({ key: untrustedKey }))).status).toBe(401);
+    expect((await get("/api/health", await token({ key: untrustedKey }))).status).toBe(401);
   });
 
   it("rejects a token for a different Access application (401)", async () => {
-    expect((await get("/whoami", await token({ aud: "another-app" }))).status).toBe(401);
+    expect((await get("/api/health", await token({ aud: "another-app" }))).status).toBe(401);
   });
 
   it("rejects a token from a different Access team (401)", async () => {
-    expect((await get("/whoami", await token({ iss: "https://evil.cloudflareaccess.com" }))).status).toBe(401);
+    expect((await get("/api/health", await token({ iss: "https://evil.cloudflareaccess.com" }))).status).toBe(401);
   });
 
   it("rejects an expired token (401)", async () => {
-    expect((await get("/whoami", await token({ exp: Math.floor(Date.now() / 1000) - 60 }))).status).toBe(401);
+    expect((await get("/api/health", await token({ exp: Math.floor(Date.now() / 1000) - 60 }))).status).toBe(401);
   });
 
   it("rejects a malformed token (401)", async () => {
-    expect((await get("/whoami", "not.a.jwt")).status).toBe(401);
+    expect((await get("/api/health", "not.a.jwt")).status).toBe(401);
   });
 
   it("rejects a valid token for someone else (403)", async () => {
-    expect((await get("/whoami", await token({ email: "someone@example.com" }))).status).toBe(403);
+    expect((await get("/api/health", await token({ email: "someone@example.com" }))).status).toBe(403);
   });
 
   it("rejects a valid token without an email, e.g. a service token (403)", async () => {
-    expect((await get("/whoami", await token({ email: null }))).status).toBe(403);
+    expect((await get("/api/health", await token({ email: null }))).status).toBe(403);
   });
 
   it("matches the allowed email case-insensitively", async () => {
-    const res = await get("/whoami", await token({ email: env.ALLOWED_EMAIL.toUpperCase() }));
+    const res = await get("/api/health", await token({ email: env.ALLOWED_EMAIL.toUpperCase() }));
     expect(res.status).toBe(200);
   });
 
+  // Vitest runs with import.meta.env.DEV = true, like `vite dev`.
+  it.each(["http://localhost:5173", "http://127.0.0.1:5173", "http://[::1]:5173"])(
+    "applies the local-dev bypass on %s",
+    async (host) => {
+      const res = await get("/api/health", undefined, host);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, email: env.ALLOWED_EMAIL });
+    },
+  );
+
   it("does not apply the local-dev bypass outside localhost", async () => {
-    expect((await get("/whoami", undefined, "http://tally.test")).status).toBe(401);
+    expect((await get("/api/health", undefined, "http://tally.test")).status).toBe(401);
+  });
+});
+
+describe("API routes when authenticated", () => {
+  it.each(["/api", "/api/nope"])("unknown path %s returns JSON 404", async (path) => {
+    const res = await get(path, await token());
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("rejects a JSON POST from another origin (403)", async () => {
+    expect((await postJson("/api/import-runs", "https://evil.example")).status).toBe(403);
+  });
+
+  it("rejects a JSON POST without an Origin header (403)", async () => {
+    expect((await postJson("/api/import-runs")).status).toBe(403);
+  });
+
+  it("lets a same-origin JSON POST through to routing", async () => {
+    // No import route exists yet (P1.6), so passing every check ends in the JSON 404.
+    expect((await postJson("/api/import-runs", ORIGIN)).status).toBe(404);
   });
 });

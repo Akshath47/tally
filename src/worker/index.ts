@@ -2,28 +2,46 @@ import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
+import type { JWTVerifyGetKey } from "jose";
 import { accessAuth, type AuthVariables } from "./auth";
 
-const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>().basePath("/api");
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-app.use("*", secureHeaders());
-// Rejects cross-site form/simple POSTs; JSON POSTs from other origins already fail CORS preflight.
-app.use("*", csrf());
-// Every /api route (including unknown ones) requires the owner's Access identity.
-app.use("*", accessAuth());
+/** Tests pass a local key set; production fetches the Access team's keys. */
+export function createApp(options: { keySet?: JWTVerifyGetKey } = {}) {
+  const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>().basePath("/api");
 
-app.get("/health", (c) => c.json({ ok: true, email: c.get("email") }));
+  app.use("*", secureHeaders());
+  // Rejects cross-site form/simple POSTs; JSON POSTs from other origins already fail CORS preflight.
+  app.use("*", csrf());
+  // csrf() only looks at form-style content types, so every other state-changing
+  // request must also carry this app's own Origin.
+  app.use("*", async (c, next) => {
+    if (!SAFE_METHODS.has(c.req.method) && c.req.header("Origin") !== new URL(c.req.url).origin) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    await next();
+  });
+  // Every /api route (including unknown ones) requires the owner's Access identity.
+  app.use("*", accessAuth(options));
 
-// Unknown /api paths must not fall through to the SPA's index.html.
-app.notFound((c) => c.json({ error: "not_found" }, 404));
+  app.get("/health", (c) => c.json({ ok: true, email: c.get("email") }));
 
-// Never leak stack traces or provider responses to the client.
-app.onError((err, c) => {
-  // Deliberate HTTP errors (e.g. csrf's 403) keep their status.
-  if (err instanceof HTTPException) return c.json({ error: "request_rejected" }, err.status);
-  console.error(JSON.stringify({ event: "unhandled_error", name: err.name }));
-  return c.json({ error: "internal" }, 500);
-});
+  // Unknown /api paths must not fall through to the SPA's index.html.
+  app.notFound((c) => c.json({ error: "not_found" }, 404));
+
+  // Never leak stack traces or provider responses to the client.
+  app.onError((err, c) => {
+    // Deliberate HTTP errors (e.g. csrf's 403) keep their status.
+    if (err instanceof HTTPException) return c.json({ error: "request_rejected" }, err.status);
+    console.error(JSON.stringify({ event: "unhandled_error", name: err.name }));
+    return c.json({ error: "internal" }, 500);
+  });
+
+  return app;
+}
+
+const app = createApp();
 
 export default {
   fetch: app.fetch,
