@@ -2,14 +2,12 @@ import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
-import type { JWTVerifyGetKey } from "jose";
-import { accessAuth, type AuthVariables } from "./auth";
+import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Tests pass a local key set; production fetches the Access team's keys. */
-export function createApp(options: { keySet?: JWTVerifyGetKey } = {}) {
-  const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>().basePath("/api");
+export function createApp(options: AuthOptions = {}) {
+  const app = new Hono<AppEnv>().basePath("/api");
 
   app.use("*", secureHeaders());
   // Rejects cross-site form/simple POSTs; JSON POSTs from other origins already fail CORS preflight.

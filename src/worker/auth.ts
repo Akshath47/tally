@@ -1,7 +1,9 @@
 import { createMiddleware } from "hono/factory";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 
-export type AuthVariables = { email: string };
+export type AppEnv = { Bindings: Env; Variables: { email: string } };
+/** Tests pass a local key set; production fetches the Access team's keys. */
+export type AuthOptions = { keySet?: JWTVerifyGetKey };
 
 // One key set per isolate: jose caches Access's public keys and refetches on rotation.
 let remoteKeySet: JWTVerifyGetKey | undefined;
@@ -18,8 +20,8 @@ function isLocalhost(url: string): boolean {
  * (signature, issuer, audience, expiry) and that it belongs to ALLOWED_EMAIL.
  * 401 = not authenticated, 403 = authenticated as someone else.
  */
-export function accessAuth(options: { keySet?: JWTVerifyGetKey } = {}) {
-  return createMiddleware<{ Bindings: Env; Variables: AuthVariables }>(async (c, next) => {
+export function accessAuth(options: AuthOptions = {}) {
+  return createMiddleware<AppEnv>(async (c, next) => {
     // Local `vite dev` has no Access in front of it. `import.meta.env.DEV` is
     // statically false in production builds, so this branch is compiled out.
     if (import.meta.env.DEV && isLocalhost(c.req.url)) {
