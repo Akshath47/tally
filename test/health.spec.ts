@@ -8,8 +8,10 @@ describe("API skeleton", () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 
-  it("unknown /api paths return JSON 404, not the SPA", async () => {
-    const res = await exports.default.fetch("http://tally.test/api/nope");
+  // Calls the Worker directly, so this covers Hono only. That /api and /api/* reach the
+  // Worker instead of the SPA fallback is run_worker_first in wrangler.jsonc.
+  it.each(["/api", "/api/nope"])("unknown path %s returns JSON 404", async (path) => {
+    const res = await exports.default.fetch(`http://tally.test${path}`);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "not_found" });
   });
