@@ -79,7 +79,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
   4. `email` equals `ALLOWED_EMAIL`.
   
   Anything else gets 401/403. `POST` requests also have their `Origin` checked.
-- Test locally with `access.dev` in `wrangler.jsonc`.
+- Local dev: `access.dev` in `wrangler.jsonc` only simulates `ctx.access`, not the `Cf-Access-Jwt-Assertion` header, so it can't exercise this middleware. Instead, the middleware admits localhost requests when `import.meta.env.DEV` is true. That branch is compiled out of production builds, and `vite.config.ts` refuses to run `vite dev` on a non-loopback host.
 
 **Accept when (Gate 2):**
 - Logged out, `curl` on `/`, `/api/health`, `/api/accounts` and `POST /api/import-runs` returns an Access redirect or 403. It never returns JSON.
