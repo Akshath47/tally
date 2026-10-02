@@ -1,10 +1,21 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, getAccounts, getRuns, getTransactions, startImport, type Account, type ImportRun } from "./api";
 import { formatMoney, formatTimestamp } from "./format";
 
 const RUN_LIMIT = 10;
 const TXN_LIMIT = 100;
+const POLL_MS = 2_000;
+// After a 202 the run's row may not exist yet; keep polling this long for it to appear.
+const KICK_MS = 10_000;
+// The importer's lease. A run still "running" after this was cut off and will be marked abandoned.
+const STALE_MS = 10 * 60_000;
+
+/** Server timestamps are compared with the fetch time, not render time, to keep render pure. */
+function isImporting(data: { runs: ImportRun[] } | undefined, fetchedAt: number): boolean {
+  const latest = data?.runs[0];
+  return latest?.status === "running" && fetchedAt - Date.parse(latest.startedAt) < STALE_MS;
+}
 
 function importMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -17,28 +28,36 @@ function importMessage(error: unknown): string {
   return "Import failed to start. Try again later.";
 }
 
-function ImportButton() {
-  const queryClient = useQueryClient();
+/**
+ * The import runs on the server after a 202, so the button only kicks it off. Whether one is
+ * in progress comes from the runs list, which survives leaving or reopening the app.
+ */
+function ImportButton({ importing, onStarted }: { importing: boolean; onStarted: () => void }) {
   const mutation = useMutation({
     mutationFn: startImport,
-    // A 429 changed nothing server-side; anything else may have written a run.
-    onSettled: (_data, error) => {
-      if (!(error instanceof ApiError && error.status === 429)) void queryClient.invalidateQueries();
+    onSuccess: onStarted,
+    // A 409 means some other run (e.g. cron) is in progress, so watch that one instead.
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) onStarted();
     },
   });
+  const busy = mutation.isPending || importing;
 
   return (
     <div className="mt-4">
       <button
         type="button"
         className="w-full rounded bg-black px-4 py-3 font-medium text-white disabled:opacity-50"
-        disabled={mutation.isPending}
+        disabled={busy}
         onClick={() => mutation.mutate()}
       >
-        {mutation.isPending ? "Importing…" : "Import from Lunch Flow"}
+        {busy ? "Importing…" : "Import from Lunch Flow"}
       </button>
-      {mutation.isError && <p className="mt-2 text-sm text-amber-700">{importMessage(mutation.error)}</p>}
-      {mutation.isSuccess && <p className="mt-2 text-sm text-gray-600">Import finished: {mutation.data.run.status}.</p>}
+      {importing ? (
+        <p className="mt-2 text-sm text-gray-600">Importing in the background. You can leave the app; results show up here.</p>
+      ) : (
+        mutation.isError && <p className="mt-2 text-sm text-amber-700">{importMessage(mutation.error)}</p>
+      )}
     </div>
   );
 }
@@ -147,14 +166,44 @@ function Transactions({ accounts }: { accounts: Account[] }) {
 }
 
 export function App() {
+  const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: getAccounts });
-  const runs = useQuery({ queryKey: ["import-runs"], queryFn: () => getRuns(RUN_LIMIT) });
+
+  // Set on a 202/409 so polling starts before the new run's row is visible.
+  const kickedAt = useRef<number | null>(null);
+  const runs = useQuery({
+    queryKey: ["import-runs"],
+    queryFn: () => getRuns(RUN_LIMIT),
+    refetchInterval: (q) => {
+      const justKicked = kickedAt.current !== null && Date.now() - kickedAt.current < KICK_MS;
+      return justKicked || isImporting(q.state.data, q.state.dataUpdatedAt) ? POLL_MS : false;
+    },
+  });
+  const importing = isImporting(runs.data, runs.dataUpdatedAt);
+
+  // Whenever the latest run appears or changes status (manual or cron), the cards and list may be stale.
+  const latest = runs.data?.runs[0];
+  const latestKey = latest ? `${latest.id}:${latest.status}` : null;
+  const seenKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (latestKey === null) return;
+    if (seenKey.current !== null && seenKey.current !== latestKey) {
+      void queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      void queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    }
+    seenKey.current = latestKey;
+  }, [latestKey, queryClient]);
+
+  const onStarted = () => {
+    kickedAt.current = Date.now();
+    void queryClient.invalidateQueries({ queryKey: ["import-runs"] });
+  };
 
   return (
     <main className="mx-auto max-w-md p-4 font-sans">
       <h1 className="text-xl font-semibold">Tally</h1>
 
-      <ImportButton />
+      <ImportButton importing={importing} onStarted={onStarted} />
 
       <section className="mt-6">
         <h2 className="font-semibold">Accounts</h2>

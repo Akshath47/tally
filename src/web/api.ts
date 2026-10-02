@@ -62,5 +62,6 @@ export function getTransactions(limit: number, accountId: number | null) {
   return request<{ transactions: Transaction[]; nextCursor: string | null }>(`/api/transactions?${query}`);
 }
 
+/** 202: the import carries on in the background; watch it via getRuns. */
 export const startImport = () =>
-  request<{ run: ImportRun }>("/api/import-runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  request<{ status: "started" }>("/api/import-runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
