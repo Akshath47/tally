@@ -63,7 +63,7 @@ import_run_accounts
   error · duration_ms
 
 import_lock               -- single row, id = 1, seeded by a migration
-  holder_run_id · expires_at
+  holder_run_id · expires_at   lease: 10 min for cron, budget + 30 s for a manual run
 ```
 
 SQL `CHECK`s back up the types the bulk `json_each` upsert would otherwise bypass: `amount_minor` must be an integer, `txn_date` a real calendar date, booleans 0/1, and statuses from their documented lists.
@@ -87,7 +87,7 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | GET | `/api/accounts` | Accounts plus import status fields |
 | GET | `/api/transactions?account_id&from&to&limit&cursor` | Paged list, newest first (`txn_date`, then `id`); `limit ≤ 200`, default 50; `from`/`to` are inclusive `YYYY-MM-DD`; pass the response's opaque `nextCursor` back as `cursor` |
 | POST | `/api/import-runs` | Start a manual import: creates the run and claims the lock, answers `202 {status:"started", runId}`, and imports in the background (poll `GET /api/import-runs`); `409 {error:"import_running"}` if the lock is held (the attempt is recorded as `skipped_locked`); `429 {error:"rate_limited", retryAfterSeconds}` plus `Retry-After` if any run (cron included) started under 60 s ago |
-| GET | `/api/import-runs?limit=20` | Recent runs with per-account results; `limit ≤ 50` |
+| GET | `/api/import-runs?limit=20` | `{runs, importing}`: recent runs with per-account results (`limit ≤ 50`), and whether a run currently holds the import lease |
 
 Responses use camelCase fields. Provider account and connection ids are not exposed.
 
