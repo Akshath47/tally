@@ -29,7 +29,7 @@ Status: `[ ]` = not started.
 
 **Accept when:** both accounts show as connected in the Lunch Flow dashboard and `.dev.vars` exists.
 
-## [ ] P1.1 Lunch Flow probe (local script, no deployment)
+## [x] P1.1 Lunch Flow probe (local script, no deployment)
 
 - `scripts/probe-lunchflow.ts` reads the dev key from the environment and prints **summaries only**:
   - field names and types;
@@ -54,7 +54,7 @@ Status: `[ ]` = not started.
 
 If either account fails, stop and resolve it with Lunch Flow before building further.
 
-## [ ] P1.2 Scaffold
+## [x] P1.2 Scaffold
 
 - A single Worker containing Vite + React + TS + Tailwind + TanStack Query and Hono.
 - `wrangler.jsonc` sets:
@@ -69,7 +69,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 
 **Accept when:** `npm run dev` serves the page and `/api/health` locally, and the empty build deploys.
 
-## [ ] P1.3 Access and auth middleware
+## [x] P1.3 Access and auth middleware
 
 - Enable Access on the Worker (Workers & Pages → tally → Access) with scope **All traffic**, the **Cloudflare account** policy and a 7-day session. The dialog offers only "Cloudflare account" and "Email domain", and Email domain would admit a whole domain.
 - Hono middleware checks, in order:
@@ -88,14 +88,14 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 - The local-dev bypass (localhost only, `import.meta.env.DEV`) is absent from the production bundle.
 - Login works in iPhone Safari **and** from a Home Screen shortcut in standalone mode.
 
-## [ ] P1.4 Schema and migrations
+## [x] P1.4 Schema and migrations
 
 - Drizzle schema as in [schema-and-api.md](schema-and-api.md).
 - Generate migrations with `drizzle-kit generate` and apply them with `wrangler d1 migrations apply` locally and then remotely.
 
 **Accept when:** migrations apply cleanly to both databases and `drizzle-kit check` passes.
 
-## [ ] P1.5 Importer (the core)
+## [x] P1.5 Importer (the core)
 
 **Client**
 - Responses are validated with `zod`. An invalid response is an error for that account and results in **no writes**.
