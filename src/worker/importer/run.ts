@@ -3,7 +3,7 @@ import { createClient, type LunchFlowClient, type ProviderAccount } from "./clie
 import { CountingDb } from "./db";
 import { londonToday } from "./dates";
 import { ImportError } from "./errors";
-import { claimLock, releaseLock } from "./lock";
+import { claimLock, closeAbandonedRuns, releaseLock } from "./lock";
 import { toMinor } from "./money";
 import { accountLabel, normalizeTransaction, type TransactionRow } from "./normalize";
 import { backfillChunks, coveredRanges, incrementalWindow, type Window } from "./windows";
@@ -85,6 +85,7 @@ export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS
       status = "skipped_locked";
     } else {
       locked = true;
+      await closeAbandonedRuns(db, runId, nowIso);
       const ctx: Ctx = { db, client, runId, nowIso, today: londonToday(now), backfillDays: parseBackfillDays(env.BACKFILL_DAYS) };
       accounts.push(...(await importAll(ctx)));
       const ok = accounts.filter((a) => a.status === "success").length;

@@ -215,6 +215,19 @@ describe("runImport: locking and failures", () => {
     expect((await run(w)).status).toBe("success");
   });
 
+  it("takes over an expired lease and marks the cut-off run that held it as abandoned", async () => {
+    // A manual import cancelled mid-run (e.g. past the 30 s waitUntil limit) never reached its finally.
+    const started = new Date(T0 - 20 * 60_000);
+    const dead = await insertRun("manual", "running", started.toISOString());
+    await env.DB.prepare("UPDATE import_lock SET holder_run_id = ?1, expires_at = ?2 WHERE id = 1")
+      .bind(dead, new Date(started.getTime() + 10 * 60_000).toISOString())
+      .run();
+
+    expect((await run(basicWorld())).status).toBe("success");
+    const row = await env.DB.prepare("SELECT status, error_summary, finished_at FROM import_runs WHERE id = ?1").bind(dead).first();
+    expect(row).toEqual({ status: "failed", error_summary: "abandoned", finished_at: "2026-10-02T12:00:00.000Z" });
+  });
+
   it("a 5xx on one account retries, records the error, keeps its rows, and does not stop the other", async () => {
     const w = basicWorld();
     await run(w);
