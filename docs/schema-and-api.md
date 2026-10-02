@@ -15,9 +15,11 @@ accounts
   provider                 'lunchflow'
   provider_account_id      Lunch Flow account id (stored as text)
   provider_connection_id
-  name · institution_name · currency · provider_status
-  amount_sign              +1 / -1, set from P1.1 findings
-  import_enabled           bool
+  name                     display label (e.g. "Revolut · GBP · ••1234"), never the raw IBAN
+  institution_name · provider_status
+  currency                 from the balance endpoint (the accounts endpoint omits it); null until known
+  balance_minor · balance_fetched_at   latest balance from the balance endpoint, for display
+  import_enabled           bool; the importer sets it (off for non-GBP accounts)
   last_seen_in_provider_at
   last_import_attempt_at · last_import_success_at
   last_import_error        sanitised, truncated
@@ -59,9 +61,13 @@ import_run_accounts
   fetched · inserted · updated · vanished_marked
   error · duration_ms
 
-import_lock               -- single row, id = 1
+import_lock               -- single row, id = 1, seeded by a migration
   holder_run_id · expires_at
 ```
+
+SQL `CHECK`s back up the types the bulk `json_each` upsert would otherwise bypass: `amount_minor` must be an integer, `txn_date` a real calendar date, booleans 0/1, and statuses from their documented lists.
+
+There is no per-account sign column: P1.1 found both institutions already use negative = money out ([lunchflow-findings.md](lunchflow-findings.md)).
 
 ### Deliberately not in Phase 1
 
