@@ -3,6 +3,7 @@ import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
+import { runImport } from "./importer";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -43,8 +44,8 @@ const app = createApp();
 
 export default {
   fetch: app.fetch,
-  async scheduled(controller) {
-    // The importer is wired in during P1.5/P1.7.
-    console.log(JSON.stringify({ event: "cron", cron: controller.cron, action: "noop" }));
+  async scheduled(_controller, env, ctx) {
+    // runImport records its own failures; it never throws for a provider or per-account error.
+    ctx.waitUntil(runImport(env, "cron"));
   },
 } satisfies ExportedHandler<Env>;
