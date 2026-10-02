@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createClient } from "../../src/worker/importer/client";
+import { SUBREQUEST_CAP, createClient } from "../../src/worker/importer/client";
 import { ImportError } from "../../src/worker/importer/errors";
 import { accountJson, fakeFetch, txn } from "../fixtures/lunchflow";
 
@@ -126,9 +126,9 @@ describe("lunch flow client", () => {
 
   it("stops at the subrequest cap", async () => {
     const { client } = setup({ "/accounts": { body: { accounts: [], total: 0 } } });
-    for (let i = 0; i < 12; i++) await client.accounts();
+    for (let i = 0; i < SUBREQUEST_CAP; i++) await client.accounts();
     expect((await kindOf(client.accounts()))?.kind).toBe("budget");
-    expect(client.subrequests).toBe(12);
+    expect(client.subrequests).toBe(SUBREQUEST_CAP);
   });
 
   it("counts retries as subrequests", async () => {

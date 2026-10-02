@@ -8,8 +8,8 @@ const TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 2;
 const BACKOFF_MS = 500;
 const RETRY_AFTER_CAP_MS = 10_000;
-// Free tier allows 50 subrequests per invocation; a run needs about 5-10.
-export const SUBREQUEST_CAP = 12;
+// Free tier allows 50 subrequests per invocation; a run needs about 5-10, so 20 leaves room for retries.
+export const SUBREQUEST_CAP = 20;
 
 const AccountSchema = z.object({
   id: z.number().int(),
