@@ -6,15 +6,18 @@ import { formatMoney, formatTimestamp } from "./format";
 const RUN_LIMIT = 10;
 const TXN_LIMIT = 100;
 const POLL_MS = 2_000;
-// After a 202 the run's row may not exist yet; keep polling this long for it to appear.
-const KICK_MS = 10_000;
 // The importer's lease. A run still "running" after this was cut off and will be marked abandoned.
 const STALE_MS = 10 * 60_000;
+// Statuses after which the run may have changed accounts and transactions.
+const FINISHED = new Set(["success", "partial", "failed"]);
+const RUN_STATUS_COLOUR: Record<string, string> = { success: "text-green-700", failed: "text-red-700" };
 
-/** Server timestamps are compared with the fetch time, not render time, to keep render pure. */
+/**
+ * Any live run counts, not just the newest: a newer skipped_locked row can sit above a running
+ * cron import. Server timestamps are compared with the fetch time to keep render pure.
+ */
 function isImporting(data: { runs: ImportRun[] } | undefined, fetchedAt: number): boolean {
-  const latest = data?.runs[0];
-  return latest?.status === "running" && fetchedAt - Date.parse(latest.startedAt) < STALE_MS;
+  return (data?.runs ?? []).some((r) => r.status === "running" && fetchedAt - Date.parse(r.startedAt) < STALE_MS);
 }
 
 function importMessage(error: unknown): string {
@@ -23,25 +26,21 @@ function importMessage(error: unknown): string {
       const wait = Number(error.body?.retryAfterSeconds);
       return `Imported less than a minute ago. Try again in ${Number.isFinite(wait) ? wait : 60}s.`;
     }
-    if (error.status === 409) return "Another import is already running. Try again shortly.";
   }
   return "Import failed to start. Try again later.";
 }
 
 /**
  * The import runs on the server after a 202, so the button only kicks it off. Whether one is
- * in progress comes from the runs list, which survives leaving or reopening the app.
+ * in progress, and how the last one ended, come from the runs list, which survives leaving
+ * or reopening the app.
  */
-function ImportButton({ importing, onStarted }: { importing: boolean; onStarted: () => void }) {
-  const mutation = useMutation({
-    mutationFn: startImport,
-    onSuccess: onStarted,
-    // A 409 means some other run (e.g. cron) is in progress, so watch that one instead.
-    onError: (error) => {
-      if (error instanceof ApiError && error.status === 409) onStarted();
-    },
-  });
+function ImportButton({ importing, lastFinished, onSettled }: { importing: boolean; lastFinished: ImportRun | undefined; onSettled: () => void }) {
+  // Every outcome refreshes the runs: a 202 shows the new run, a 409 or 429 may reveal one in progress.
+  const mutation = useMutation({ mutationFn: startImport, onSettled });
   const busy = mutation.isPending || importing;
+  // A 409 just means an import is already running, which the polling then shows.
+  const failedToStart = mutation.isError && !(mutation.error instanceof ApiError && mutation.error.status === 409);
 
   return (
     <div className="mt-4">
@@ -56,7 +55,15 @@ function ImportButton({ importing, onStarted }: { importing: boolean; onStarted:
       {importing ? (
         <p className="mt-2 text-sm text-gray-600">Importing in the background. You can leave the app; results show up here.</p>
       ) : (
-        mutation.isError && <p className="mt-2 text-sm text-amber-700">{importMessage(mutation.error)}</p>
+        <>
+          {failedToStart && <p className="mt-2 text-sm text-amber-700">{importMessage(mutation.error)}</p>}
+          {lastFinished && (
+            <p className="mt-2 text-sm text-gray-600">
+              Last import {formatTimestamp(lastFinished.startedAt)}:{" "}
+              <span className={RUN_STATUS_COLOUR[lastFinished.status] ?? "text-amber-700"}>{lastFinished.status}</span>
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -94,8 +101,6 @@ function QueryStatus({ query, what, empty }: { query: { isPending: boolean; isEr
   if (query.isError) return <p className="mt-2 text-sm text-red-700">Couldn't load {what}.</p>;
   return empty ? <p className="mt-2 text-sm text-gray-600">{empty}</p> : null;
 }
-
-const RUN_STATUS_COLOUR: Record<string, string> = { success: "text-green-700", failed: "text-red-700" };
 
 function RunRow({ run }: { run: ImportRun }) {
   const inserted = run.accounts.reduce((n, a) => n + a.inserted, 0);
@@ -169,41 +174,33 @@ export function App() {
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: getAccounts });
 
-  // Set on a 202/409 so polling starts before the new run's row is visible.
-  const kickedAt = useRef<number | null>(null);
   const runs = useQuery({
     queryKey: ["import-runs"],
     queryFn: () => getRuns(RUN_LIMIT),
-    refetchInterval: (q) => {
-      const justKicked = kickedAt.current !== null && Date.now() - kickedAt.current < KICK_MS;
-      return justKicked || isImporting(q.state.data, q.state.dataUpdatedAt) ? POLL_MS : false;
-    },
+    refetchInterval: (q) => (isImporting(q.state.data, q.state.dataUpdatedAt) ? POLL_MS : false),
   });
   const importing = isImporting(runs.data, runs.dataUpdatedAt);
 
-  // Whenever the latest run appears or changes status (manual or cron), the cards and list may be stale.
-  const latest = runs.data?.runs[0];
-  const latestKey = latest ? `${latest.id}:${latest.status}` : null;
+  // When a run (manual or cron) finishes, the cards and list may be stale.
+  const lastFinished = runs.data?.runs.find((r) => FINISHED.has(r.status));
+  const finishedKey = lastFinished ? `${lastFinished.id}:${lastFinished.status}` : null;
   const seenKey = useRef<string | null>(null);
   useEffect(() => {
-    if (latestKey === null) return;
-    if (seenKey.current !== null && seenKey.current !== latestKey) {
+    if (finishedKey === null) return;
+    if (seenKey.current !== null && seenKey.current !== finishedKey) {
       void queryClient.invalidateQueries({ queryKey: ["accounts"] });
       void queryClient.invalidateQueries({ queryKey: ["transactions"] });
     }
-    seenKey.current = latestKey;
-  }, [latestKey, queryClient]);
+    seenKey.current = finishedKey;
+  }, [finishedKey, queryClient]);
 
-  const onStarted = () => {
-    kickedAt.current = Date.now();
-    void queryClient.invalidateQueries({ queryKey: ["import-runs"] });
-  };
+  const refreshRuns = () => void queryClient.invalidateQueries({ queryKey: ["import-runs"] });
 
   return (
     <main className="mx-auto max-w-md p-4 font-sans">
       <h1 className="text-xl font-semibold">Tally</h1>
 
-      <ImportButton importing={importing} onStarted={onStarted} />
+      <ImportButton importing={importing} lastFinished={lastFinished} onSettled={refreshRuns} />
 
       <section className="mt-6">
         <h2 className="font-semibold">Accounts</h2>
