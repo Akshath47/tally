@@ -11,15 +11,17 @@ This is an outline, not a spec. Screens and features will be decided while build
   - `category_id`
   - `excluded`
   - `counted_amount_minor`
+  - `counted_date`
   - `note`
   - `updated_at`
   
   The importer never touches this table, so edits survive future syncs.
+- **Editing a transaction's date or amount** (owner request, 2026-10-02): the editor lets the owner change either one. Edits go in `counted_date` / `counted_amount_minor` and never overwrite the bank values in `transactions`, which stay visible as the original.
 - If Phase 1 showed that IDs change between pending and posted, add a rule that moves an override from the pending transaction to its posted version.
 
 ## Budgeting rules
 
-- A transaction belongs to the month of its calendar date. Month boundaries and "today" are in `Europe/London`.
+- A transaction belongs to the month of its calendar date (`counted_date` if set, otherwise `txn_date`). Month boundaries and "today" are in `Europe/London`.
 - Counted spend = `counted_amount_minor` if set, otherwise the normalised amount. Excluded transactions count as 0.
 - Refunds count as negative spend in the original category.
 - **Amex repayments from Revolut** are auto-detected as a pair (matching amounts within a few days) and excluded by default. The pairing can be edited.
@@ -30,7 +32,7 @@ This is an outline, not a spec. Screens and features will be decided while build
 - A monthly combined feed covering both accounts.
 - A header showing total counted spend and remaining budget, overall and per bucket.
 - Spending by category.
-- A mobile-first transaction editor in a bottom sheet, with category, include/exclude and counted amount.
+- A mobile-first transaction editor in a bottom sheet, with category, include/exclude, date and amount.
 - Budget and bucket settings.
 
 ## PWA
