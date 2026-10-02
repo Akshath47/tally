@@ -59,3 +59,41 @@ export function fakeFetch(routes: Record<string, Reply | Reply[] | ((url: URL) =
   };
   return { fetch: fetchImpl, calls };
 }
+
+export type WorldAccount = { id: number; name: string; institution: string; currency: string };
+
+/**
+ * A mutable fake Lunch Flow: tests change `txns` and the `*Reply` overrides between runs.
+ * Transactions are filtered by from/to and include_pending like the real endpoint.
+ */
+export function world(accounts: WorldAccount[]) {
+  const state = {
+    txns: {} as Record<number, FakeTxn[]>,
+    accountsReply: undefined as Reply | undefined,
+    txnReply: {} as Record<number, Reply | undefined>,
+    balanceReply: {} as Record<number, Reply | undefined>,
+  };
+  const routes: Record<string, Reply | Reply[] | ((url: URL) => Reply)> = {
+    "/accounts": () =>
+      state.accountsReply ?? {
+        body: {
+          accounts: accounts.map((a) => accountJson(a.id, { name: a.name, institution_name: a.institution })),
+          total: accounts.length,
+        },
+      },
+  };
+  for (const a of accounts) {
+    routes[`/accounts/${a.id}/balance`] = () =>
+      state.balanceReply[a.id] ?? { body: { balance: { amount: 100.5, currency: a.currency } } };
+    routes[`/accounts/${a.id}/transactions`] = (url) => {
+      if (state.txnReply[a.id]) return state.txnReply[a.id]!;
+      const { from = "0000-00-00", to = "9999-99-99", include_pending } = Object.fromEntries(url.searchParams);
+      const rows = (state.txns[a.id] ?? []).filter(
+        (t) => t.date >= from && t.date <= to && (include_pending === "true" || !t.isPending),
+      );
+      return { body: { transactions: rows, total: rows.length } };
+    };
+  }
+  const f = fakeFetch(routes);
+  return Object.assign(state, { fetch: f.fetch, calls: f.calls });
+}
