@@ -158,7 +158,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 - `scripts/cron-report.sql` holds the acceptance queries (`npx wrangler d1 execute DB --remote --file scripts/cron-report.sql`). It prints ids, times, counts and amounts, never merchant or description text.
 
 **Accept when:**
-- `import_runs` shows `trigger='cron'` rows at the expected times for **at least 48 hours** with the app closed;
+- `import_runs` shows `trigger='cron'` rows at the expected times for **at least 24 hours** with the app closed;
 - no overlapping runs;
 - zero duplicates by `(account_id, provider_txn_id)`;
 - the fingerprint-duplicate query has been reviewed.

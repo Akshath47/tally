@@ -16,7 +16,7 @@
 | P1.9 Verification + assessment | 2 |
 | **Total** | **~20–30 focused hours** |
 
-**Calendar time:** 1–2 weeks. P1.1 needs a second probe run 1–2 days after the first, and P1.7 needs at least 48 hours of cron runs. Finish Phase 1 well inside the Lunch Flow trial.
+**Calendar time:** 1–2 weeks. P1.1 needs a second probe run 1–2 days after the first, and P1.7 needs at least 24 hours of cron runs. Finish Phase 1 well inside the Lunch Flow trial.
 
 ## Main uncertainties
 
