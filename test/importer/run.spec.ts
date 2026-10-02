@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runImport } from "../../src/worker/importer/run";
-import { resetDb } from "../db";
+import { insertRun, insertTransaction, resetDb } from "../db";
 import { txn, world, type WorldAccount } from "../fixtures/lunchflow";
 
 // All data is synthetic. "Today" is 2026-10-02 in London, so the incremental window is
@@ -163,10 +163,7 @@ describe("runImport: nothing is ever deleted", () => {
     const w = basicWorld();
     await run(w);
     // Dated beyond the 20-day backfill floor (2026-09-12), so no fetched window covers it.
-    await env.DB.prepare(
-      `INSERT INTO transactions (account_id, provider_txn_id, amount_minor, provider_amount, currency, txn_date, merchant, description, is_pending, fingerprint, first_seen_at, last_seen_at, updated_at, first_import_run_id)
-       VALUES (1, 'ancient-pend', -100, '-1', 'GBP', '2026-01-01', 'x', '', 1, 'fp', 'x', 'x', 'x', 1)`,
-    ).run();
+    await insertTransaction(1, 1, "ancient-pend", { txnDate: "2026-01-01", isPending: 1 });
     await run(w);
     expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id = 'ancient-pend' AND vanished_at IS NULL")).toBe(1);
   });
@@ -191,9 +188,7 @@ describe("runImport: pending transactions without an id", () => {
 describe("runImport: locking and failures", () => {
   it("a run started while another holds the lease is skipped_locked and calls nothing", async () => {
     const w = basicWorld();
-    await env.DB.prepare(
-      "INSERT INTO import_runs (trigger, started_at, status) VALUES ('cron', '2026-10-02T12:00:00.000Z', 'running')",
-    ).run();
+    await insertRun("cron");
     await env.DB.prepare("UPDATE import_lock SET holder_run_id = 1, expires_at = '2026-10-02T12:30:00.000Z' WHERE id = 1").run();
 
     const res = await run(w);

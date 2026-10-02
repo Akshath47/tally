@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CountingDb } from "../../src/worker/importer/db";
 import { claimLock, releaseLock } from "../../src/worker/importer/lock";
-import { resetDb } from "../db";
+import { insertRun, resetDb } from "../db";
 
 beforeEach(resetDb);
 
@@ -28,26 +28,19 @@ describe("CountingDb", () => {
   });
 });
 
-async function newRun(): Promise<number> {
-  const row = await env.DB.prepare(
-    "INSERT INTO import_runs (trigger, started_at, status) VALUES ('manual', '2026-10-02T12:00:00.000Z', 'running') RETURNING id",
-  ).first<{ id: number }>();
-  return row!.id;
-}
-
 describe("import lock", () => {
   const NOW = new Date("2026-10-02T12:00:00.000Z");
 
   it("is claimed by the first run and refused to the second", async () => {
     const db = new CountingDb(env.DB, 40);
-    const [a, b] = [await newRun(), await newRun()];
+    const [a, b] = [await insertRun(), await insertRun()];
     expect(await claimLock(db, a, NOW)).toBe(true);
     expect(await claimLock(db, b, NOW)).toBe(false);
   });
 
   it("is a 10 minute lease: free again once it expires", async () => {
     const db = new CountingDb(env.DB, 40);
-    const [a, b] = [await newRun(), await newRun()];
+    const [a, b] = [await insertRun(), await insertRun()];
     await claimLock(db, a, NOW);
     expect(await claimLock(db, b, new Date(NOW.getTime() + 9 * 60_000))).toBe(false);
     expect(await claimLock(db, b, new Date(NOW.getTime() + 10 * 60_000 + 1))).toBe(true);
@@ -55,7 +48,7 @@ describe("import lock", () => {
 
   it("is released only by its holder", async () => {
     const db = new CountingDb(env.DB, 40);
-    const [a, b] = [await newRun(), await newRun()];
+    const [a, b] = [await insertRun(), await insertRun()];
     await claimLock(db, a, NOW);
     await releaseLock(db, b);
     expect(await claimLock(db, b, NOW)).toBe(false);
