@@ -19,7 +19,7 @@ Status: `[ ]` = not started.
 
 ---
 
-## [ ] P1.0 Accounts and credentials (owner)
+## [x] P1.0 Accounts and credentials (owner)
 
 - Start the Lunch Flow trial and connect Revolut Personal UK and BA Amex UK. Bank authentication happens on the banks' own sites.
 - Create two Lunch Flow API destinations, `tally-prod` and `tally-dev`, and enable both accounts in each one's **Account Access** tab.
