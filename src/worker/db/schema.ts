@@ -98,6 +98,7 @@ export const transactions = sqliteTable(
     // account|date|amount|normalised description; diagnostic only, not unique.
     fingerprint: text("fingerprint").notNull(),
     firstSeenAt: text("first_seen_at").notNull(),
+    // Set on insert and whenever the importer changes the row; an unchanged re-import never touches it.
     lastSeenAt: text("last_seen_at").notNull(),
     // Set when a pending row disappears from a successful window; cleared if it reappears.
     vanishedAt: text("vanished_at"),

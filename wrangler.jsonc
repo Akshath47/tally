@@ -20,7 +20,9 @@
 	"vars": {
 		"ACCESS_TEAM_DOMAIN": "https://shiny-night-8f2f.cloudflareaccess.com",
 		"ACCESS_AUD": "88e734e4706f2f8b90b1f1018b8d1b0c5ea7a817aab1a87c71b1183bac87cfb4",
-		"ALLOWED_EMAIL": "akshathyennam@gmail.com"
+		"ALLOWED_EMAIL": "akshathyennam@gmail.com",
+		// How far back the importer backfills. Revolut serves about 2 years (docs/lunchflow-findings.md).
+		"BACKFILL_DAYS": "730"
 	},
 	"observability": {
 		"enabled": true
