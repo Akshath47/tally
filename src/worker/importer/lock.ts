@@ -19,15 +19,17 @@ export async function claimLock(db: CountingDb, runId: number, now: Date): Promi
 }
 
 /**
- * Called by the lease holder. No other run can be alive, so any still marked running was cut
- * off before its finally (e.g. a manual import past the 30 s waitUntil limit). A run that just
- * lost the claim may be caught too, but its own finally then records it as skipped_locked.
+ * Called by the lease holder. A run still marked running after a whole lease was cut off
+ * before its finally (e.g. a manual import killed past the 30 s waitUntil limit). Younger
+ * rows are left alone: they may belong to a run that is just about to try for the lease.
  */
-export async function closeAbandonedRuns(db: CountingDb, runId: number, now: string): Promise<void> {
+export async function closeAbandonedRuns(db: CountingDb, runId: number, now: Date): Promise<void> {
   await db.run(
     db
-      .prepare("UPDATE import_runs SET status = 'failed', error_summary = 'abandoned', finished_at = ?2 WHERE status = 'running' AND id != ?1")
-      .bind(runId, now),
+      .prepare(
+        "UPDATE import_runs SET status = 'failed', error_summary = 'abandoned', finished_at = ?2 WHERE status = 'running' AND id != ?1 AND started_at <= ?3",
+      )
+      .bind(runId, now.toISOString(), new Date(now.getTime() - LEASE_MS).toISOString()),
   );
 }
 

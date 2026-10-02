@@ -43,9 +43,16 @@ export type ClientDeps = {
   apiKey: string;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  /** Epoch ms after which no call or retry starts, so a run can end cleanly before it's cut off. */
+  deadline?: number;
 };
 
-export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }: ClientDeps) {
+export function createClient({
+  apiKey,
+  fetch: fetchImpl = fetch,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  deadline = Infinity,
+}: ClientDeps) {
   let subrequests = 0;
 
   type Attempt<T> = { ok: true; data: T } | { ok: false; error: ImportError; retryAfterMs: number | null };
@@ -54,13 +61,15 @@ export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) =>
   /** One HTTP try. Non-retryable failures throw; retryable ones come back as `ok: false`. */
   async function attempt<T>(path: string, schema: z.ZodType<T>): Promise<Attempt<T>> {
     if (subrequests >= SUBREQUEST_CAP) throw new ImportError("budget");
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new ImportError("timeout");
     subrequests++;
 
     let res: Response;
     try {
       res = await fetchImpl(BASE_URL + path, {
         headers: { "x-api-key": apiKey, accept: "application/json" },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(Math.min(TIMEOUT_MS, remaining)),
       });
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === "TimeoutError";
@@ -87,8 +96,9 @@ export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) =>
     for (let tries = 0; ; tries++) {
       const result = await attempt(path, schema);
       if (result.ok) return result.data;
-      if (tries === MAX_RETRIES) throw result.error;
-      await sleep(result.retryAfterMs ?? BACKOFF_MS * 2 ** tries);
+      const wait = result.retryAfterMs ?? BACKOFF_MS * 2 ** tries;
+      if (tries === MAX_RETRIES || Date.now() + wait >= deadline) throw result.error;
+      await sleep(wait);
     }
   }
 

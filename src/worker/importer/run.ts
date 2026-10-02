@@ -26,7 +26,13 @@ const DEFAULT_BACKFILL_DAYS = 90;
 const BUDGET_CURRENCY = "GBP";
 
 export type ImportEnv = { DB: D1Database; LUNCHFLOW_API_KEY: string; BACKFILL_DAYS?: string };
-export type RunDeps = { fetch?: typeof fetch; now?: () => Date; sleep?: (ms: number) => Promise<void> };
+export type RunDeps = {
+  fetch?: typeof fetch;
+  now?: () => Date;
+  sleep?: (ms: number) => Promise<void>;
+  /** Wall-clock budget for provider calls, so a run ends cleanly before the runtime would cut it off. */
+  budgetMs?: number;
+};
 
 export type RunSummary = {
   runId: number;
@@ -36,6 +42,9 @@ export type RunSummary = {
   statements: number;
   subrequests: number;
 };
+
+/** A run that exists and has tried for the lease; `finished` settles when it has been closed. */
+export type StartedImport = { runId: number; locked: boolean; finished: Promise<RunSummary> };
 
 type Ctx = {
   db: CountingDb;
@@ -57,60 +66,74 @@ function parseBackfillDays(raw: string | undefined): number {
 }
 
 /**
- * One import run: claims the lease, reads Lunch Flow, writes D1, and always releases the
- * lease. One account failing never stops another. Only counts, statuses and durations are
- * logged and stored, never provider payloads.
+ * Creates the run and tries to claim the lease, then carries on in `finished`: it imports if
+ * it holds the lease, otherwise closes the run as skipped_locked. Only creating the run can
+ * reject here. One account failing never stops another, and the lease is always released.
+ * Only counts, statuses and durations are logged and stored, never provider payloads.
  */
-export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS)[number], deps: RunDeps = {}): Promise<RunSummary> {
+export async function startImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS)[number], deps: RunDeps = {}): Promise<StartedImport> {
   const started = Date.now();
   const now = (deps.now ?? (() => new Date()))();
   const nowIso = now.toISOString();
   const db = new CountingDb(env.DB);
-  const client = createClient({ apiKey: env.LUNCHFLOW_API_KEY, fetch: deps.fetch, sleep: deps.sleep });
+  const deadline = deps.budgetMs === undefined ? undefined : started + deps.budgetMs;
+  const client = createClient({ apiKey: env.LUNCHFLOW_API_KEY, fetch: deps.fetch, sleep: deps.sleep, deadline });
 
   const run = await db.first<{ id: number }>(
     db.prepare("INSERT INTO import_runs (trigger, started_at, status) VALUES (?1, ?2, 'running') RETURNING id").bind(trigger, nowIso),
   );
   const runId = run!.id;
-  // Its own budget: closing the run must work even if the run itself overspent.
-  const closing = new CountingDb(env.DB, 3);
-
-  let status: RunSummary["status"] = "failed";
-  let errorSummary: string | null = null;
-  let locked = false;
-  const accounts: AccountSummary[] = [];
-
-  try {
-    if (!(await claimLock(db, runId, now))) {
-      status = "skipped_locked";
-    } else {
-      locked = true;
-      await closeAbandonedRuns(db, runId, nowIso);
-      const ctx: Ctx = { db, client, runId, nowIso, today: londonToday(now), backfillDays: parseBackfillDays(env.BACKFILL_DAYS) };
-      accounts.push(...(await importAll(ctx)));
-      const ok = accounts.filter((a) => a.status === "success").length;
-      status = ok === accounts.length ? "success" : ok === 0 ? "failed" : "partial";
-    }
-  } catch (e) {
-    status = "failed";
-    errorSummary = errorText(e);
-  } finally {
-    if (locked) await releaseLock(closing, runId);
-    await closing.run(
-      closing
-        .prepare("UPDATE import_runs SET finished_at = ?2, status = ?3, error_summary = ?4 WHERE id = ?1")
-        .bind(runId, new Date(now.getTime() + (Date.now() - started)).toISOString(), status, errorSummary),
-    );
-  }
-
-  const summary: RunSummary = { runId, status, errorSummary, accounts, statements: db.statements + closing.statements, subrequests: client.subrequests };
-  console.log(
-    JSON.stringify({
-      event: "import_run", runId, trigger, status, error: errorSummary, accounts: accounts.length,
-      statements: summary.statements, subrequests: summary.subrequests, durationMs: Date.now() - started,
-    }),
+  const claim = await claimLock(db, runId, now).then(
+    (ok) => ({ ok, error: null as unknown }),
+    (error: unknown) => ({ ok: false, error }),
   );
-  return summary;
+
+  const finished = (async (): Promise<RunSummary> => {
+    // Its own budget: closing the run must work even if the run itself overspent.
+    const closing = new CountingDb(env.DB, 3);
+    let status: RunSummary["status"] = "failed";
+    let errorSummary: string | null = null;
+    const accounts: AccountSummary[] = [];
+
+    try {
+      if (claim.error !== null) throw claim.error;
+      if (!claim.ok) {
+        status = "skipped_locked";
+      } else {
+        await closeAbandonedRuns(db, runId, now);
+        const ctx: Ctx = { db, client, runId, nowIso, today: londonToday(now), backfillDays: parseBackfillDays(env.BACKFILL_DAYS) };
+        accounts.push(...(await importAll(ctx)));
+        const ok = accounts.filter((a) => a.status === "success").length;
+        status = ok === accounts.length ? "success" : ok === 0 ? "failed" : "partial";
+      }
+    } catch (e) {
+      status = "failed";
+      errorSummary = errorText(e);
+    } finally {
+      if (claim.ok) await releaseLock(closing, runId);
+      await closing.run(
+        closing
+          .prepare("UPDATE import_runs SET finished_at = ?2, status = ?3, error_summary = ?4 WHERE id = ?1")
+          .bind(runId, new Date(now.getTime() + (Date.now() - started)).toISOString(), status, errorSummary),
+      );
+    }
+
+    const summary: RunSummary = { runId, status, errorSummary, accounts, statements: db.statements + closing.statements, subrequests: client.subrequests };
+    console.log(
+      JSON.stringify({
+        event: "import_run", runId, trigger, status, error: errorSummary, accounts: accounts.length,
+        statements: summary.statements, subrequests: summary.subrequests, durationMs: Date.now() - started,
+      }),
+    );
+    return summary;
+  })();
+
+  return { runId, locked: claim.ok, finished };
+}
+
+/** Starts a run and waits for it to close. */
+export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS)[number], deps: RunDeps = {}): Promise<RunSummary> {
+  return (await startImport(env, trigger, deps)).finished;
 }
 
 async function importAll(ctx: Ctx): Promise<AccountSummary[]> {

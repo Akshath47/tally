@@ -228,6 +228,22 @@ describe("runImport: locking and failures", () => {
     expect(row).toEqual({ status: "failed", error_summary: "abandoned", finished_at: "2026-10-02T12:00:00.000Z" });
   });
 
+  it("leaves a recently started run alone, since it may still be about to claim", async () => {
+    const fresh = await insertRun("manual", "running", new Date(T0 - 5_000).toISOString());
+    expect((await run(basicWorld())).status).toBe("success");
+    expect(await env.DB.prepare("SELECT status FROM import_runs WHERE id = ?1").bind(fresh).first()).toEqual({ status: "running" });
+  });
+
+  it("ends a run that exceeds its time budget as failed/timeout and releases the lease", async () => {
+    const w = basicWorld();
+    const res = await runImport({ DB: env.DB, LUNCHFLOW_API_KEY: "test-key" }, "manual", {
+      fetch: w.fetch, now: () => new Date(T0), sleep: async () => {}, budgetMs: 0,
+    });
+    expect(res).toMatchObject({ status: "failed", errorSummary: "timeout" });
+    expect(w.calls).toHaveLength(0);
+    expect(await env.DB.prepare("SELECT holder_run_id FROM import_lock").first()).toEqual({ holder_run_id: null });
+  });
+
   it("a 5xx on one account retries, records the error, keeps its rows, and does not stop the other", async () => {
     const w = basicWorld();
     await run(w);
