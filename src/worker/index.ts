@@ -20,10 +20,13 @@ export function createApp(options: AppOptions = {}) {
   // Rejects cross-site form/simple POSTs; JSON POSTs from other origins already fail CORS preflight.
   app.use("*", csrf());
   // csrf() only looks at form-style content types, so every other state-changing
-  // request must also carry this app's own Origin.
+  // request must also carry this app's own Origin, and be JSON (so it needs a CORS preflight).
   app.use("*", async (c, next) => {
-    if (!SAFE_METHODS.has(c.req.method) && c.req.header("Origin") !== new URL(c.req.url).origin) {
-      return c.json({ error: "forbidden" }, 403);
+    if (!SAFE_METHODS.has(c.req.method)) {
+      if (c.req.header("Origin") !== new URL(c.req.url).origin) return c.json({ error: "forbidden" }, 403);
+      if (!c.req.header("Content-Type")?.startsWith("application/json")) {
+        return c.json({ error: "unsupported_media_type" }, 415);
+      }
     }
     await next();
   });

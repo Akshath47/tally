@@ -14,11 +14,12 @@ const RUN_ACCOUNT_COLUMNS = `run_id AS runId, account_id AS accountId, status, h
 type RunRow = { id: number } & Record<string, unknown>;
 type RunAccountRow = { runId: number } & Record<string, unknown>;
 
-/** Runs matching `idFilter` (a subquery or literal list of ids), newest first, each with its per-account rows. */
-async function loadRuns(db: D1Database, idFilter: string, ...binds: unknown[]) {
+/** The latest `limit` runs, or the one run `id`, newest first, each with its per-account rows. */
+async function loadRuns(db: D1Database, by: { limit: number } | { id: number }) {
+  const [ids, bind] = "id" in by ? ["?1", by.id] : ["SELECT id FROM import_runs ORDER BY id DESC LIMIT ?1", by.limit];
   const [runs, accounts] = await db.batch<Record<string, unknown>>([
-    db.prepare(`SELECT ${RUN_COLUMNS} FROM import_runs WHERE id IN (${idFilter}) ORDER BY id DESC`).bind(...binds),
-    db.prepare(`SELECT ${RUN_ACCOUNT_COLUMNS} FROM import_run_accounts WHERE run_id IN (${idFilter}) ORDER BY account_id`).bind(...binds),
+    db.prepare(`SELECT ${RUN_COLUMNS} FROM import_runs WHERE id IN (${ids}) ORDER BY id DESC`).bind(bind),
+    db.prepare(`SELECT ${RUN_ACCOUNT_COLUMNS} FROM import_run_accounts WHERE run_id IN (${ids}) ORDER BY account_id`).bind(bind),
   ]);
   return (runs!.results as RunRow[]).map((run) => ({
     ...run,
@@ -31,13 +32,9 @@ export function importRunRoutes(deps: RunDeps) {
     .get("/", async (c) => {
       const q = parseQuery(c, z.object({ limit: limitParam(50, 20) }));
       if (!q.ok) return q.res;
-      return c.json({ runs: await loadRuns(c.env.DB, "SELECT id FROM import_runs ORDER BY id DESC LIMIT ?1", q.data.limit) });
+      return c.json({ runs: await loadRuns(c.env.DB, { limit: q.data.limit }) });
     })
     .post("/", async (c) => {
-      if (!c.req.header("Content-Type")?.startsWith("application/json")) {
-        return c.json({ error: "unsupported_media_type" }, 415);
-      }
-
       // Any run (cron included) inside the last minute means Lunch Flow's cached data can't have moved.
       // A tap that only hit the lock imported nothing, so it doesn't count.
       const now = (deps.now ?? (() => new Date()))();
@@ -56,7 +53,7 @@ export function importRunRoutes(deps: RunDeps) {
       // If the phone disconnects mid-import, keep running so the run is closed and the lease released.
       c.executionCtx.waitUntil(pending);
       const summary = await pending;
-      const [run] = await loadRuns(c.env.DB, "?1", summary.runId);
+      const [run] = await loadRuns(c.env.DB, { id: summary.runId });
       if (summary.status === "skipped_locked") return c.json({ error: "import_running", run }, 409);
       return c.json({ run });
     });
