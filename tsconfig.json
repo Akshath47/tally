@@ -1,0 +1,10 @@
+{
+  // Each runtime gets its own settings so e.g. Worker code can't use DOM or Node APIs.
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.web.json" },
+    { "path": "./tsconfig.worker.json" },
+    { "path": "./tsconfig.node.json" },
+    { "path": "./test/tsconfig.json" }
+  ]
+}

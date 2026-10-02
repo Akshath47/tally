@@ -1,0 +1,24 @@
+# gitleaks config, picked up automatically by the pre-commit hook.
+[extend]
+useDefault = true
+
+# Files that must never be committed, whatever they contain (see "Secrets and
+# information safety" in .claude/CLAUDE.md).
+[[rules]]
+id = "tally-local-secrets-file"
+description = "Local secrets file (.dev.vars / .env)"
+path = '''(^|/)\.(dev\.vars|env)(\..+)?$'''
+
+[[rules]]
+id = "tally-probe-snapshot"
+description = "Lunch Flow probe snapshot (real transaction data)"
+path = '''(^|/)\.probe/'''
+
+# ACCESS_AUD is the Cloudflare Access application audience tag: a public
+# identifier carried in every Access JWT, not a secret. It appears in
+# wrangler.jsonc vars and the generated worker-configuration.d.ts.
+[[allowlists]]
+description = "Cloudflare Access AUD tag (public identifier)"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''^\s*"?ACCESS_AUD"?\s*:''']

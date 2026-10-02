@@ -1,0 +1,11 @@
+#!/bin/sh
+# Blocks commits whose staged changes contain secrets, using gitleaks' default
+# rules plus .gitleaks.toml. --redact keeps secret values out of the output.
+# Installed via `npm install` (the "prepare" script sets core.hooksPath).
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed (brew install gitleaks). Commit blocked." >&2
+  exit 1
+fi
+
+exec gitleaks git --pre-commit --staged --redact --no-banner --verbose

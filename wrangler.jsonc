@@ -1,0 +1,41 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "tally",
+	"main": "./src/worker/index.ts",
+	"compatibility_date": "2026-09-30",
+	// React SPA built by Vite. Unknown paths fall back to index.html; only /api and
+	// /api/* run the Worker first ("/api/*" alone doesn't match the bare path). Access protects assets and API alike at the edge.
+	"assets": {
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api",
+			"/api/*"
+		]
+	},
+	// Version/preview URLs would share production bindings (incl. D1), so they stay off.
+	"workers_dev": true,
+	"preview_urls": false,
+	// Cloudflare Access (not secrets). The Worker re-verifies the Access JWT itself
+	// because Workers with static assets don't receive ctx.access.
+	"vars": {
+		"ACCESS_TEAM_DOMAIN": "https://shiny-night-8f2f.cloudflareaccess.com",
+		"ACCESS_AUD": "88e734e4706f2f8b90b1f1018b8d1b0c5ea7a817aab1a87c71b1183bac87cfb4",
+		"ALLOWED_EMAIL": "akshathyennam@gmail.com"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// Cron is UTC. Hourly during P1.7 verification, every 6h afterwards.
+	"triggers": {
+		"crons": [
+			"0 */6 * * *"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "tally-prod",
+			"database_id": "bde287f4-9f69-4daf-a0a9-8dca055a62c3"
+		}
+	]
+}

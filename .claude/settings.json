@@ -10,5 +10,10 @@
       "Bash(grep * .dev.vars*)",
       "Bash(grep * .env*)"
     ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
   }
 }

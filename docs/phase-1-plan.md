@@ -64,14 +64,14 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
   - `observability.enabled: true`;
   - one cron trigger;
   - `preview_urls: false`.
-- Tooling: ESLint (including a ban on `dangerouslySetInnerHTML`), `tsc --noEmit`, Vitest with `@cloudflare/vitest-pool-workers`, and a gitleaks pre-commit hook.
+- Tooling: ESLint (including a ban on `dangerouslySetInnerHTML`), `tsc --noEmit`, Vitest with `@cloudflare/vitest-plugin`, and a gitleaks pre-commit hook.
 - `.claude/settings.json` gets deny rules for reading `.dev.vars` and `.env*`.
 
 **Accept when:** `npm run dev` serves the page and `/api/health` locally, and the empty build deploys.
 
 ## [ ] P1.3 Access and auth middleware
 
-- Enable Access on the Worker (Workers & Pages → tally → Access) with a policy of `Emails: <owner>` and a session length of about 1 month.
+- Enable Access on the Worker (Workers & Pages → tally → Access) with scope **All traffic**, the **Cloudflare account** policy and a 7-day session. The dialog offers only "Cloudflare account" and "Email domain", and Email domain would admit a whole domain.
 - Hono middleware checks, in order:
   1. `Cf-Access-Jwt-Assertion` is present;
   2. the signature is valid against the team JWKS (cached per isolate);
@@ -79,12 +79,13 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
   4. `email` equals `ALLOWED_EMAIL`.
   
   Anything else gets 401/403. `POST` requests also have their `Origin` checked.
-- Test locally with `access.dev` in `wrangler.jsonc`.
+- Local dev: `access.dev` in `wrangler.jsonc` only simulates `ctx.access`, not the `Cf-Access-Jwt-Assertion` header, so it can't exercise this middleware. Instead, the middleware admits localhost requests when `import.meta.env.DEV` is true. That branch is compiled out of production builds, and `vite.config.ts` refuses to run `vite dev` on a non-loopback host.
 
 **Accept when (Gate 2):**
-- Logged out, `curl` on `/`, `/api/health`, `/api/accounts` and `POST /api/import` returns an Access redirect or 403. It never returns JSON.
+- Logged out, `curl` on `/`, `/api/health`, `/api/accounts` and `POST /api/import-runs` returns an Access redirect or 403. It never returns JSON.
 - Preview/version URLs are disabled or don't serve content.
-- Unit tests pass for a missing JWT, a bad signature, a wrong `aud`, a wrong email and an expired token.
+- Unit tests pass for a missing JWT, a bad signature, a wrong `aud`/issuer, a wrong or missing email and an expired token.
+- The local-dev bypass (localhost only, `import.meta.env.DEV`) is absent from the production bundle.
 - Login works in iPhone Safari **and** from a Home Screen shortcut in standalone mode.
 
 ## [ ] P1.4 Schema and migrations
@@ -148,7 +149,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
   - the last 10 import runs;
   - the latest 100 transactions, filterable by account.
 
-**Accept when:** a manual import from the iPhone updates the cards and the list, and a second tap within 60 s gets a friendly 429.
+**Accept when:** a manual import (`POST /api/import-runs`) from the iPhone updates the cards and the list, and a second tap within 60 s gets a friendly 429.
 
 ## [ ] P1.7 Scheduled imports
 

@@ -91,7 +91,7 @@ chore(docs): record confirmed rate-limit header names in platform-constraints.md
 
 ## Testing
 
-- Vitest with `@cloudflare/vitest-pool-workers`. Synthetic fixtures only, per the secrets rules above.
+- Vitest with `@cloudflare/vitest-plugin`. Synthetic fixtures only, per the secrets rules above.
 - Money and date edge cases matter more than usual here — see the test list in [docs/phase-1-plan.md](../docs/phase-1-plan.md) P1.5 (rounding, `0.1 + 0.2`-style values, BST/GMT boundary dates, duplicate-import idempotency).
 
 ## Output style

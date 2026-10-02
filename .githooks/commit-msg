@@ -1,0 +1,10 @@
+#!/bin/sh
+# Rejects attribution lines in commit messages (see "Git commit convention"
+# in .claude/CLAUDE.md). Applies to every commit, whoever or whatever makes it.
+
+if grep -v '^#' "$1" | grep -qiE '^co-authored-by:|^claude-session:|generated with \[?claude code'; then
+  echo "commit-msg: attribution lines (Co-Authored-By, Claude-Session, 'Generated with Claude Code') are not allowed in this repo." >&2
+  exit 1
+fi
+
+exit 0
