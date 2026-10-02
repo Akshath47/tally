@@ -62,6 +62,10 @@ export function fakeFetch(routes: Record<string, Reply | Reply[] | ((url: URL) =
 
 export type WorldAccount = { id: number; name: string; institution: string; currency: string };
 
+// Revolut's name is IBAN-shaped, like the real API's, to check it never becomes the label.
+export const REVOLUT: WorldAccount = { id: 1, name: "GB29NWBK60161331926819", institution: "Revolut", currency: "GBP" };
+export const AMEX: WorldAccount = { id: 2, name: "Synthetic Rewards Card", institution: "Test Amex", currency: "GBP" };
+
 /**
  * A mutable fake Lunch Flow: tests change `txns` and the `*Reply` overrides between runs.
  * Transactions are filtered by from/to and include_pending like the real endpoint.

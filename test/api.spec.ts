@@ -2,16 +2,16 @@ import { createExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/worker";
-import { insertAccount, insertRun, insertTransaction, resetDb } from "./db";
-import { txn, world, type WorldAccount } from "./fixtures/lunchflow";
+import { CountingDb } from "../src/worker/importer/db";
+import { claimLock } from "../src/worker/importer/lock";
+import { NOW, insertAccount, insertRun, insertTransaction, resetDb } from "./db";
+import { AMEX, REVOLUT, txn, world } from "./fixtures/lunchflow";
 
 // Requests go to localhost, where the local-dev auth bypass applies (Vitest runs with
 // import.meta.env.DEV = true); auth itself is covered by auth.spec.ts. All data is synthetic.
 
 const ORIGIN = "http://localhost";
-const T0 = Date.parse("2026-10-02T12:00:00.000Z");
-const REVOLUT: WorldAccount = { id: 1, name: "GB29NWBK60161331926819", institution: "Revolut", currency: "GBP" };
-const AMEX: WorldAccount = { id: 2, name: "Synthetic Rewards Card", institution: "Test Amex", currency: "GBP" };
+const T0 = Date.parse(NOW);
 
 let clock: number;
 let w: ReturnType<typeof world>;
@@ -66,19 +66,15 @@ describe("POST /api/import-runs", () => {
   });
 
   it("counts a recent cron run towards the 60 s limit", async () => {
-    await env.DB.prepare("INSERT INTO import_runs (trigger, started_at, status) VALUES ('cron', ?1, 'success')")
-      .bind(new Date(T0 - 10_000).toISOString())
-      .run();
+    await insertRun("cron", "success", new Date(T0 - 10_000).toISOString());
     expect((await postImport()).status).toBe(429);
   });
 
   it("returns 409 when another run holds the import lock", async () => {
-    const holder = await insertRun("cron", "running");
-    await env.DB.prepare("UPDATE import_lock SET holder_run_id = ?1, expires_at = ?2 WHERE id = 1")
-      .bind(holder, new Date(T0 + 300_000).toISOString())
-      .run();
     // The holder started long enough ago not to trip the 60 s limit.
-    await env.DB.prepare("UPDATE import_runs SET started_at = ?2 WHERE id = ?1").bind(holder, new Date(T0 - 120_000).toISOString()).run();
+    const started = new Date(T0 - 120_000);
+    const holder = await insertRun("cron", "running", started.toISOString());
+    expect(await claimLock(new CountingDb(env.DB), holder, started)).toBe(true);
 
     const res = await postImport();
     expect(res.status).toBe(409);

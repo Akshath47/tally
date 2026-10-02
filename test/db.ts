@@ -25,11 +25,11 @@ export async function insertAccount(overrides: AccountOverrides = {}): Promise<n
   return row!.id;
 }
 
-export async function insertRun(trigger = "manual", status = "running"): Promise<number> {
+export async function insertRun(trigger = "manual", status = "running", startedAt = NOW): Promise<number> {
   const row = await env.DB.prepare(
     "INSERT INTO import_runs (trigger, started_at, status) VALUES (?1, ?2, ?3) RETURNING id",
   )
-    .bind(trigger, NOW, status)
+    .bind(trigger, startedAt, status)
     .first<{ id: number }>();
   return row!.id;
 }

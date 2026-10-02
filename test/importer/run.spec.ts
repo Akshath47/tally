@@ -2,14 +2,12 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runImport } from "../../src/worker/importer/run";
 import { insertRun, insertTransaction, resetDb } from "../db";
-import { txn, world, type WorldAccount } from "../fixtures/lunchflow";
+import { AMEX, REVOLUT, txn, world, type WorldAccount } from "../fixtures/lunchflow";
 
 // All data is synthetic. "Today" is 2026-10-02 in London, so the incremental window is
 // 2026-09-19..2026-10-02.
 
 const T0 = Date.parse("2026-10-02T12:00:00.000Z");
-const REVOLUT: WorldAccount = { id: 1, name: "GB29NWBK60161331926819", institution: "Revolut", currency: "GBP" };
-const AMEX: WorldAccount = { id: 2, name: "Synthetic Rewards Card", institution: "Test Amex", currency: "GBP" };
 const POCKET: WorldAccount = { id: 3, name: "GB00POCK00000000000003", institution: "Revolut", currency: "USD" };
 
 let minute = 0;
