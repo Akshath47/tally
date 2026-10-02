@@ -1,3 +1,4 @@
+import { createExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/worker";
@@ -29,7 +30,8 @@ const get = (path: string) => app.request(`${ORIGIN}${path}`, {}, env);
 const getJson = async <T>(path: string) => (await (await get(path)).json()) as T;
 
 function postImport(headers: Record<string, string> = { "Content-Type": "application/json" }) {
-  return app.request(`${ORIGIN}/api/import-runs`, { method: "POST", headers: { Origin: ORIGIN, ...headers }, body: "{}" }, env);
+  const init = { method: "POST", headers: { Origin: ORIGIN, ...headers }, body: "{}" };
+  return app.request(`${ORIGIN}/api/import-runs`, init, env, createExecutionContext());
 }
 
 type Run = { id: number; trigger: string; status: string; accounts: { accountId: number; status: string; inserted: number }[] };
@@ -83,6 +85,10 @@ describe("POST /api/import-runs", () => {
     const body = (await res.json()) as { error: string; run: Run };
     expect(body.error).toBe("import_running");
     expect(body.run.status).toBe("skipped_locked");
+
+    // That tap imported nothing, so tapping again straight away is another 409, not a 429.
+    clock += 5_000;
+    expect((await postImport()).status).toBe(409);
   });
 
   it("rejects a POST that isn't JSON (415)", async () => {

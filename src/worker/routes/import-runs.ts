@@ -39,8 +39,11 @@ export function importRunRoutes(deps: RunDeps) {
       }
 
       // Any run (cron included) inside the last minute means Lunch Flow's cached data can't have moved.
+      // A tap that only hit the lock imported nothing, so it doesn't count.
       const now = (deps.now ?? (() => new Date()))();
-      const last = await c.env.DB.prepare("SELECT started_at FROM import_runs ORDER BY id DESC LIMIT 1").first<{ started_at: string }>();
+      const last = await c.env.DB.prepare(
+        "SELECT started_at FROM import_runs WHERE status != 'skipped_locked' ORDER BY id DESC LIMIT 1",
+      ).first<{ started_at: string }>();
       const waitMs = last ? Date.parse(last.started_at) + MIN_INTERVAL_MS - now.getTime() : 0;
       if (waitMs > 0) {
         const retryAfterSeconds = Math.ceil(waitMs / 1000);
@@ -49,7 +52,10 @@ export function importRunRoutes(deps: RunDeps) {
       }
 
       // Provider and per-account failures are recorded in the run, not raised as HTTP errors.
-      const summary = await runImport(c.env, "manual", { ...deps, now: () => now });
+      const pending = runImport(c.env, "manual", { ...deps, now: () => now });
+      // If the phone disconnects mid-import, keep running so the run is closed and the lease released.
+      c.executionCtx.waitUntil(pending);
+      const summary = await pending;
       const [run] = await loadRuns(c.env.DB, "?1", summary.runId);
       if (summary.status === "skipped_locked") return c.json({ error: "import_running", run }, 409);
       return c.json({ run });

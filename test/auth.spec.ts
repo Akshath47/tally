@@ -1,11 +1,15 @@
+import { createExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK } from "jose";
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK, type JWTVerifyGetKey } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/worker";
+import { resetDb } from "./db";
+import { world } from "./fixtures/lunchflow";
 
 const ORIGIN = "https://tally.test";
 let trustedKey: CryptoKey;
 let untrustedKey: CryptoKey;
+let localKeySet: JWTVerifyGetKey;
 let app: ReturnType<typeof createApp>;
 
 async function token(overrides: { aud?: string; iss?: string; email?: string | null; exp?: number; key?: CryptoKey } = {}) {
@@ -38,7 +42,8 @@ beforeAll(async () => {
   untrustedKey = untrusted.privateKey;
   const jwk: JWK = { ...(await exportJWK(trusted.publicKey)), kid: "test", alg: "RS256" };
 
-  app = createApp({ keySet: createLocalJWKSet({ keys: [jwk] }) });
+  localKeySet = createLocalJWKSet({ keys: [jwk] });
+  app = createApp({ keySet: localKeySet });
 });
 
 describe("accessAuth", () => {
@@ -118,5 +123,15 @@ describe("API routes when authenticated", () => {
   it("lets a same-origin JSON POST through to routing", async () => {
     // An unknown path, so passing every check ends in the JSON 404 without starting a real import.
     expect((await postJson("/api/nope", ORIGIN)).status).toBe(404);
+  });
+
+  it("lets an authenticated same-origin JSON POST start an import", async () => {
+    await resetDb();
+    // A fake Lunch Flow with no accounts, so nothing leaves the test.
+    const importApp = createApp({ keySet: localKeySet, importDeps: { fetch: world([]).fetch, sleep: async () => {} } });
+    const headers = { "Cf-Access-Jwt-Assertion": await token(), "Content-Type": "application/json", Origin: ORIGIN };
+    const res = await importApp.request(`${ORIGIN}/api/import-runs`, { method: "POST", headers, body: "{}" }, env, createExecutionContext());
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { run: { trigger: string } }).run.trigger).toBe("manual");
   });
 });

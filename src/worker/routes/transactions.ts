@@ -23,7 +23,11 @@ const querySchema = z.object({
 
 type TxnRow = { id: number; txnDate: string; isPending: number } & Record<string, unknown>;
 
-/** Newest first. The WHERE clause is built from present filters only, so the (account_id, txn_date) index stays usable. */
+/**
+ * Newest first. The WHERE clause is built from present filters only, so an account filter can
+ * use the (account_id, txn_date) index. Unfiltered pages scan and sort the table, which is fine
+ * at a few thousand rows.
+ */
 export const transactionRoutes = new Hono<AppEnv>().get("/", async (c) => {
   const q = parseQuery(c, querySchema);
   if (!q.ok) return q.res;
