@@ -1,13 +1,13 @@
 -- P1.7 acceptance queries. Prints ids, times, counts and amounts only, never merchant or
--- description text. Run after the hourly cron has had 48 hours:
+-- description text. Run after the hourly cron has had 24 hours:
 --   npx wrangler d1 execute DB --remote --file scripts/cron-report.sql
 
--- 1. Cron runs in the last 48 hours. Expect ~48 rows, gap_min ~60, status 'success'.
+-- 1. Cron runs in the last 24 hours. Expect ~24 rows, gap_min ~60, status 'success'.
 SELECT id, started_at, status, error_summary,
        round((julianday(started_at) - julianday(lag(started_at) OVER (ORDER BY started_at))) * 1440) AS gap_min,
        round((julianday(finished_at) - julianday(started_at)) * 86400, 1) AS duration_s
 FROM import_runs
-WHERE trigger = 'cron' AND started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')
+WHERE trigger = 'cron' AND started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
 ORDER BY started_at;
 
 -- 2. Overlapping runs in the same window (cron or manual). Expect no rows. Runs that lost the
@@ -20,7 +20,7 @@ WITH r AS (
 SELECT a.id AS run_a, a.trigger AS trigger_a, b.id AS run_b, b.trigger AS trigger_b
 FROM r a
 JOIN r b ON b.id > a.id
-WHERE a.started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')
+WHERE a.started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
   AND b.started_at < a.finished_at AND a.started_at < b.finished_at;
 
 -- 3. Duplicates by (account_id, provider_txn_id). Expect 0.
