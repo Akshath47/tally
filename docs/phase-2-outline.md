@@ -6,7 +6,9 @@ This is an outline, not a spec. Screens and features will be decided while build
 
 - `categories`
 - `budgets`: amount in minor units with an effective-from month. No hard-coded amounts.
-- `budget_buckets` (optional): each maps a set of categories to its own budget.
+- `budget_buckets`: each maps a set of categories to its own budget.
+- **Per-category budgets** (owner request, 2026-10-02): the owner sets aside a budget for each category ("topic"), e.g. groceries or eating out. A bucket holding a single category covers this, and multi-category buckets stay possible. Unbudgeted categories still count towards the overall total.
+- **Re-categorising a transaction** (owner request, 2026-10-02): the owner can change which category a transaction belongs to. The choice is stored in `transaction_overrides.category_id`, so it survives re-sync and moves the spend to the new category's budget.
 - `transaction_overrides`, keyed by `transactions.id`:
   - `category_id`
   - `excluded`
