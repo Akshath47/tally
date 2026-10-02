@@ -24,6 +24,8 @@ if (!KEY) {
   process.exit(1);
 }
 
+// The probe inspects arbitrary, undocumented provider JSON.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
 type Call = { status: number; ms: number; body: Json; headers: Record<string, string | null> };
 
@@ -42,7 +44,7 @@ async function call(path: string, key = KEY!): Promise<Call> {
     headers[name] = SHOW_HEADER_VALUE.test(name) ? value : null;
   });
   const text = await res.text();
-  let body: Json = null;
+  let body: Json;
   try {
     body = JSON.parse(text);
   } catch {
@@ -71,8 +73,7 @@ function describeSchema(rows: Json[]): Record<string, string> {
 }
 
 function decimals(n: number): number {
-  const s = String(n);
-  return s.includes(".") ? s.split(".")[1].length : 0;
+  return String(n).split(".")[1]?.length ?? 0;
 }
 
 function idShape(ids: string[]): string {
