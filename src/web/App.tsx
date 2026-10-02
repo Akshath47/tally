@@ -1,31 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, getAccounts, getRuns, getTransactions, startImport, type Account, type ImportRun } from "./api";
+import { ApiError, getAccounts, getRuns, getTransactions, startImport, type Account, type ImportRun, type RunStatus } from "./api";
 import { formatMoney, formatTimestamp } from "./format";
 
 const RUN_LIMIT = 10;
 const TXN_LIMIT = 100;
 const POLL_MS = 2_000;
-// The importer's lease. A run still "running" after this was cut off and will be marked abandoned.
-const STALE_MS = 10 * 60_000;
 // Statuses after which the run may have changed accounts and transactions.
-const FINISHED = new Set(["success", "partial", "failed"]);
-const RUN_STATUS_COLOUR: Record<string, string> = { success: "text-green-700", failed: "text-red-700" };
-
-/**
- * Any live run counts, not just the newest: a newer skipped_locked row can sit above a running
- * cron import. Server timestamps are compared with the fetch time to keep render pure.
- */
-function isImporting(data: { runs: ImportRun[] } | undefined, fetchedAt: number): boolean {
-  return (data?.runs ?? []).some((r) => r.status === "running" && fetchedAt - Date.parse(r.startedAt) < STALE_MS);
-}
+const FINISHED = new Set<RunStatus>(["success", "partial", "failed"]);
+const RUN_STATUS_COLOUR: Partial<Record<RunStatus, string>> = { success: "text-green-700", failed: "text-red-700" };
 
 function importMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 429) {
-      const wait = Number(error.body?.retryAfterSeconds);
-      return `Imported less than a minute ago. Try again in ${Number.isFinite(wait) ? wait : 60}s.`;
-    }
+  if (error instanceof ApiError && error.status === 429) {
+    const wait = Number(error.body?.retryAfterSeconds);
+    return `Imported less than a minute ago. Try again in ${Number.isFinite(wait) ? wait : 60}s.`;
   }
   return "Import failed to start. Try again later.";
 }
@@ -121,7 +109,8 @@ function RunRow({ run }: { run: ImportRun }) {
   );
 }
 
-function Transactions({ accounts }: { accounts: Account[] }) {
+// Memoised: the runs poll re-renders App every 2 s while importing, and this list is the heaviest part.
+const Transactions = memo(function Transactions({ accounts }: { accounts: Account[] }) {
   const [accountId, setAccountId] = useState<number | null>(null);
   const txns = useQuery({
     queryKey: ["transactions", accountId],
@@ -168,7 +157,7 @@ function Transactions({ accounts }: { accounts: Account[] }) {
       {txns.data?.nextCursor && <p className="mt-2 text-xs text-gray-500">Showing the latest {TXN_LIMIT}.</p>}
     </section>
   );
-}
+});
 
 export function App() {
   const queryClient = useQueryClient();
@@ -177,9 +166,9 @@ export function App() {
   const runs = useQuery({
     queryKey: ["import-runs"],
     queryFn: () => getRuns(RUN_LIMIT),
-    refetchInterval: (q) => (isImporting(q.state.data, q.state.dataUpdatedAt) ? POLL_MS : false),
+    refetchInterval: (q) => (q.state.data?.importing ? POLL_MS : false),
   });
-  const importing = isImporting(runs.data, runs.dataUpdatedAt);
+  const importing = runs.data?.importing ?? false;
 
   // When a run (manual or cron) finishes, the cards and list may be stale.
   const lastFinished = runs.data?.runs.find((r) => FINISHED.has(r.status));

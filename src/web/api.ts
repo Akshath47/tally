@@ -1,3 +1,7 @@
+import type { IMPORT_RUN_STATUSES, IMPORT_TRIGGERS } from "../worker/db/schema";
+
+export type RunStatus = (typeof IMPORT_RUN_STATUSES)[number];
+
 // Response shapes from src/worker/routes. Bank text (merchant, description) is untrusted
 // and only ever rendered as text.
 
@@ -28,9 +32,9 @@ export type Transaction = {
 
 export type ImportRun = {
   id: number;
-  trigger: "cron" | "manual";
+  trigger: (typeof IMPORT_TRIGGERS)[number];
   startedAt: string;
-  status: string;
+  status: RunStatus;
   errorSummary: string | null;
   accounts: { accountId: number; status: string; inserted: number; updated: number; error: string | null }[];
 };
@@ -54,7 +58,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getAccounts = () => request<{ accounts: Account[] }>("/api/accounts");
 
-export const getRuns = (limit: number) => request<{ runs: ImportRun[] }>(`/api/import-runs?limit=${limit}`);
+/** `importing` comes from the import lease, so it's right even when a cut-off run's row still says running. */
+export const getRuns = (limit: number) => request<{ runs: ImportRun[]; importing: boolean }>(`/api/import-runs?limit=${limit}`);
 
 export function getTransactions(limit: number, accountId: number | null) {
   const query = new URLSearchParams({ limit: String(limit) });
