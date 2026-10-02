@@ -33,7 +33,7 @@ accounts
 transactions              -- bank-sourced fields only
   id PK
   account_id FK → accounts.id
-  provider_txn_id
+  provider_txn_id          Lunch Flow's id; a pending row with a null id gets 'nullid:' + its fingerprint
   amount_minor             normalised sign
   provider_amount          original decimal as text
   currency

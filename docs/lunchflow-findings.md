@@ -6,6 +6,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 |---|---|---|
 | 1 | 2026-09-30 | First probe, right after connecting (extended history on) |
 | 2 | 2026-10-02 | Pending → posted diff, about 29 h after run 1 |
+| (importer) | 2026-10-02 | Found while running the P1.5 importer locally: a pending Amex transaction with a null `id` |
 
 ## Accounts
 
@@ -19,7 +20,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 
 ## Transactions
 
-- **The schema matches the docs:** `id` (string), `accountId` (number), `amount` (number), `currency`, `date` (`YYYY-MM-DD`), `merchant`, `description`, `isPending`. There were no nulls and no missing fields.
+- **The schema matches the docs:** `id` (string), `accountId` (number), `amount` (number), `currency`, `date` (`YYYY-MM-DD`), `merchant`, `description`, `isPending`. There were no nulls and no missing fields in runs 1 and 2, **except** that a later check found a pending Amex transaction with `id: null` (see Pending).
 - **Revolut `description` is always an empty string**, so `merchant` is the only useful text. Amex fills in both.
 - **Posted IDs** are 32-character hex strings, with no duplicates within a response.
 - **Sign convention:** negative = money out / more owed, on **both** institutions.
@@ -45,6 +46,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 - **Run 2 confirmed pending ids are not stable.** Revolut's pending transaction from run 1 was gone (`stillPending=0`, `sameIdNowPosted=0`, `vanished=1`). A posted transaction with the same amount appeared under a new 32-character hex id, dated one day later.
   - The match is the probe's heuristic (same amount, dates within 5 days) on a single transaction. It agrees with the owner's run 1 check, where one card purchase showed up a day later than in the Revolut app.
   - The importer needs nothing new: the 14-day re-read inserts the posted row and sets `vanished_at` on the pending one in the same run. Totals must skip rows with `vanished_at` set, so a purchase isn't counted twice.
+- **A pending transaction can have `id: null`** (seen on Amex while running the P1.5 importer, 2026-10-02; it was the account's only pending transaction). The importer keys such a row as `nullid:<account|date|amount|text>` (its fingerprint) so pending purchases still count towards the budget, and `vanished_at` retires it when the posted version arrives under a real id. Two identical pending purchases (same account, date, amount and text) would collapse into one row; the owner judged that unlikely enough to accept. A **posted** transaction with a null id is treated as an invalid response.
 - Amex's pending → posted transition hasn't been observed yet. The `.probe/` snapshot now holds that pending transaction, so a later run can check it, but it isn't needed for Gate 1.
 
 ## Freshness and latency
