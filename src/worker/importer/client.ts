@@ -48,7 +48,11 @@ export type ClientDeps = {
 export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }: ClientDeps) {
   let subrequests = 0;
 
-  async function attempt<T>(path: string, schema: z.ZodType<T>): Promise<T | { retryAfterMs: number | null; error: ImportError }> {
+  type Attempt<T> = { ok: true; data: T } | { ok: false; error: ImportError; retryAfterMs: number | null };
+  const retry = (error: ImportError, retryAfterMs: number | null = null): Attempt<never> => ({ ok: false, error, retryAfterMs });
+
+  /** One HTTP try. Non-retryable failures throw; retryable ones come back as `ok: false`. */
+  async function attempt<T>(path: string, schema: z.ZodType<T>): Promise<Attempt<T>> {
     if (subrequests >= SUBREQUEST_CAP) throw new ImportError("budget");
     subrequests++;
 
@@ -60,13 +64,13 @@ export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) =>
       });
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === "TimeoutError";
-      return { retryAfterMs: null, error: new ImportError(timedOut ? "timeout" : "network") };
+      return retry(new ImportError(timedOut ? "timeout" : "network"));
     }
 
     if (res.ok) {
       const parsed = schema.safeParse(await res.json().catch(() => null));
       if (!parsed.success) throw new ImportError("invalid_response", res.status);
-      return parsed.data;
+      return { ok: true, data: parsed.data };
     }
 
     // Error bodies are never read: provider text must not reach logs or the database.
@@ -74,17 +78,17 @@ export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) =>
     const { status } = res;
     if (status === 401 || status === 403) throw new ImportError("config", status);
     if (status === 404) throw new ImportError("not_found", status);
-    if (status === 429) return { retryAfterMs: parseRetryAfter(res.headers.get("retry-after")), error: new ImportError("rate_limited", status) };
-    if (status >= 500) return { retryAfterMs: null, error: new ImportError("server", status) };
+    if (status === 429) return retry(new ImportError("rate_limited", status), parseRetryAfter(res.headers.get("retry-after")));
+    if (status >= 500) return retry(new ImportError("server", status));
     throw new ImportError("invalid_response", status);
   }
 
   async function request<T>(path: string, schema: z.ZodType<T>): Promise<T> {
-    for (let retry = 0; ; retry++) {
+    for (let tries = 0; ; tries++) {
       const result = await attempt(path, schema);
-      if (!isRetryable(result)) return result;
-      if (retry === MAX_RETRIES) throw result.error;
-      await sleep(result.retryAfterMs ?? BACKOFF_MS * 2 ** retry);
+      if (result.ok) return result.data;
+      if (tries === MAX_RETRIES) throw result.error;
+      await sleep(result.retryAfterMs ?? BACKOFF_MS * 2 ** tries);
     }
   }
 
@@ -107,10 +111,6 @@ export function createClient({ apiKey, fetch: fetchImpl = fetch, sleep = (ms) =>
 }
 
 export type LunchFlowClient = ReturnType<typeof createClient>;
-
-function isRetryable(r: unknown): r is { retryAfterMs: number | null; error: ImportError } {
-  return typeof r === "object" && r !== null && "error" in r && r.error instanceof ImportError;
-}
 
 function parseRetryAfter(header: string | null): number | null {
   const seconds = header !== null && /^\d+$/.test(header) ? Number(header) : null;

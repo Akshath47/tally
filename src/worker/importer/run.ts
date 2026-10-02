@@ -16,28 +16,18 @@ import {
   updateAccountStatus,
   upsertAccounts,
   upsertTransactions,
+  type AccountOutcome,
   type AccountRow,
+  type AccountSummary,
 } from "./writes";
+
+export type { AccountSummary };
 
 const DEFAULT_BACKFILL_DAYS = 90;
 const BUDGET_CURRENCY = "GBP";
 
 export type ImportEnv = { DB: D1Database; LUNCHFLOW_API_KEY: string; BACKFILL_DAYS?: string };
 export type RunDeps = { fetch?: typeof fetch; now?: () => Date; sleep?: (ms: number) => Promise<void> };
-
-export type AccountSummary = {
-  accountId: number;
-  status: "success" | "failed";
-  fetched: number;
-  inserted: number;
-  updated: number;
-  vanishedMarked: number;
-  missingPosted: number;
-  httpStatus: number | null;
-  /** Sanitised, e.g. "server 503"; never provider text. */
-  error: string | null;
-  durationMs: number;
-};
 
 export type RunSummary = {
   runId: number;
@@ -52,15 +42,19 @@ type Ctx = {
   db: CountingDb;
   client: LunchFlowClient;
   runId: number;
-  now: Date;
   nowIso: string;
   today: string;
   backfillDays: number;
 };
 
-export function errorText(e: unknown): string {
+function errorText(e: unknown): string {
   if (!(e instanceof ImportError)) return "internal";
   return e.httpStatus === null ? e.kind : `${e.kind} ${e.httpStatus}`;
+}
+
+function parseBackfillDays(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_BACKFILL_DAYS;
 }
 
 /**
@@ -79,6 +73,8 @@ export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS
     db.prepare("INSERT INTO import_runs (trigger, started_at, status) VALUES (?1, ?2, 'running') RETURNING id").bind(trigger, nowIso),
   );
   const runId = run!.id;
+  // Its own budget: closing the run must work even if the run itself overspent.
+  const closing = new CountingDb(env.DB, 3);
 
   let status: RunSummary["status"] = "failed";
   let errorSummary: string | null = null;
@@ -90,12 +86,7 @@ export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS
       status = "skipped_locked";
     } else {
       locked = true;
-      const n = Number(env.BACKFILL_DAYS);
-      const ctx: Ctx = {
-        db, client, runId, now, nowIso,
-        today: londonToday(now),
-        backfillDays: Number.isInteger(n) && n > 0 ? n : DEFAULT_BACKFILL_DAYS,
-      };
+      const ctx: Ctx = { db, client, runId, nowIso, today: londonToday(now), backfillDays: parseBackfillDays(env.BACKFILL_DAYS) };
       accounts.push(...(await importAll(ctx)));
       const ok = accounts.filter((a) => a.status === "success").length;
       status = ok === accounts.length ? "success" : ok === 0 ? "failed" : "partial";
@@ -104,8 +95,6 @@ export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS
     status = "failed";
     errorSummary = errorText(e);
   } finally {
-    // Its own budget: closing the run must work even if the run itself overspent.
-    const closing = new CountingDb(env.DB, 3);
     if (locked) await releaseLock(closing, runId);
     await closing.run(
       closing
@@ -114,7 +103,7 @@ export async function runImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGERS
     );
   }
 
-  const summary: RunSummary = { runId, status, errorSummary, accounts, statements: db.statements + 2, subrequests: client.subrequests };
+  const summary: RunSummary = { runId, status, errorSummary, accounts, statements: db.statements + closing.statements, subrequests: client.subrequests };
   console.log(
     JSON.stringify({
       event: "import_run", runId, trigger, status, error: errorSummary, accounts: accounts.length,
@@ -165,7 +154,6 @@ async function importAll(ctx: Ctx): Promise<AccountSummary[]> {
 async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccount): Promise<AccountSummary | null> {
   const { db, client, runId, nowIso, today } = ctx;
   const started = Date.now();
-  const providerId = provider.id;
 
   // Learned this run, kept so a failure after the balance call still records the currency.
   let currency = row.currency;
@@ -176,19 +164,29 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
   };
   let range: Window | null = null;
 
+  // The status write is the same on success and failure apart from these fields.
+  const statusUpdate = (o: Pick<AccountOutcome, "ok" | "error" | "backfillCursor" | "backfillComplete">) =>
+    updateAccountStatus(db, {
+      accountId: row.id, now: nowIso, currency, enabled: currency === BUDGET_CURRENCY,
+      label: accountLabel(provider, currency), balanceMinor, ...o,
+    });
+
   try {
     try {
-      const balance = await client.balance(providerId);
+      const balance = await client.balance(provider.id);
       currency ??= balance.currency;
       balanceMinor = toMinor(balance.amount, balance.currency).minor;
     } catch (e) {
       // The balance is only for display. Without a currency, though, we can't import.
       if (currency === null) throw e;
     }
-    const label = accountLabel(provider, currency);
+    // Non-null: the catch above rethrows whenever no currency is known.
+    const accountCurrency = currency!;
 
-    if (row.currency === null && currency !== BUDGET_CURRENCY) {
-      await db.run(disableForeignAccount(db, { accountId: row.id, now: nowIso, currency: currency!, label, balanceMinor }));
+    if (row.currency === null && accountCurrency !== BUDGET_CURRENCY) {
+      await db.run(
+        disableForeignAccount(db, { accountId: row.id, now: nowIso, currency: accountCurrency, label: accountLabel(provider, currency), balanceMinor }),
+      );
       return null;
     }
 
@@ -201,62 +199,34 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     range = { from: windows[windows.length - 1]!.from, to: today };
 
     // Everything is fetched and validated before any write, so a bad response writes nothing.
-    const byId = new Map<string, TransactionRow>();
-    const idsByWindow: string[][] = [];
-    for (const w of windows) {
-      const fetched = await client.transactions(providerId, w);
-      summary.fetched += fetched.length;
-      const ids: string[] = [];
-      for (const t of fetched) {
-        const normalised = normalizeTransaction(t, row.id, currency!);
-        byId.set(normalised.provider_txn_id, normalised);
-        ids.push(normalised.provider_txn_id);
-      }
-      idsByWindow.push(ids);
-    }
-    const rows = [...byId.values()];
+    const fetched = await fetchWindows(client, provider.id, row.id, accountCurrency, windows);
+    summary.fetched = fetched.count;
 
     // Absence only means something inside a range this run fetched in full.
     const checks = coveredRanges(windows).map((r) => ({
       range: r,
-      ids: windows.flatMap((w, i) => (w.from >= r.from && w.to <= r.to ? idsByWindow[i]! : [])),
+      idsJson: JSON.stringify(windows.flatMap((w, i) => (w.from >= r.from && w.to <= r.to ? fetched.idsByWindow[i]! : []))),
     }));
 
-    const upserts = upsertTransactions(db, row.id, runId, nowIso, rows);
-    const bumps = bumpLastSeen(db, row.id, nowIso, [...byId.keys()]);
+    const upserts = upsertTransactions(db, row.id, runId, nowIso, fetched.rows);
+    const bumps = bumpLastSeen(db, row.id, nowIso, fetched.ids);
     const results = await db.batch([
-      ...checks.map((c) => countMissingPosted(db, row.id, c.range, c.ids)),
+      ...checks.map((c) => countMissingPosted(db, row.id, c.range, c.idsJson)),
       ...upserts,
       ...bumps,
-      ...checks.map((c) => markVanished(db, row.id, nowIso, c.range, c.ids)),
-      updateAccountStatus(db, {
-        accountId: row.id, now: nowIso, ok: true, error: null, currency, enabled: currency === BUDGET_CURRENCY,
-        label, balanceMinor,
+      ...checks.map((c) => markVanished(db, row.id, nowIso, c.range, c.idsJson)),
+      statusUpdate({
+        ok: true, error: null,
         backfillCursor: backfill?.nextCursor ?? null,
         backfillComplete: backfill ? backfill.complete : null,
       }),
     ]);
 
-    const n = checks.length;
-    summary.missingPosted = results.slice(0, n).reduce((sum, r) => sum + (r.results[0] as { n: number }).n, 0);
-    for (const r of results.slice(n, n + upserts.length)) {
-      const inserted = (r.results as { inserted: number }[]).filter((x) => x.inserted === 1).length;
-      summary.inserted += inserted;
-      summary.updated += r.results.length - inserted;
-    }
-    const vanishFrom = n + upserts.length + bumps.length;
-    summary.vanishedMarked = results.slice(vanishFrom, vanishFrom + n).reduce((sum, r) => sum + r.meta.changes, 0);
-    summary.status = "success";
-    summary.httpStatus = 200;
+    Object.assign(summary, tallyResults(results, checks.length, upserts.length, bumps.length), { status: "success", httpStatus: 200 });
   } catch (e) {
     summary.error = errorText(e);
     summary.httpStatus = e instanceof ImportError ? e.httpStatus : null;
-    await db.run(
-      updateAccountStatus(db, {
-        accountId: row.id, now: nowIso, ok: false, error: summary.error, currency, enabled: currency === BUDGET_CURRENCY,
-        label: accountLabel(provider, currency), balanceMinor, backfillCursor: null, backfillComplete: null,
-      }),
-    );
+    await db.run(statusUpdate({ ok: false, error: summary.error, backfillCursor: null, backfillComplete: null }));
   }
 
   summary.durationMs = Date.now() - started;
@@ -269,4 +239,36 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     }),
   );
   return summary;
+}
+
+async function fetchWindows(client: LunchFlowClient, providerId: number, accountId: number, currency: string, windows: Window[]) {
+  const byId = new Map<string, TransactionRow>();
+  const idsByWindow: string[][] = [];
+  let count = 0;
+  for (const w of windows) {
+    const fetched = await client.transactions(providerId, w);
+    count += fetched.length;
+    const ids: string[] = [];
+    for (const t of fetched) {
+      const normalised = normalizeTransaction(t, accountId, currency);
+      byId.set(normalised.provider_txn_id, normalised);
+      ids.push(normalised.provider_txn_id);
+    }
+    idsByWindow.push(ids);
+  }
+  return { rows: [...byId.values()], ids: [...byId.keys()], idsByWindow, count };
+}
+
+/** Reads the batch results back in the order run.ts laid the statements out. */
+function tallyResults(results: D1Result[], checks: number, upserts: number, bumps: number) {
+  const sum = (rs: D1Result[], pick: (r: D1Result) => number) => rs.reduce((total, r) => total + pick(r), 0);
+  const upsertResults = results.slice(checks, checks + upserts);
+  const inserted = sum(upsertResults, (r) => (r.results as { inserted: number }[]).filter((x) => x.inserted === 1).length);
+  const vanishFrom = checks + upserts + bumps;
+  return {
+    missingPosted: sum(results.slice(0, checks), (r) => (r.results[0] as { n: number }).n),
+    inserted,
+    updated: sum(upsertResults, (r) => r.results.length) - inserted,
+    vanishedMarked: sum(results.slice(vanishFrom, vanishFrom + checks), (r) => r.meta.changes),
+  };
 }

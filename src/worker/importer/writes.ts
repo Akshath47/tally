@@ -114,27 +114,27 @@ export function bumpLastSeen(db: CountingDb, accountId: number, now: string, ids
 
 /**
  * Marks (never deletes) pending transactions inside the fetched range that the provider no
- * longer returns. `ids` must be every id returned for the whole range, hence one statement.
+ * longer returns. `idsJson` must be every id returned for the whole range (a JSON array), hence one statement.
  */
-export function markVanished(db: CountingDb, accountId: number, now: string, range: { from: string; to: string }, ids: string[]) {
+export function markVanished(db: CountingDb, accountId: number, now: string, range: { from: string; to: string }, idsJson: string) {
   return db
     .prepare(
       `UPDATE transactions SET vanished_at = ?4, updated_at = ?4
        WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL AND txn_date BETWEEN ?2 AND ?3
          AND provider_txn_id NOT IN (SELECT value FROM json_each(?5))`,
     )
-    .bind(accountId, range.from, range.to, now, JSON.stringify(ids));
+    .bind(accountId, range.from, range.to, now, idsJson);
 }
 
 /** Posted rows the provider stopped returning: counted for the run stats, never acted on. */
-export function countMissingPosted(db: CountingDb, accountId: number, range: { from: string; to: string }, ids: string[]) {
+export function countMissingPosted(db: CountingDb, accountId: number, range: { from: string; to: string }, idsJson: string) {
   return db
     .prepare(
       `SELECT count(*) AS n FROM transactions
        WHERE account_id = ?1 AND is_pending = 0 AND txn_date BETWEEN ?2 AND ?3
          AND provider_txn_id NOT IN (SELECT value FROM json_each(?4))`,
     )
-    .bind(accountId, range.from, range.to, JSON.stringify(ids));
+    .bind(accountId, range.from, range.to, idsJson);
 }
 
 export type AccountOutcome = {
@@ -207,19 +207,23 @@ export function disableForeignAccount(db: CountingDb, o: { accountId: number; no
     .bind(o.now, o.currency, o.label, o.balanceMinor, o.accountId);
 }
 
-export type RunAccountRow = {
-  runId: number;
+/** One account's result for a run, as logged, returned to callers and stored. */
+export type AccountSummary = {
   accountId: number;
   status: "success" | "failed";
-  httpStatus: number | null;
-  window: { from: string; to: string } | null;
   fetched: number;
   inserted: number;
   updated: number;
   vanishedMarked: number;
+  /** Logged only; import_run_accounts has no column for it. */
+  missingPosted: number;
+  httpStatus: number | null;
+  /** Sanitised, e.g. "server 503"; never provider text. */
   error: string | null;
   durationMs: number;
 };
+
+export type RunAccountRow = AccountSummary & { runId: number; window: { from: string; to: string } | null };
 
 export function insertRunAccount(db: CountingDb, r: RunAccountRow) {
   return db
