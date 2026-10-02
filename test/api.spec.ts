@@ -135,6 +135,20 @@ describe("GET /api/import-runs", () => {
     expect(body.runs[0]!.accounts.map((a) => a.inserted)).toEqual([0, 0]);
   });
 
+  it("reports importing while a run holds an unexpired lease", async () => {
+    const importing = async () => (await getJson<{ importing: boolean }>("/api/import-runs")).importing;
+    expect(await importing()).toBe(false);
+
+    const started = new Date(T0 - 30_000);
+    const holder = await insertRun("manual", "running", started.toISOString());
+    await claimLock(new CountingDb(env.DB), holder, started, 55_000);
+    expect(await importing()).toBe(true);
+
+    // Cut off: the row still says running, but once the lease lapses nothing is importing.
+    clock += 30_000;
+    expect(await importing()).toBe(false);
+  });
+
   it("honours limit", async () => {
     for (let i = 0; i < 3; i++) await insertRun("cron", "success");
     const body = await getJson<{ runs: Run[] }>("/api/import-runs?limit=2");

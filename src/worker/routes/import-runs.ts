@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { importRunAccounts, importRuns } from "../db/schema";
-import { startImport, type RunDeps } from "../importer";
+import { isLockHeld, startImport, type RunDeps } from "../importer";
 import { limitParam, parseQuery } from "./query";
 
 const MIN_INTERVAL_MS = 60_000;
@@ -29,7 +29,11 @@ export function importRunRoutes(deps: RunDeps) {
     .get("/", async (c) => {
       const q = parseQuery(c, z.object({ limit: limitParam(50, 20) }));
       if (!q.ok) return q.res;
-      return c.json({ runs: await loadRuns(c.env.DB, q.data.limit) });
+      // The lease, not the run rows, says whether an import is live: a cut-off run's row stays
+      // 'running' until a later run tidies it, but its lease expires on its own.
+      const now = (deps.now ?? (() => new Date()))();
+      const [runs, importing] = await Promise.all([loadRuns(c.env.DB, q.data.limit), isLockHeld(c.env.DB, now)]);
+      return c.json({ runs, importing });
     })
     .post("/", async (c) => {
       const now = (deps.now ?? (() => new Date()))();
