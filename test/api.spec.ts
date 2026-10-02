@@ -48,14 +48,16 @@ type Run = { id: number; trigger: string; status: string; accounts: { accountId:
 const latestRun = async () => (await getJson<{ runs: Run[] }>("/api/import-runs?limit=1")).runs[0];
 
 describe("POST /api/import-runs", () => {
-  it("answers 202 straight away and finishes the import in the background", async () => {
+  it("creates the run, answers 202 with its id, and finishes the import in the background", async () => {
     const res = await postImport();
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ status: "started" });
+    const { runId } = (await res.json()) as { runId: number };
+    // The run row and the lease exist before the response, so a poll straight away sees it.
+    expect(await latestRun()).toMatchObject({ id: runId, trigger: "manual", status: "running" });
 
     await settle();
     const run = await latestRun();
-    expect(run).toMatchObject({ trigger: "manual", status: "success" });
+    expect(run).toMatchObject({ id: runId, status: "success" });
     expect(run!.accounts.map((a) => [a.accountId, a.status, a.inserted])).toEqual([
       [1, "success", 2],
       [2, "success", 1],
@@ -84,7 +86,7 @@ describe("POST /api/import-runs", () => {
     expect((await postImport()).status).toBe(429);
   });
 
-  it("returns 409 without starting anything while another run holds the lock", async () => {
+  it("returns 409, calling nothing, while another run holds the lock", async () => {
     // The holder started long enough ago not to trip the 60 s limit.
     const started = new Date(T0 - 120_000);
     const holder = await insertRun("cron", "running", started.toISOString());
@@ -93,8 +95,13 @@ describe("POST /api/import-runs", () => {
     const res = await postImport();
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "import_running" });
-    expect(await runCount()).toBe(1);
+    await settle();
     expect(w.calls).toHaveLength(0);
+    expect((await latestRun())!.status).toBe("skipped_locked");
+
+    // That tap imported nothing, so tapping again straight away is another 409, not a 429.
+    clock += 5_000;
+    expect((await postImport()).status).toBe(409);
   });
 
   it("starts once the lock's lease has expired", async () => {

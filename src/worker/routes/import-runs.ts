@@ -1,14 +1,16 @@
-import { and, asc, desc, gte, inArray, isNotNull, ne, type SQL } from "drizzle-orm";
+import { asc, desc, inArray, ne, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { importLock, importRunAccounts, importRuns } from "../db/schema";
-import { runImport, type RunDeps } from "../importer";
+import { importRunAccounts, importRuns } from "../db/schema";
+import { startImport, type RunDeps } from "../importer";
 import { limitParam, parseQuery } from "./query";
 
 const MIN_INTERVAL_MS = 60_000;
+// waitUntil allows 30 s after the response; leave room to write and close the run.
+const MANUAL_BUDGET_MS = 25_000;
 
 /** The latest `limit` runs, newest first, each with its per-account rows. */
 async function loadRuns(d1: D1Database, limit: number) {
@@ -30,12 +32,11 @@ export function importRunRoutes(deps: RunDeps) {
       return c.json({ runs: await loadRuns(c.env.DB, q.data.limit) });
     })
     .post("/", async (c) => {
-      const db = drizzle(c.env.DB);
       const now = (deps.now ?? (() => new Date()))();
 
       // Any run (cron included) inside the last minute means Lunch Flow's cached data can't have moved.
       // A tap that only hit the lock imported nothing, so it doesn't count.
-      const last = await db
+      const last = await drizzle(c.env.DB)
         .select({ startedAt: importRuns.startedAt })
         .from(importRuns)
         .where(ne(importRuns.status, "skipped_locked"))
@@ -48,19 +49,16 @@ export function importRunRoutes(deps: RunDeps) {
         return c.json({ error: "rate_limited", retryAfterSeconds }, 429);
       }
 
-      // The inverse of claimLock's condition. If a cron run claims the lock between this check
-      // and ours, our run records itself as skipped_locked, which the UI sees when it polls.
-      const held = await db
-        .select({ id: importLock.id })
-        .from(importLock)
-        .where(and(isNotNull(importLock.holderRunId), gte(importLock.expiresAt, now.toISOString())))
-        .get();
-      if (held) return c.json({ error: "import_running" }, 409);
-
-      // Answer now and import in the background, so the phone can leave or close the app.
-      // waitUntil keeps the Worker alive for up to 30 s after the response; a run cut off
-      // past that is marked abandoned by the next run. Failures are recorded in the run.
-      c.executionCtx.waitUntil(runImport(c.env, "manual", { ...deps, now: () => now }));
-      return c.json({ status: "started" }, 202);
+      // The run row and the lease claim happen before answering, so a poll straight after sees
+      // the run. The import itself carries on in waitUntil, so the phone can leave or close the
+      // app. A run cut off anyway is marked abandoned by a later run.
+      const started = await startImport(c.env, "manual", { ...deps, now: () => now, budgetMs: MANUAL_BUDGET_MS });
+      c.executionCtx.waitUntil(
+        started.finished.catch((e: unknown) => {
+          console.error(JSON.stringify({ event: "import_run_unclosed", runId: started.runId, name: e instanceof Error ? e.name : "unknown" }));
+        }),
+      );
+      if (!started.locked) return c.json({ error: "import_running" }, 409);
+      return c.json({ status: "started", runId: started.runId }, 202);
     });
 }
