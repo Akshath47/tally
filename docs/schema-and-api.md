@@ -85,10 +85,12 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 |---|---|---|
 | GET | `/api/health` | `{ ok, email }`, used for auth smoke tests; returns no financial data |
 | GET | `/api/accounts` | Accounts plus import status fields |
-| GET | `/api/transactions?account_id&from&to&limit&cursor` | Paged list, newest first; `limit ≤ 200` |
-| POST | `/api/import-runs` | Start a manual import (creates an import run); returns the run summary; `409` if locked, `429` if last run was under 60 s ago |
-| GET | `/api/import-runs?limit=20` | Recent runs with per-account results |
+| GET | `/api/transactions?account_id&from&to&limit&cursor` | Paged list, newest first (`txn_date`, then `id`); `limit ≤ 200`, default 50; `from`/`to` are inclusive `YYYY-MM-DD`; pass the response's opaque `nextCursor` back as `cursor` |
+| POST | `/api/import-runs` | Start a manual import (creates an import run); returns `{run}`; `409 {error:"import_running", run}` if locked, `429 {error:"rate_limited", retryAfterSeconds}` plus `Retry-After` if any run (cron included) started under 60 s ago |
+| GET | `/api/import-runs?limit=20` | Recent runs with per-account results; `limit ≤ 50` |
 
-`POST` requests must send `Content-Type: application/json`. Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
+Responses use camelCase fields. Provider account and connection ids are not exposed.
 
-Errors are JSON: `401 {error:"unauthenticated"}` (no or invalid Access JWT), `403 {error:"forbidden"}` (valid JWT, wrong email), `404 {error:"not_found"}`, `500 {error:"internal"}` (no details leaked).
+`POST` requests must send `Content-Type: application/json` (otherwise `415`). Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
+
+Errors are JSON: `400 {error:"bad_request"}` (invalid query parameter), `401 {error:"unauthenticated"}` (no or invalid Access JWT), `403 {error:"forbidden"}` (valid JWT, wrong email), `404 {error:"not_found"}`, `500 {error:"internal"}` (no details leaked).
