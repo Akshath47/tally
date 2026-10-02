@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runImport } from "../../src/worker/importer/run";
+import { CountingDb } from "../../src/worker/importer/db";
+import { claimLock } from "../../src/worker/importer/lock";
+import { startImport } from "../../src/worker/importer/run";
 import { insertRun, insertTransaction, resetDb } from "../db";
 import { AMEX, REVOLUT, txn, world, type WorldAccount } from "../fixtures/lunchflow";
 
@@ -14,13 +16,17 @@ let minute = 0;
 
 type World = ReturnType<typeof world>;
 
-function run(w: World, opts: { trigger?: "cron" | "manual"; backfillDays?: string } = {}) {
-  return runImport(
+type RunOpts = { trigger?: "cron" | "manual"; backfillDays?: string; budgetMs?: number };
+
+function start(w: World, opts: RunOpts = {}) {
+  return startImport(
     { DB: env.DB, LUNCHFLOW_API_KEY: "test-key", BACKFILL_DAYS: opts.backfillDays ?? "20" },
     opts.trigger ?? "manual",
-    { fetch: w.fetch, now: () => new Date(T0 + minute++ * 60_000), sleep: async () => {} },
+    { fetch: w.fetch, now: () => new Date(T0 + minute++ * 60_000), sleep: async () => {}, budgetMs: opts.budgetMs },
   );
 }
+
+const run = async (w: World, opts: RunOpts = {}) => (await start(w, opts)).finished;
 
 const count = async (sql: string, ...binds: unknown[]) =>
   (await env.DB.prepare(`SELECT count(*) AS n FROM (${sql})`).bind(...binds).first<{ n: number }>())!.n;
@@ -219,9 +225,7 @@ describe("runImport: locking and failures", () => {
     // A manual import cancelled mid-run (e.g. past the 30 s waitUntil limit) never reached its finally.
     const started = new Date(T0 - 20 * 60_000);
     const dead = await insertRun("manual", "running", started.toISOString());
-    await env.DB.prepare("UPDATE import_lock SET holder_run_id = ?1, expires_at = ?2 WHERE id = 1")
-      .bind(dead, new Date(started.getTime() + 10 * 60_000).toISOString())
-      .run();
+    await claimLock(new CountingDb(env.DB), dead, started);
 
     expect((await run(basicWorld())).status).toBe("success");
     const row = await env.DB.prepare("SELECT status, error_summary, finished_at FROM import_runs WHERE id = ?1").bind(dead).first();
@@ -236,12 +240,17 @@ describe("runImport: locking and failures", () => {
 
   it("ends a run that exceeds its time budget as failed/timeout and releases the lease", async () => {
     const w = basicWorld();
-    const res = await runImport({ DB: env.DB, LUNCHFLOW_API_KEY: "test-key" }, "manual", {
-      fetch: w.fetch, now: () => new Date(T0), sleep: async () => {}, budgetMs: 0,
-    });
+    const res = await run(w, { budgetMs: 0 });
     expect(res).toMatchObject({ status: "failed", errorSummary: "timeout" });
     expect(w.calls).toHaveLength(0);
     expect(await env.DB.prepare("SELECT holder_run_id FROM import_lock").first()).toEqual({ holder_run_id: null });
+  });
+
+  it("holds a lease sized to its budget, so a cut-off run frees the lock within a minute", async () => {
+    const started = await start(basicWorld(), { budgetMs: 25_000 });
+    const lock = await env.DB.prepare("SELECT holder_run_id, expires_at FROM import_lock").first();
+    expect(lock).toEqual({ holder_run_id: started.runId, expires_at: "2026-10-02T12:00:55.000Z" });
+    await started.finished;
   });
 
   it("a 5xx on one account retries, records the error, keeps its rows, and does not stop the other", async () => {

@@ -3,7 +3,7 @@ import { createClient, type LunchFlowClient, type ProviderAccount } from "./clie
 import { CountingDb } from "./db";
 import { londonToday } from "./dates";
 import { ImportError } from "./errors";
-import { claimLock, closeAbandonedRuns, releaseLock } from "./lock";
+import { LEASE_MS, claimLock, closeAbandonedRuns, releaseLock } from "./lock";
 import { toMinor } from "./money";
 import { accountLabel, normalizeTransaction, type TransactionRow } from "./normalize";
 import { backfillChunks, coveredRanges, incrementalWindow, type Window } from "./windows";
@@ -23,6 +23,8 @@ import {
 export type { AccountSummary };
 
 const DEFAULT_BACKFILL_DAYS = 90;
+// Time past a run's budget for its last D1 writes and closing the run.
+const LEASE_MARGIN_MS = 30_000;
 const BUDGET_CURRENCY = "GBP";
 
 export type ImportEnv = { DB: D1Database; LUNCHFLOW_API_KEY: string; BACKFILL_DAYS?: string };
@@ -76,14 +78,15 @@ export async function startImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGE
   const now = (deps.now ?? (() => new Date()))();
   const nowIso = now.toISOString();
   const db = new CountingDb(env.DB);
-  const deadline = deps.budgetMs === undefined ? undefined : started + deps.budgetMs;
-  const client = createClient({ apiKey: env.LUNCHFLOW_API_KEY, fetch: deps.fetch, sleep: deps.sleep, deadline });
+  const client = createClient({ apiKey: env.LUNCHFLOW_API_KEY, fetch: deps.fetch, sleep: deps.sleep, deadline: started + (deps.budgetMs ?? Infinity) });
+  // A budgeted run can't outlive its budget by much, so its lease needn't either.
+  const leaseMs = deps.budgetMs === undefined ? LEASE_MS : deps.budgetMs + LEASE_MARGIN_MS;
 
   const run = await db.first<{ id: number }>(
     db.prepare("INSERT INTO import_runs (trigger, started_at, status) VALUES (?1, ?2, 'running') RETURNING id").bind(trigger, nowIso),
   );
   const runId = run!.id;
-  const claim = await claimLock(db, runId, now).then(
+  const claim = await claimLock(db, runId, now, leaseMs).then(
     (ok) => ({ ok, error: null as unknown }),
     (error: unknown) => ({ ok: false, error }),
   );
@@ -100,7 +103,6 @@ export async function startImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGE
       if (!claim.ok) {
         status = "skipped_locked";
       } else {
-        await closeAbandonedRuns(db, runId, now);
         const ctx: Ctx = { db, client, runId, nowIso, today: londonToday(now), backfillDays: parseBackfillDays(env.BACKFILL_DAYS) };
         accounts.push(...(await importAll(ctx)));
         const ok = accounts.filter((a) => a.status === "success").length;
@@ -110,12 +112,11 @@ export async function startImport(env: ImportEnv, trigger: (typeof IMPORT_TRIGGE
       status = "failed";
       errorSummary = errorText(e);
     } finally {
-      if (claim.ok) await releaseLock(closing, runId);
-      await closing.run(
-        closing
-          .prepare("UPDATE import_runs SET finished_at = ?2, status = ?3, error_summary = ?4 WHERE id = ?1")
-          .bind(runId, new Date(now.getTime() + (Date.now() - started)).toISOString(), status, errorSummary),
-      );
+      // One batch, still under the lease: tidy cut-off runs, release, and close this run.
+      const close = closing
+        .prepare("UPDATE import_runs SET finished_at = ?2, status = ?3, error_summary = ?4 WHERE id = ?1")
+        .bind(runId, new Date(now.getTime() + (Date.now() - started)).toISOString(), status, errorSummary);
+      await closing.batch(claim.ok ? [closeAbandonedRuns(closing, runId, now), releaseLock(closing, runId), close] : [close]);
     }
 
     const summary: RunSummary = { runId, status, errorSummary, accounts, statements: db.statements + closing.statements, subrequests: client.subrequests };
