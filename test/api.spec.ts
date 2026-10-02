@@ -1,4 +1,4 @@
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/worker";
@@ -28,41 +28,55 @@ beforeEach(async () => {
 
 const get = (path: string) => app.request(`${ORIGIN}${path}`, {}, env);
 const getJson = async <T>(path: string) => (await (await get(path)).json()) as T;
+const runCount = async () => (await env.DB.prepare("SELECT count(*) AS n FROM import_runs").first<{ n: number }>())!.n;
 
+// The import keeps running in waitUntil after the 202; settle() waits for it like the runtime would.
+let ctx: ExecutionContext;
 function postImport(headers: Record<string, string> = { "Content-Type": "application/json" }) {
+  ctx = createExecutionContext();
   const init = { method: "POST", headers: { Origin: ORIGIN, ...headers }, body: "{}" };
-  return app.request(`${ORIGIN}/api/import-runs`, init, env, createExecutionContext());
+  return app.request(`${ORIGIN}/api/import-runs`, init, env, ctx);
+}
+const settle = () => waitOnExecutionContext(ctx);
+
+async function importAndSettle() {
+  expect((await postImport()).status).toBe(202);
+  await settle();
 }
 
 type Run = { id: number; trigger: string; status: string; accounts: { accountId: number; status: string; inserted: number }[] };
+const latestRun = async () => (await getJson<{ runs: Run[] }>("/api/import-runs?limit=1")).runs[0];
 
 describe("POST /api/import-runs", () => {
-  it("runs a manual import and returns the run with per-account results", async () => {
+  it("answers 202 straight away and finishes the import in the background", async () => {
     const res = await postImport();
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { run: Run };
-    expect(body.run).toMatchObject({ trigger: "manual", status: "success" });
-    expect(body.run.accounts.map((a) => [a.accountId, a.status, a.inserted])).toEqual([
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ status: "started" });
+
+    await settle();
+    const run = await latestRun();
+    expect(run).toMatchObject({ trigger: "manual", status: "success" });
+    expect(run!.accounts.map((a) => [a.accountId, a.status, a.inserted])).toEqual([
       [1, "success", 2],
       [2, "success", 1],
     ]);
   });
 
   it("returns a friendly 429 with Retry-After when the last run started under 60 s ago", async () => {
-    expect((await postImport()).status).toBe(200);
+    await importAndSettle();
     clock += 30_000;
     const res = await postImport();
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("30");
     expect(await res.json()).toEqual({ error: "rate_limited", retryAfterSeconds: 30 });
     // No run row is created for a rejected tap.
-    expect((await env.DB.prepare("SELECT count(*) AS n FROM import_runs").first<{ n: number }>())!.n).toBe(1);
+    expect(await runCount()).toBe(1);
   });
 
   it("allows another import once 60 s have passed", async () => {
-    await postImport();
+    await importAndSettle();
     clock += 60_000;
-    expect((await postImport()).status).toBe(200);
+    await importAndSettle();
   });
 
   it("counts a recent cron run towards the 60 s limit", async () => {
@@ -70,7 +84,7 @@ describe("POST /api/import-runs", () => {
     expect((await postImport()).status).toBe(429);
   });
 
-  it("returns 409 when another run holds the import lock", async () => {
+  it("returns 409 without starting anything while another run holds the lock", async () => {
     // The holder started long enough ago not to trip the 60 s limit.
     const started = new Date(T0 - 120_000);
     const holder = await insertRun("cron", "running", started.toISOString());
@@ -78,32 +92,35 @@ describe("POST /api/import-runs", () => {
 
     const res = await postImport();
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: string; run: Run };
-    expect(body.error).toBe("import_running");
-    expect(body.run.status).toBe("skipped_locked");
+    expect(await res.json()).toEqual({ error: "import_running" });
+    expect(await runCount()).toBe(1);
+    expect(w.calls).toHaveLength(0);
+  });
 
-    // That tap imported nothing, so tapping again straight away is another 409, not a 429.
-    clock += 5_000;
-    expect((await postImport()).status).toBe(409);
+  it("starts once the lock's lease has expired", async () => {
+    const started = new Date(T0 - 11 * 60_000);
+    const holder = await insertRun("cron", "running", started.toISOString());
+    await claimLock(new CountingDb(env.DB), holder, started);
+    await importAndSettle();
+    expect(await latestRun()).toMatchObject({ trigger: "manual", status: "success" });
   });
 
   it("rejects a POST that isn't JSON (415)", async () => {
     expect((await postImport({ "Content-Type": "text/plain" })).status).toBe(415);
   });
 
-  it("reports provider failures in the run rather than as an HTTP error", async () => {
+  it("records provider failures in the run rather than as an HTTP error", async () => {
     w.accountsReply = { status: 500 };
-    const res = await postImport();
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as { run: Run }).run.status).toBe("failed");
+    await importAndSettle();
+    expect((await latestRun())!.status).toBe("failed");
   });
 });
 
 describe("GET /api/import-runs", () => {
   it("lists recent runs newest first with per-account results", async () => {
-    await postImport();
+    await importAndSettle();
     clock += 60_000;
-    await postImport();
+    await importAndSettle();
 
     const body = await getJson<{ runs: Run[] }>("/api/import-runs");
     expect(body.runs.map((r) => r.id)).toEqual([2, 1]);
@@ -126,7 +143,7 @@ describe("GET /api/import-runs", () => {
 
 describe("GET /api/accounts", () => {
   it("returns accounts with import status fields and no provider ids", async () => {
-    await postImport();
+    await importAndSettle();
     const body = await getJson<{ accounts: Record<string, unknown>[] }>("/api/accounts");
     expect(body.accounts).toHaveLength(2);
     expect(body.accounts[0]).toEqual({

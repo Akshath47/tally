@@ -1,4 +1,4 @@
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK, type JWTVerifyGetKey } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -130,8 +130,9 @@ describe("API routes when authenticated", () => {
     // A fake Lunch Flow with no accounts, so nothing leaves the test.
     const importApp = createApp({ keySet: localKeySet, importDeps: { fetch: world([]).fetch, sleep: async () => {} } });
     const headers = { "Cf-Access-Jwt-Assertion": await token(), "Content-Type": "application/json", Origin: ORIGIN };
-    const res = await importApp.request(`${ORIGIN}/api/import-runs`, { method: "POST", headers, body: "{}" }, env, createExecutionContext());
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as { run: { trigger: string } }).run.trigger).toBe("manual");
+    const ctx = createExecutionContext();
+    const res = await importApp.request(`${ORIGIN}/api/import-runs`, { method: "POST", headers, body: "{}" }, env, ctx);
+    expect(res.status).toBe(202);
+    await waitOnExecutionContext(ctx);
   });
 });
