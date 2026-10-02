@@ -1,30 +1,27 @@
+import { asc, desc, eq, inArray, ne, type SQL } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
+import { importRunAccounts, importRuns } from "../db/schema";
 import { runImport, type RunDeps } from "../importer";
 import { limitParam, parseQuery } from "./query";
 
 const MIN_INTERVAL_MS = 60_000;
 
-const RUN_COLUMNS = `id, trigger, started_at AS startedAt, finished_at AS finishedAt, status, error_summary AS errorSummary`;
-const RUN_ACCOUNT_COLUMNS = `run_id AS runId, account_id AS accountId, status, http_status AS httpStatus,
-  window_from AS windowFrom, window_to AS windowTo, fetched, inserted, updated, vanished_marked AS vanishedMarked,
-  error, duration_ms AS durationMs`;
-
-type RunRow = { id: number } & Record<string, unknown>;
-type RunAccountRow = { runId: number } & Record<string, unknown>;
-
 /** The latest `limit` runs, or the one run `id`, newest first, each with its per-account rows. */
-async function loadRuns(db: D1Database, by: { limit: number } | { id: number }) {
-  const [ids, bind] = "id" in by ? ["?1", by.id] : ["SELECT id FROM import_runs ORDER BY id DESC LIMIT ?1", by.limit];
-  const [runs, accounts] = await db.batch<Record<string, unknown>>([
-    db.prepare(`SELECT ${RUN_COLUMNS} FROM import_runs WHERE id IN (${ids}) ORDER BY id DESC`).bind(bind),
-    db.prepare(`SELECT ${RUN_ACCOUNT_COLUMNS} FROM import_run_accounts WHERE run_id IN (${ids}) ORDER BY account_id`).bind(bind),
+async function loadRuns(d1: D1Database, by: { limit: number } | { id: number }) {
+  const db = drizzle(d1);
+  const isWanted = (col: SQLiteColumn): SQL =>
+    "id" in by
+      ? eq(col, by.id)
+      : inArray(col, db.select({ id: importRuns.id }).from(importRuns).orderBy(desc(importRuns.id)).limit(by.limit));
+  const [runs, accounts] = await db.batch([
+    db.select().from(importRuns).where(isWanted(importRuns.id)).orderBy(desc(importRuns.id)),
+    db.select().from(importRunAccounts).where(isWanted(importRunAccounts.runId)).orderBy(asc(importRunAccounts.accountId)),
   ]);
-  return (runs!.results as RunRow[]).map((run) => ({
-    ...run,
-    accounts: (accounts!.results as RunAccountRow[]).filter((a) => a.runId === run.id),
-  }));
+  return runs.map((run) => ({ ...run, accounts: accounts.filter((a) => a.runId === run.id) }));
 }
 
 export function importRunRoutes(deps: RunDeps) {
@@ -38,10 +35,13 @@ export function importRunRoutes(deps: RunDeps) {
       // Any run (cron included) inside the last minute means Lunch Flow's cached data can't have moved.
       // A tap that only hit the lock imported nothing, so it doesn't count.
       const now = (deps.now ?? (() => new Date()))();
-      const last = await c.env.DB.prepare(
-        "SELECT started_at FROM import_runs WHERE status != 'skipped_locked' ORDER BY id DESC LIMIT 1",
-      ).first<{ started_at: string }>();
-      const waitMs = last ? Date.parse(last.started_at) + MIN_INTERVAL_MS - now.getTime() : 0;
+      const last = await drizzle(c.env.DB)
+        .select({ startedAt: importRuns.startedAt })
+        .from(importRuns)
+        .where(ne(importRuns.status, "skipped_locked"))
+        .orderBy(desc(importRuns.id))
+        .get();
+      const waitMs = last ? Date.parse(last.startedAt) + MIN_INTERVAL_MS - now.getTime() : 0;
       if (waitMs > 0) {
         const retryAfterSeconds = Math.ceil(waitMs / 1000);
         c.header("Retry-After", String(retryAfterSeconds));

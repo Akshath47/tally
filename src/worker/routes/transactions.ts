@@ -1,6 +1,9 @@
+import { and, desc, eq, gte, lt, lte, or } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
+import { transactions } from "../db/schema";
 import { limitParam, parseQuery } from "./query";
 
 // Opaque to the client: the (txn_date, id) of the last row served, for keyset paging.
@@ -21,11 +24,9 @@ const querySchema = z.object({
   cursor: cursorParam.optional(),
 });
 
-type TxnRow = { id: number; txnDate: string; isPending: number } & Record<string, unknown>;
-
 /**
- * Newest first. The WHERE clause is built from present filters only, so an account filter can
- * use the (account_id, txn_date) index. Unfiltered pages scan and sort the table, which is fine
+ * Newest first. Only present filters go into the WHERE clause, so an account filter can use
+ * the (account_id, txn_date) index. Unfiltered pages scan and sort the table, which is fine
  * at a few thousand rows.
  */
 export const transactionRoutes = new Hono<AppEnv>().get("/", async (c) => {
@@ -33,32 +34,38 @@ export const transactionRoutes = new Hono<AppEnv>().get("/", async (c) => {
   if (!q.ok) return q.res;
   const { account_id, from, to, limit, cursor } = q.data;
 
-  const where: string[] = [];
-  const binds: unknown[] = [];
-  /** Binds a value and returns its numbered placeholder. */
-  const param = (value: unknown) => `?${binds.push(value)}`;
-  if (account_id !== undefined) where.push(`account_id = ${param(account_id)}`);
-  if (from) where.push(`txn_date >= ${param(from)}`);
-  if (to) where.push(`txn_date <= ${param(to)}`);
-  if (cursor) {
-    const date = param(cursor.date);
-    where.push(`(txn_date < ${date} OR (txn_date = ${date} AND id < ${param(cursor.id)}))`);
-  }
-
   // One extra row tells us whether there is a next page.
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, account_id AS accountId, amount_minor AS amountMinor, currency, txn_date AS txnDate,
-       merchant, description, is_pending AS isPending, vanished_at AS vanishedAt, first_seen_at AS firstSeenAt
-     FROM transactions ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-     ORDER BY txn_date DESC, id DESC LIMIT ${param(limit + 1)}`,
-  )
-    .bind(...binds)
-    .all<TxnRow>();
+  const rows = await drizzle(c.env.DB)
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      amountMinor: transactions.amountMinor,
+      currency: transactions.currency,
+      txnDate: transactions.txnDate,
+      merchant: transactions.merchant,
+      description: transactions.description,
+      isPending: transactions.isPending,
+      vanishedAt: transactions.vanishedAt,
+      firstSeenAt: transactions.firstSeenAt,
+    })
+    .from(transactions)
+    .where(
+      and(
+        account_id === undefined ? undefined : eq(transactions.accountId, account_id),
+        from ? gte(transactions.txnDate, from) : undefined,
+        to ? lte(transactions.txnDate, to) : undefined,
+        cursor
+          ? or(lt(transactions.txnDate, cursor.date), and(eq(transactions.txnDate, cursor.date), lt(transactions.id, cursor.id)))
+          : undefined,
+      ),
+    )
+    .orderBy(desc(transactions.txnDate), desc(transactions.id))
+    .limit(limit + 1);
 
-  const page = results.slice(0, limit);
+  const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return c.json({
-    transactions: page.map((t) => ({ ...t, isPending: t.isPending === 1 })),
-    nextCursor: results.length > limit && last ? `${last.txnDate}_${last.id}` : null,
+    transactions: page,
+    nextCursor: rows.length > limit && last ? `${last.txnDate}_${last.id}` : null,
   });
 });
