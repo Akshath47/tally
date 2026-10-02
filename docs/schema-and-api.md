@@ -86,7 +86,7 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | GET | `/api/health` | `{ ok, email }`, used for auth smoke tests; returns no financial data |
 | GET | `/api/accounts` | Accounts plus import status fields |
 | GET | `/api/transactions?account_id&from&to&limit&cursor` | Paged list, newest first (`txn_date`, then `id`); `limit ≤ 200`, default 50; `from`/`to` are inclusive `YYYY-MM-DD`; pass the response's opaque `nextCursor` back as `cursor` |
-| POST | `/api/import-runs` | Start a manual import in the background: `202 {status:"started"}`, then poll `GET /api/import-runs` for the run; `409 {error:"import_running"}` if the lock is held; `429 {error:"rate_limited", retryAfterSeconds}` plus `Retry-After` if any run (cron included) started under 60 s ago |
+| POST | `/api/import-runs` | Start a manual import: creates the run and claims the lock, answers `202 {status:"started", runId}`, and imports in the background (poll `GET /api/import-runs`); `409 {error:"import_running"}` if the lock is held (the attempt is recorded as `skipped_locked`); `429 {error:"rate_limited", retryAfterSeconds}` plus `Retry-After` if any run (cron included) started under 60 s ago |
 | GET | `/api/import-runs?limit=20` | Recent runs with per-account results; `limit ≤ 50` |
 
 Responses use camelCase fields. Provider account and connection ids are not exposed.
