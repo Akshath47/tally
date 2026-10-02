@@ -105,7 +105,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 
 **Normalisation**
 - Decimal-to-minor-unit conversion uses each currency's exponent (GBP = 2). Values with more decimal places than the currency allows are flagged.
-- A per-account sign rule from P1.1 normalises amounts to **negative = money out / more owed**. The original decimal is kept in `provider_amount`.
+- Amounts are stored as **negative = money out / more owed**, which P1.1 found both institutions already use, so no per-account sign flip is applied. The original decimal is kept in `provider_amount`.
 - `date` is stored as a plain calendar string and never passed through `Date`, to avoid UTC shift bugs.
 - "Today" is computed in `Europe/London`.
 

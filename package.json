@@ -16,10 +16,15 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm test",
     "cf-typegen": "wrangler types",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "drizzle-kit check",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.0",
+    "drizzle-orm": "^0.45.3",
     "hono": "^4.13.12",
     "jose": "^6.2.12",
     "react": "^19.3.0",
@@ -36,6 +41,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/runner": "~4.1.11",
     "@vitest/snapshot": "~4.1.11",
+    "drizzle-kit": "^0.31.11",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.12.0",
