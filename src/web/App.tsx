@@ -21,7 +21,10 @@ function ImportButton() {
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: startImport,
-    onSettled: () => queryClient.invalidateQueries(),
+    // A 429 changed nothing server-side; anything else may have written a run.
+    onSettled: (_data, error) => {
+      if (!(error instanceof ApiError && error.status === 429)) void queryClient.invalidateQueries();
+    },
   });
 
   return (
@@ -66,12 +69,21 @@ function AccountCard({ account }: { account: Account }) {
   );
 }
 
+/** The loading / error / empty line shown above a list. */
+function QueryStatus({ query, what, empty }: { query: { isPending: boolean; isError: boolean }; what: string; empty: string | false }) {
+  if (query.isPending) return <p className="mt-2 text-sm text-gray-600">Loading…</p>;
+  if (query.isError) return <p className="mt-2 text-sm text-red-700">Couldn't load {what}.</p>;
+  return empty ? <p className="mt-2 text-sm text-gray-600">{empty}</p> : null;
+}
+
 const RUN_STATUS_COLOUR: Record<string, string> = { success: "text-green-700", failed: "text-red-700" };
 
 function RunRow({ run }: { run: ImportRun }) {
   const inserted = run.accounts.reduce((n, a) => n + a.inserted, 0);
   const updated = run.accounts.reduce((n, a) => n + a.updated, 0);
-  const errors = run.accounts.filter((a) => a.error).map((a) => `#${a.accountId}: ${a.error}`);
+  const errorText = [run.errorSummary, ...run.accounts.filter((a) => a.error).map((a) => `#${a.accountId}: ${a.error}`)]
+    .filter(Boolean)
+    .join("; ");
   return (
     <li className="py-2 text-sm">
       <span>{formatTimestamp(run.startedAt)}</span> · <span>{run.trigger}</span> ·{" "}
@@ -80,9 +92,7 @@ function RunRow({ run }: { run: ImportRun }) {
         {" "}
         · +{inserted} new, {updated} changed
       </span>
-      {(run.errorSummary || errors.length > 0) && (
-        <p className="text-red-700">{[run.errorSummary, ...errors].filter(Boolean).join("; ")}</p>
-      )}
+      {errorText && <p className="text-red-700">{errorText}</p>}
     </li>
   );
 }
@@ -112,9 +122,7 @@ function Transactions({ accounts }: { accounts: Account[] }) {
           ))}
         </select>
       </div>
-      {txns.isPending && <p className="mt-2 text-sm text-gray-600">Loading…</p>}
-      {txns.isError && <p className="mt-2 text-sm text-red-700">Couldn't load transactions.</p>}
-      {txns.data && txns.data.transactions.length === 0 && <p className="mt-2 text-sm text-gray-600">No transactions yet.</p>}
+      <QueryStatus query={txns} what="transactions" empty={txns.data?.transactions.length === 0 && "No transactions yet."} />
       <ul className="mt-2 divide-y">
         {txns.data?.transactions.map((t) => (
           <li key={t.id} className={`flex justify-between gap-3 py-2 text-sm ${t.vanishedAt ? "opacity-50 line-through" : ""}`}>
@@ -150,11 +158,7 @@ export function App() {
 
       <section className="mt-6">
         <h2 className="font-semibold">Accounts</h2>
-        {accounts.isPending && <p className="mt-2 text-sm text-gray-600">Loading…</p>}
-        {accounts.isError && <p className="mt-2 text-sm text-red-700">Couldn't load accounts.</p>}
-        {accounts.data && accounts.data.accounts.length === 0 && (
-          <p className="mt-2 text-sm text-gray-600">No accounts yet. Run an import.</p>
-        )}
+        <QueryStatus query={accounts} what="accounts" empty={accounts.data?.accounts.length === 0 && "No accounts yet. Run an import."} />
         <ul className="mt-2 space-y-2">
           {accounts.data?.accounts.map((a) => <AccountCard key={a.id} account={a} />)}
         </ul>
@@ -162,7 +166,7 @@ export function App() {
 
       <section className="mt-6">
         <h2 className="font-semibold">Recent imports</h2>
-        {runs.isError && <p className="mt-2 text-sm text-red-700">Couldn't load import runs.</p>}
+        <QueryStatus query={runs} what="import runs" empty={runs.data?.runs.length === 0 && "No imports yet."} />
         <ul className="mt-2 divide-y">{runs.data?.runs.map((r) => <RunRow key={r.id} run={r} />)}</ul>
       </section>
 
