@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backfillChunks, incrementalWindow } from "../../src/worker/importer/windows";
+import { backfillChunks, coveredRanges, incrementalWindow } from "../../src/worker/importer/windows";
 
 const TODAY = "2026-10-02";
 
@@ -60,5 +60,25 @@ describe("backfillChunks", () => {
     }
     expect(runs).toBe(12);
     expect(cursor).toBe("2024-10-02");
+  });
+});
+
+describe("coveredRanges", () => {
+  it("merges windows that touch into one range", () => {
+    const first = backfillChunks(null, TODAY, 730);
+    expect(coveredRanges([incrementalWindow(TODAY), ...first.chunks])).toEqual([{ from: "2026-07-19", to: "2026-10-02" }]);
+  });
+
+  it("keeps windows apart when the gap between them was not fetched", () => {
+    // Later run: cursor already at 2026-07-19, so 07-19..09-18 is not part of this run.
+    const later = backfillChunks("2026-07-19", TODAY, 730);
+    expect(coveredRanges([incrementalWindow(TODAY), ...later.chunks])).toEqual([
+      { from: "2026-05-18", to: "2026-07-18" },
+      { from: "2026-09-19", to: "2026-10-02" },
+    ]);
+  });
+
+  it("is empty for no windows", () => {
+    expect(coveredRanges([])).toEqual([]);
   });
 });

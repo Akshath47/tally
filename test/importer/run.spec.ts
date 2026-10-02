@@ -413,6 +413,22 @@ describe("runImport: backfill", () => {
     expect(w.calls.slice(before).filter((c) => c.path.endsWith("/transactions"))).toHaveLength(1);
   });
 
+  it("treats only the windows it fetched as covered: rows in the already-backfilled gap are left alone", async () => {
+    const w = world([REVOLUT]);
+    // Run 1 covers 07-19..10-02. On run 2 the fetched windows are the incremental one
+    // (09-19..10-02) and older chunks, leaving 07-19..09-18 unfetched.
+    w.txns[1] = [
+      txn(1, "gap-pending", { date: "2026-08-10", isPending: true }),
+      txn(1, "gap-posted", { date: "2026-08-11" }),
+      txn(1, "recent", { date: "2026-10-01" }),
+    ];
+    await run(w, { backfillDays: "100" });
+
+    const second = await run(w, { backfillDays: "100" });
+    expect(second.accounts[0]).toMatchObject({ vanishedMarked: 0, missingPosted: 0 });
+    expect(await count("SELECT 1 FROM transactions WHERE vanished_at IS NOT NULL")).toBe(0);
+  });
+
   it("only advances the backfill cursor when the account's writes succeed", async () => {
     const w = world([REVOLUT]);
     w.txns[1] = [txn(1, "x", { date: "2026-10-01" })];

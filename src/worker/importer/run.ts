@@ -6,7 +6,7 @@ import { ImportError } from "./errors";
 import { claimLock, releaseLock } from "./lock";
 import { toMinor } from "./money";
 import { accountLabel, normalizeTransaction, type TransactionRow } from "./normalize";
-import { backfillChunks, incrementalWindow, type Window } from "./windows";
+import { backfillChunks, coveredRanges, incrementalWindow, type Window } from "./windows";
 import {
   bumpLastSeen,
   countMissingPosted,
@@ -202,24 +202,33 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
 
     // Everything is fetched and validated before any write, so a bad response writes nothing.
     const byId = new Map<string, TransactionRow>();
+    const idsByWindow: string[][] = [];
     for (const w of windows) {
       const fetched = await client.transactions(providerId, w);
       summary.fetched += fetched.length;
+      const ids: string[] = [];
       for (const t of fetched) {
         const normalised = normalizeTransaction(t, row.id, currency!);
         byId.set(normalised.provider_txn_id, normalised);
+        ids.push(normalised.provider_txn_id);
       }
+      idsByWindow.push(ids);
     }
     const rows = [...byId.values()];
-    const ids = [...byId.keys()];
+
+    // Absence only means something inside a range this run fetched in full.
+    const checks = coveredRanges(windows).map((r) => ({
+      range: r,
+      ids: windows.flatMap((w, i) => (w.from >= r.from && w.to <= r.to ? idsByWindow[i]! : [])),
+    }));
 
     const upserts = upsertTransactions(db, row.id, runId, nowIso, rows);
-    const bumps = bumpLastSeen(db, row.id, nowIso, ids);
+    const bumps = bumpLastSeen(db, row.id, nowIso, [...byId.keys()]);
     const results = await db.batch([
-      countMissingPosted(db, row.id, range, ids),
+      ...checks.map((c) => countMissingPosted(db, row.id, c.range, c.ids)),
       ...upserts,
       ...bumps,
-      markVanished(db, row.id, nowIso, range, ids),
+      ...checks.map((c) => markVanished(db, row.id, nowIso, c.range, c.ids)),
       updateAccountStatus(db, {
         accountId: row.id, now: nowIso, ok: true, error: null, currency, enabled: currency === BUDGET_CURRENCY,
         label, balanceMinor,
@@ -228,13 +237,15 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
       }),
     ]);
 
-    summary.missingPosted = (results[0]!.results[0] as { n: number }).n;
-    for (const r of results.slice(1, 1 + upserts.length)) {
+    const n = checks.length;
+    summary.missingPosted = results.slice(0, n).reduce((sum, r) => sum + (r.results[0] as { n: number }).n, 0);
+    for (const r of results.slice(n, n + upserts.length)) {
       const inserted = (r.results as { inserted: number }[]).filter((x) => x.inserted === 1).length;
       summary.inserted += inserted;
       summary.updated += r.results.length - inserted;
     }
-    summary.vanishedMarked = results[1 + upserts.length + bumps.length]!.meta.changes;
+    const vanishFrom = n + upserts.length + bumps.length;
+    summary.vanishedMarked = results.slice(vanishFrom, vanishFrom + n).reduce((sum, r) => sum + r.meta.changes, 0);
     summary.status = "success";
     summary.httpStatus = 200;
   } catch (e) {
