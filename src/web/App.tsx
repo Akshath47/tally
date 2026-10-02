@@ -66,6 +66,8 @@ function AccountCard({ account }: { account: Account }) {
   );
 }
 
+const RUN_STATUS_COLOUR: Record<string, string> = { success: "text-green-700", failed: "text-red-700" };
+
 function RunRow({ run }: { run: ImportRun }) {
   const inserted = run.accounts.reduce((n, a) => n + a.inserted, 0);
   const updated = run.accounts.reduce((n, a) => n + a.updated, 0);
@@ -73,7 +75,7 @@ function RunRow({ run }: { run: ImportRun }) {
   return (
     <li className="py-2 text-sm">
       <span>{formatTimestamp(run.startedAt)}</span> · <span>{run.trigger}</span> ·{" "}
-      <span className={run.status === "success" ? "text-green-700" : "text-red-700"}>{run.status}</span>
+      <span className={RUN_STATUS_COLOUR[run.status] ?? "text-amber-700"}>{run.status}</span>
       <span className="text-gray-600">
         {" "}
         · +{inserted} new, {updated} changed
@@ -131,6 +133,7 @@ function Transactions({ accounts }: { accounts: Account[] }) {
           </li>
         ))}
       </ul>
+      {txns.data?.nextCursor && <p className="mt-2 text-xs text-gray-500">Showing the latest {TXN_LIMIT}.</p>}
     </section>
   );
 }

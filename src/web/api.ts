@@ -47,7 +47,8 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!res.ok) throw new ApiError(res.status, body);
+  // A 2xx without JSON is usually the Access login page after the session expired.
+  if (!res.ok || body === null) throw new ApiError(res.status, body);
   return body as T;
 }
 
@@ -58,7 +59,7 @@ export const getRuns = (limit: number) => request<{ runs: ImportRun[] }>(`/api/i
 export function getTransactions(limit: number, accountId: number | null) {
   const query = new URLSearchParams({ limit: String(limit) });
   if (accountId !== null) query.set("account_id", String(accountId));
-  return request<{ transactions: Transaction[] }>(`/api/transactions?${query}`);
+  return request<{ transactions: Transaction[]; nextCursor: string | null }>(`/api/transactions?${query}`);
 }
 
 export const startImport = () =>
