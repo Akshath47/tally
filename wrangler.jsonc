@@ -30,7 +30,7 @@
 	// Cron is UTC. Hourly during P1.7 verification, every 6h afterwards.
 	"triggers": {
 		"crons": [
-			"0 */6 * * *"
+			"0 * * * *"
 		]
 	},
 	"d1_databases": [
