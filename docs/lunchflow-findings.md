@@ -5,7 +5,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 | Run | Date | Notes |
 |---|---|---|
 | 1 | 2026-09-30 | First probe, right after connecting (extended history on) |
-| 2 | _pending_ | Re-run 1–2 days later for the pending → posted diff |
+| 2 | 2026-10-02 | Pending → posted diff, about 29 h after run 1 |
 
 ## Accounts
 
@@ -27,7 +27,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
   - So no per-account sign flip is needed.
 - **Amounts** have at most 2 decimals for GBP and 1 decimal for USD (e.g. `21.6`). Revolut has 27 zero-amount transactions.
 - Only one `currency` per account.
-- **`date` appears to be the booking (settlement) date, not the purchase date.** In the owner's check, one Revolut card purchase was dated one day later than the Revolut app shows. Every other sampled date matched. Consequence: a purchase made late on the last day of a month can land in the next month. Run 2 records whether a pending transaction's date moves when it posts.
+- **`date` appears to be the booking (settlement) date, not the purchase date.** In the owner's check, one Revolut card purchase was dated one day later than the Revolut app shows. Every other sampled date matched. Consequence: a purchase made late on the last day of a month can land in the next month. Run 2 confirmed it: the Revolut pending transaction was dated 2026-09-30, and its posted version is dated 2026-10-01. So a pending transaction carries the purchase date, and posting moves it to the booking date.
 
 ## Filters, history, pagination
 
@@ -41,15 +41,19 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 
 - `include_pending` defaults to `false`.
 - With `true`, **Revolut returned 1 pending transaction with a 4-character, non-hex id**. Posted ids are 32-character hex. This strongly suggests pending ids are **not** stable, and that a posted transaction will arrive with a new id.
-- **Amex returned 0 pending.** It's unclear whether it has none right now or doesn't support pending.
-- Run 2 checks this using the `.probe/` snapshot. The script reports `sameIdNowPosted`, `vanished` and `vanishedButPostedLookalike`.
+- **Amex supports pending too.** Run 1 had none; run 2 returned 1 pending transaction, also with a 4-character id.
+- **Run 2 confirmed pending ids are not stable.** Revolut's pending transaction from run 1 was gone (`stillPending=0`, `sameIdNowPosted=0`, `vanished=1`). A posted transaction with the same amount appeared under a new 32-character hex id, dated one day later.
+  - The match is the probe's heuristic (same amount, dates within 5 days) on a single transaction. It agrees with the owner's run 1 check, where one card purchase showed up a day later than in the Revolut app.
+  - The importer needs nothing new: the 14-day re-read inserts the posted row and sets `vanished_at` on the pending one in the same run. Totals must skip rows with `vanished_at` set, so a purchase isn't counted twice.
+- Amex's pending → posted transition hasn't been observed yet. The `.probe/` snapshot now holds that pending transaction, so a later run can check it, but it isn't needed for Gate 1.
 
 ## Freshness and latency
 
 - **Revolut had posted and pending transactions dated today**, and Amex's newest was yesterday. The data is at least near-daily, possibly better for Revolut.
+- Run 2 (01:06 London on 2 Oct) matched this: Revolut's newest posted transaction was from 1 Oct, Amex's newest posted from 30 Sep, and the Amex pending transaction from 1 Oct.
 - **Latency:**
   - The first transactions call per account took 2–5 s; repeat calls took about 0.3 s. That suggests a short-lived server-side cache.
-  - The balance endpoint took about 1.9 s on every call.
+  - The balance endpoint took about 1.9 s on every call in run 1, and about 0.8 s in run 2.
 - There is no freshness metadata anywhere: no timestamps on accounts or balance.
 - Response headers show hosting on Vercel, with `cache-control: public, max-age=0, must-revalidate`, `age: 0` and `x-vercel-cache: MISS`. There is no HTTP-level caching of API responses.
 
@@ -61,7 +65,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 | Unknown account id | 404 | `{ error: "Not Found", message: "Account not found." }` |
 | Invalid `from` date | 400 | `{ success: false, error: { name: "ZodError", issues: [...] } }`: `error` is an **object** here |
 
-- **No rate-limit headers** (`x-ratelimit-*`, `retry-after`) were seen across about 20 calls.
+- **No rate-limit headers** (`x-ratelimit-*`, `retry-after`) were seen across about 20 calls per run, in either run.
 
 ## Transfers seen in the data (input for Phase 2)
 
@@ -75,7 +79,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 3. **Drop `accounts.amount_sign`.** Both institutions already use negative = money out. The normaliser can simply assert the currency and decimal places.
 4. **Don't store raw IBANs as account names.** Store a display label such as "Revolut · GBP · ••7668".
 5. **The Revolut USD pocket stays off** (owner decision, 2026-09-30). `accounts.import_enabled` defaults to off for non-GBP accounts, since budgets are GBP.
-6. **Pending ids look unstable.** Keep the `vanished_at` design. In Phase 2, either don't allow edits on pending transactions, or move an edit to the posted transaction when it's matched by amount and date.
+6. **Pending ids are unstable (confirmed in run 2).** Keep the `vanished_at` design. In Phase 2, either don't allow edits on pending transactions, or move an edit to the posted transaction when it's matched by amount and date.
 7. **The error parser must handle `error` being either a string or an object.** Treat 403 as "bad/revoked key" (configuration problem, no retry).
 8. **Backfill:** Revolut supports about 730 days. A 31-day chunk holds roughly 50 rows, so raising `BACKFILL_DAYS` to 730 is cheap: about 1,100 row writes, once.
 9. **Booking-date lag (Phase 2):** month totals use Lunch Flow's `date`. If purchases near month-end land in the wrong month too often, add a per-transaction "count in month" override. It belongs in `transaction_overrides`, not in bank data.
@@ -86,4 +90,5 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 - [x] Sign convention recorded.
 - [x] Owner compared the sample transactions with the Revolut and Amex apps (2026-09-30). Amounts, signs and pending all match. One card purchase is dated one day later (booking date, see above).
 - [x] Amex history is complete: the card is new, and its first purchase was on 2026-09-11.
-- [ ] Run 2 (1–2 days later): pending → posted behaviour.
+- [x] Pending support is known for each account: both Revolut and Amex return pending transactions.
+- [x] Run 2 (2026-10-02): pending → posted behaviour recorded. The id changes and the date moves to the booking date.
