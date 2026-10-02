@@ -65,4 +65,29 @@ describe("normalizeTransaction", () => {
       expect.objectContaining({ kind: "precision" }),
     );
   });
+
+  describe("a pending transaction with no provider id", () => {
+    const pending = (overrides = {}) => txn(1, null, { isPending: true, amount: -9.99, date: "2026-10-01", merchant: "Synthetic Shop", ...overrides });
+
+    it("gets a synthetic id built from its fingerprint", () => {
+      const row = normalizeTransaction(pending(), 1, "GBP");
+      expect(row.provider_txn_id).toBe("nullid:1|2026-10-01|-999|synthetic shop");
+    });
+
+    it("gets the same id every time, so re-imports are idempotent", () => {
+      expect(normalizeTransaction(pending(), 1, "GBP").provider_txn_id).toBe(normalizeTransaction(pending(), 1, "GBP").provider_txn_id);
+    });
+
+    it("gets a different id when the date or amount differs", () => {
+      const base = normalizeTransaction(pending(), 1, "GBP").provider_txn_id;
+      expect(normalizeTransaction(pending({ amount: -10 }), 1, "GBP").provider_txn_id).not.toBe(base);
+      expect(normalizeTransaction(pending({ date: "2026-10-02" }), 1, "GBP").provider_txn_id).not.toBe(base);
+    });
+
+    it("is rejected when the transaction is posted, since only pending ids are unstable", () => {
+      expect(() => normalizeTransaction(pending({ isPending: false }), 1, "GBP")).toThrowError(
+        expect.objectContaining({ kind: "invalid_response" }),
+      );
+    });
+  });
 });

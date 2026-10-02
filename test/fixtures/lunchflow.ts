@@ -1,7 +1,7 @@
 // Synthetic Lunch Flow payloads and a scriptable fake fetch. No real bank data.
 
 export type FakeTxn = {
-  id: string;
+  id: string | null;
   accountId: number;
   amount: number;
   currency: string;
@@ -11,7 +11,7 @@ export type FakeTxn = {
   isPending: boolean;
 };
 
-export function txn(accountId: number, id: string, overrides: Partial<FakeTxn> = {}): FakeTxn {
+export function txn(accountId: number, id: string | null, overrides: Partial<FakeTxn> = {}): FakeTxn {
   return {
     id,
     accountId,

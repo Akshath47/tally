@@ -172,6 +172,22 @@ describe("runImport: nothing is ever deleted", () => {
   });
 });
 
+describe("runImport: pending transactions without an id", () => {
+  it("imports one, keeps re-imports idempotent, and retires it when the posted version arrives", async () => {
+    const w = basicWorld();
+    const noId = txn(2, null, { amount: -9.99, date: "2026-10-01", isPending: true, merchant: "Synthetic Shop" });
+    w.txns[2] = [...w.txns[2]!, noId];
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 2, updated: 0 });
+    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id LIKE 'nullid:%'")).toBe(1);
+
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 0, updated: 0 });
+
+    w.txns[2] = [w.txns[2]![0]!, txn(2, "posted-hex", { amount: -9.99, date: "2026-10-02", merchant: "Synthetic Shop" })];
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 1, vanishedMarked: 1 });
+    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id LIKE 'nullid:%' AND vanished_at IS NOT NULL")).toBe(1);
+  });
+});
+
 describe("runImport: locking and failures", () => {
   it("a run started while another holds the lease is skipped_locked and calls nothing", async () => {
     const w = basicWorld();

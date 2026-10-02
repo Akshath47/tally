@@ -25,13 +25,23 @@ export function accountLabel(account: Pick<ProviderAccount, "name" | "institutio
   return parts.filter(Boolean).join(" · ");
 }
 
+const NO_ID_PREFIX = "nullid:";
+
 /** Sign is already negative = money out for both institutions (docs/lunchflow-findings.md), so none is flipped. */
 export function normalizeTransaction(t: ProviderTransaction, accountId: number, accountCurrency: string): TransactionRow {
   if (t.currency !== accountCurrency) throw new ImportError("invalid_response");
   const { minor, providerAmount } = toMinor(t.amount, t.currency);
   const text = `${t.merchant} ${t.description}`.toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+  const fingerprint = `${accountId}|${t.date}|${minor}|${text}`;
+
+  // Pending ids are unstable anyway (the posted row arrives under a new id and vanished_at retires
+  // the pending one), so a pending row with no id is keyed by its fingerprint. Two identical
+  // pending purchases on one day would collapse into one row; accepted as vanishingly rare.
+  // A posted row has no such excuse, so a missing id there is a bad response.
+  if (t.id === null && !t.isPending) throw new ImportError("invalid_response");
+
   return {
-    provider_txn_id: t.id,
+    provider_txn_id: t.id ?? NO_ID_PREFIX + fingerprint,
     amount_minor: minor,
     provider_amount: providerAmount,
     currency: t.currency,
@@ -39,6 +49,6 @@ export function normalizeTransaction(t: ProviderTransaction, accountId: number, 
     merchant: t.merchant,
     description: t.description,
     is_pending: t.isPending ? 1 : 0,
-    fingerprint: `${accountId}|${t.date}|${minor}|${text}`,
+    fingerprint,
   };
 }

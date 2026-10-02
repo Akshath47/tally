@@ -20,7 +20,8 @@ const AccountSchema = z.object({
 });
 
 const TransactionSchema = z.object({
-  id: z.string().min(1),
+  // Amex pending transactions can arrive with a null id; normalizeTransaction keys those itself.
+  id: z.string().min(1).nullable(),
   accountId: z.number().int(),
   amount: z.number().finite(),
   currency: z.string().min(1),

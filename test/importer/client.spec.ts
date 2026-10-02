@@ -37,6 +37,13 @@ describe("lunch flow client", () => {
     expect(calls[0]!.query.get("include_pending")).toBe("true");
   });
 
+  it("accepts a transaction whose id is null (Amex pending)", async () => {
+    const { client } = setup({
+      "/accounts/1/transactions": { body: { transactions: [txn(1, null, { isPending: true })], total: 1 } },
+    });
+    expect((await client.transactions(1, { from: "2026-09-19", to: "2026-10-02" }))[0]!.id).toBeNull();
+  });
+
   it("parses accounts that omit currency", async () => {
     const { client } = setup({ "/accounts": { body: { accounts: [accountJson(1)], total: 1 } } });
     expect((await client.accounts())[0]).toMatchObject({ id: 1, institution_name: "Test Bank" });
