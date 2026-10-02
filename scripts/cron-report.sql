@@ -12,13 +12,16 @@ ORDER BY started_at;
 
 -- 2. Overlapping runs in the same window (cron or manual). Expect no rows. Runs that lost the
 -- lease (skipped_locked) never imported, and abandoned runs are closed late by design.
+WITH r AS (
+  SELECT id, trigger, started_at, coalesce(finished_at, '9999') AS finished_at
+  FROM import_runs
+  WHERE status != 'skipped_locked' AND error_summary IS NOT 'abandoned'
+)
 SELECT a.id AS run_a, a.trigger AS trigger_a, b.id AS run_b, b.trigger AS trigger_b
-FROM import_runs a
-JOIN import_runs b ON b.id > a.id
+FROM r a
+JOIN r b ON b.id > a.id
 WHERE a.started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')
-  AND a.status != 'skipped_locked' AND b.status != 'skipped_locked'
-  AND coalesce(a.error_summary, '') != 'abandoned' AND coalesce(b.error_summary, '') != 'abandoned'
-  AND b.started_at < coalesce(a.finished_at, '9999') AND a.started_at < coalesce(b.finished_at, '9999');
+  AND b.started_at < a.finished_at AND a.started_at < b.finished_at;
 
 -- 3. Duplicates by (account_id, provider_txn_id). Expect 0.
 SELECT count(*) AS duplicate_keys
