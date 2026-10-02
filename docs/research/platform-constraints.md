@@ -74,6 +74,7 @@ Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/lim
 | Subrequests per invocation | 50 |
 | Cron Triggers per account | 5 |
 | Cron wall duration | 15 min |
+| `ctx.waitUntil` after an HTTP response or client disconnect | 30 s ([context API](https://developers.cloudflare.com/workers/runtime-apis/context/), checked 2026-10-02) |
 | Memory | 128 MB |
 | Static assets | 20,000 files/version, 25 MiB/file |
 

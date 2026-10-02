@@ -1,1 +1,2 @@
-export { runImport, type ImportEnv, type RunSummary } from "./run";
+export { runImport, startImport, type ImportEnv, type RunDeps, type RunSummary } from "./run";
+export { isLockHeld } from "./lock";

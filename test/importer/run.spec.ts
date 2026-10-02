@@ -1,28 +1,32 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runImport } from "../../src/worker/importer/run";
+import { CountingDb } from "../../src/worker/importer/db";
+import { claimLock } from "../../src/worker/importer/lock";
+import { startImport } from "../../src/worker/importer/run";
 import { insertRun, insertTransaction, resetDb } from "../db";
-import { txn, world, type WorldAccount } from "../fixtures/lunchflow";
+import { AMEX, REVOLUT, txn, world, type WorldAccount } from "../fixtures/lunchflow";
 
 // All data is synthetic. "Today" is 2026-10-02 in London, so the incremental window is
 // 2026-09-19..2026-10-02.
 
 const T0 = Date.parse("2026-10-02T12:00:00.000Z");
-const REVOLUT: WorldAccount = { id: 1, name: "GB29NWBK60161331926819", institution: "Revolut", currency: "GBP" };
-const AMEX: WorldAccount = { id: 2, name: "Synthetic Rewards Card", institution: "Test Amex", currency: "GBP" };
 const POCKET: WorldAccount = { id: 3, name: "GB00POCK00000000000003", institution: "Revolut", currency: "USD" };
 
 let minute = 0;
 
 type World = ReturnType<typeof world>;
 
-function run(w: World, opts: { trigger?: "cron" | "manual"; backfillDays?: string } = {}) {
-  return runImport(
+type RunOpts = { trigger?: "cron" | "manual"; backfillDays?: string; budgetMs?: number };
+
+function start(w: World, opts: RunOpts = {}) {
+  return startImport(
     { DB: env.DB, LUNCHFLOW_API_KEY: "test-key", BACKFILL_DAYS: opts.backfillDays ?? "20" },
     opts.trigger ?? "manual",
-    { fetch: w.fetch, now: () => new Date(T0 + minute++ * 60_000), sleep: async () => {} },
+    { fetch: w.fetch, now: () => new Date(T0 + minute++ * 60_000), sleep: async () => {}, budgetMs: opts.budgetMs },
   );
 }
+
+const run = async (w: World, opts: RunOpts = {}) => (await start(w, opts)).finished;
 
 const count = async (sql: string, ...binds: unknown[]) =>
   (await env.DB.prepare(`SELECT count(*) AS n FROM (${sql})`).bind(...binds).first<{ n: number }>())!.n;
@@ -215,6 +219,38 @@ describe("runImport: locking and failures", () => {
     await run(w);
     expect(await env.DB.prepare("SELECT holder_run_id FROM import_lock").first()).toEqual({ holder_run_id: null });
     expect((await run(w)).status).toBe("success");
+  });
+
+  it("takes over an expired lease and marks the cut-off run that held it as abandoned", async () => {
+    // A manual import cancelled mid-run (e.g. past the 30 s waitUntil limit) never reached its finally.
+    const started = new Date(T0 - 20 * 60_000);
+    const dead = await insertRun("manual", "running", started.toISOString());
+    await claimLock(new CountingDb(env.DB), dead, started);
+
+    expect((await run(basicWorld())).status).toBe("success");
+    const row = await env.DB.prepare("SELECT status, error_summary, finished_at FROM import_runs WHERE id = ?1").bind(dead).first();
+    expect(row).toEqual({ status: "failed", error_summary: "abandoned", finished_at: "2026-10-02T12:00:00.000Z" });
+  });
+
+  it("leaves a recently started run alone, since it may still be about to claim", async () => {
+    const fresh = await insertRun("manual", "running", new Date(T0 - 5_000).toISOString());
+    expect((await run(basicWorld())).status).toBe("success");
+    expect(await env.DB.prepare("SELECT status FROM import_runs WHERE id = ?1").bind(fresh).first()).toEqual({ status: "running" });
+  });
+
+  it("ends a run that exceeds its time budget as failed/timeout and releases the lease", async () => {
+    const w = basicWorld();
+    const res = await run(w, { budgetMs: 0 });
+    expect(res).toMatchObject({ status: "failed", errorSummary: "timeout" });
+    expect(w.calls).toHaveLength(0);
+    expect(await env.DB.prepare("SELECT holder_run_id FROM import_lock").first()).toEqual({ holder_run_id: null });
+  });
+
+  it("holds a lease sized to its budget, so a cut-off run frees the lock within a minute", async () => {
+    const started = await start(basicWorld(), { budgetMs: 25_000 });
+    const lock = await env.DB.prepare("SELECT holder_run_id, expires_at FROM import_lock").first();
+    expect(lock).toEqual({ holder_run_id: started.runId, expires_at: "2026-10-02T12:00:55.000Z" });
+    await started.finished;
   });
 
   it("a 5xx on one account retries, records the error, keeps its rows, and does not stop the other", async () => {

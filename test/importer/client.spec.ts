@@ -3,13 +3,14 @@ import { SUBREQUEST_CAP, createClient } from "../../src/worker/importer/client";
 import { ImportError } from "../../src/worker/importer/errors";
 import { accountJson, fakeFetch, txn } from "../fixtures/lunchflow";
 
-function setup(routes: Parameters<typeof fakeFetch>[0]) {
+function setup(routes: Parameters<typeof fakeFetch>[0], deadline?: number) {
   const f = fakeFetch(routes);
   const sleeps: number[] = [];
   const client = createClient({
     apiKey: "test-key",
     fetch: f.fetch,
     sleep: async (ms) => void sleeps.push(ms),
+    deadline,
   });
   return { client, calls: f.calls, sleeps };
 }
@@ -129,6 +130,20 @@ describe("lunch flow client", () => {
   it("reports a timeout as kind=timeout", async () => {
     const { client } = setup({ "/accounts": { throws: new DOMException("The operation timed out.", "TimeoutError") } });
     expect((await kindOf(client.accounts()))?.kind).toBe("timeout");
+  });
+
+  it("fails with kind=timeout, without calling, once the deadline has passed", async () => {
+    const { client, calls } = setup({ "/accounts": { body: { accounts: [], total: 0 } } }, Date.now() - 1);
+    expect(await kindOf(client.accounts())).toEqual({ kind: "timeout", httpStatus: null });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("gives up instead of backing off past the deadline", async () => {
+    // The first backoff is 500 ms; the deadline leaves less than that.
+    const { client, calls, sleeps } = setup({ "/accounts": { status: 503 } }, Date.now() + 200);
+    expect(await kindOf(client.accounts())).toEqual({ kind: "server", httpStatus: 503 });
+    expect(calls).toHaveLength(1);
+    expect(sleeps).toEqual([]);
   });
 
   it("stops at the subrequest cap", async () => {

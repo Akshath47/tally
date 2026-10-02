@@ -46,13 +46,20 @@ describe("import lock", () => {
     expect(await claimLock(db, b, new Date(NOW.getTime() + 10 * 60_000 + 1))).toBe(true);
   });
 
+  it("takes a shorter lease when the run passes one", async () => {
+    const db = new CountingDb(env.DB, 40);
+    const [a, b] = [await insertRun(), await insertRun()];
+    await claimLock(db, a, NOW, 55_000);
+    expect(await claimLock(db, b, new Date(NOW.getTime() + 55_001))).toBe(true);
+  });
+
   it("is released only by its holder", async () => {
     const db = new CountingDb(env.DB, 40);
     const [a, b] = [await insertRun(), await insertRun()];
     await claimLock(db, a, NOW);
-    await releaseLock(db, b);
+    await db.run(releaseLock(db, b));
     expect(await claimLock(db, b, NOW)).toBe(false);
-    await releaseLock(db, a);
+    await db.run(releaseLock(db, a));
     expect(await claimLock(db, b, NOW)).toBe(true);
   });
 });
