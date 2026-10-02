@@ -72,7 +72,7 @@ There is no per-account sign column: P1.1 found both institutions already use ne
 
 ### Deliberately not in Phase 1
 
-- **`transaction_overrides`** (category, excluded, counted amount, note) is a Phase 2 table keyed by `transactions.id`.
+- **`transaction_overrides`** (category, excluded, counted amount, counted date, note) is a Phase 2 table keyed by `transactions.id`.
 - If P1.1 shows that IDs change between pending and posted, Phase 2 also needs a rule for moving an override from the pending transaction to its posted version.
 - Categories, budgets and buckets.
 - Stored raw provider payloads. Only the fields above are kept.
