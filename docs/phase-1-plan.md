@@ -140,7 +140,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 
 **Accept when:** all tests pass, and a local import against the dev key imports both accounts twice with no duplicates.
 
-## [ ] P1.6 API and minimal UI
+## [x] P1.6 API and minimal UI
 
 - Endpoints as in [schema-and-api.md](schema-and-api.md).
 - One screen, with no design polish:
