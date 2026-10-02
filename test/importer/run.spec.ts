@@ -86,21 +86,33 @@ describe("runImport: idempotency", () => {
     expect(row).toEqual({ amount_minor: -1330 });
   });
 
-  it("bumps last_seen_at on every run without counting it as an update", async () => {
+  it("leaves an unchanged row completely untouched", async () => {
     const w = basicWorld();
     await run(w);
-    const before = await env.DB.prepare("SELECT last_seen_at, updated_at FROM transactions WHERE provider_txn_id = 'r1'").first<{
-      last_seen_at: string;
-      updated_at: string;
-    }>();
-    const second = await run(w);
-    const after = await env.DB.prepare("SELECT last_seen_at, updated_at FROM transactions WHERE provider_txn_id = 'r1'").first<{
-      last_seen_at: string;
-      updated_at: string;
-    }>();
-    expect(second.accounts[0]).toMatchObject({ inserted: 0, updated: 0 });
-    expect(after!.last_seen_at > before!.last_seen_at).toBe(true);
-    expect(after!.updated_at).toBe(before!.updated_at);
+    const read = () => env.DB.prepare("SELECT * FROM transactions WHERE provider_txn_id = 'r1'").first();
+    const before = await read();
+    await run(w);
+    expect(await read()).toEqual(before);
+  });
+
+  it("moves last_seen_at only when the row changes, and never first_seen_at", async () => {
+    const w = basicWorld();
+    const first = await run(w);
+    const read = () =>
+      env.DB.prepare("SELECT first_seen_at, last_seen_at, first_import_run_id FROM transactions WHERE provider_txn_id = 'r1'").first<{
+        first_seen_at: string;
+        last_seen_at: string;
+        first_import_run_id: number;
+      }>();
+    const inserted = (await read())!;
+    expect(inserted.last_seen_at).toBe(inserted.first_seen_at);
+
+    w.txns[1]![0] = txn(1, "r1", { amount: -13.3, date: "2026-10-01" });
+    await run(w);
+    const changed = (await read())!;
+    expect(changed.first_seen_at).toBe(inserted.first_seen_at);
+    expect(changed.last_seen_at > inserted.last_seen_at).toBe(true);
+    expect(changed.first_import_run_id).toBe(first.runId);
   });
 });
 

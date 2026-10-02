@@ -42,6 +42,7 @@ transactions              -- bank-sourced fields only
   is_pending
   fingerprint              account|date|amount|normalised description (diagnostic only)
   first_seen_at · last_seen_at · vanished_at · updated_at
+                           last_seen_at is set on insert and on each real change, never bumped by an unchanged re-import
   first_import_run_id
   UNIQUE(account_id, provider_txn_id)
   INDEX(account_id, txn_date)

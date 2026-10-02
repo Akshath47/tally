@@ -5,7 +5,6 @@ import type { TransactionRow } from "./normalize";
 // one D1 statement instead of one per row (free tier: 50 statements per invocation).
 // Chunks are capped by characters, well under D1's limits, to keep each statement small.
 const MAX_CHUNK_CHARS = 60_000;
-const MAX_IDS_PER_CHUNK = 1000;
 
 export function chunkJson<T>(items: T[], maxChars = MAX_CHUNK_CHARS): string[] {
   const chunks: string[] = [];
@@ -95,20 +94,6 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
          RETURNING first_import_run_id = ?3 AS inserted`,
       )
       .bind(accountId, now, runId, chunk),
-  );
-}
-
-/** Records that every fetched transaction was seen again, without touching its bank fields. */
-export function bumpLastSeen(db: CountingDb, accountId: number, now: string, ids: string[]) {
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += MAX_IDS_PER_CHUNK) chunks.push(ids.slice(i, i + MAX_IDS_PER_CHUNK));
-  return chunks.map((chunk) =>
-    db
-      .prepare(
-        `UPDATE transactions SET last_seen_at = ?3
-         WHERE account_id = ?1 AND last_seen_at IS NOT ?3 AND provider_txn_id IN (SELECT value FROM json_each(?2))`,
-      )
-      .bind(accountId, JSON.stringify(chunk), now),
   );
 }
 

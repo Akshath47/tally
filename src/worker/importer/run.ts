@@ -8,7 +8,6 @@ import { toMinor } from "./money";
 import { accountLabel, normalizeTransaction, type TransactionRow } from "./normalize";
 import { backfillChunks, coveredRanges, incrementalWindow, type Window } from "./windows";
 import {
-  bumpLastSeen,
   countMissingPosted,
   disableForeignAccount,
   insertRunAccount,
@@ -209,11 +208,9 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     }));
 
     const upserts = upsertTransactions(db, row.id, runId, nowIso, fetched.rows);
-    const bumps = bumpLastSeen(db, row.id, nowIso, fetched.ids);
     const results = await db.batch([
       ...checks.map((c) => countMissingPosted(db, row.id, c.range, c.idsJson)),
       ...upserts,
-      ...bumps,
       ...checks.map((c) => markVanished(db, row.id, nowIso, c.range, c.idsJson)),
       statusUpdate({
         ok: true, error: null,
@@ -222,7 +219,7 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
       }),
     ]);
 
-    Object.assign(summary, tallyResults(results, checks.length, upserts.length, bumps.length), { status: "success", httpStatus: 200 });
+    Object.assign(summary, tallyResults(results, checks.length, upserts.length), { status: "success", httpStatus: 200 });
   } catch (e) {
     summary.error = errorText(e);
     summary.httpStatus = e instanceof ImportError ? e.httpStatus : null;
@@ -256,15 +253,15 @@ async function fetchWindows(client: LunchFlowClient, providerId: number, account
     }
     idsByWindow.push(ids);
   }
-  return { rows: [...byId.values()], ids: [...byId.keys()], idsByWindow, count };
+  return { rows: [...byId.values()], idsByWindow, count };
 }
 
 /** Reads the batch results back in the order run.ts laid the statements out. */
-function tallyResults(results: D1Result[], checks: number, upserts: number, bumps: number) {
+function tallyResults(results: D1Result[], checks: number, upserts: number) {
   const sum = (rs: D1Result[], pick: (r: D1Result) => number) => rs.reduce((total, r) => total + pick(r), 0);
   const upsertResults = results.slice(checks, checks + upserts);
   const inserted = sum(upsertResults, (r) => (r.results as { inserted: number }[]).filter((x) => x.inserted === 1).length);
-  const vanishFrom = checks + upserts + bumps;
+  const vanishFrom = checks + upserts;
   return {
     missingPosted: sum(results.slice(0, checks), (r) => (r.results[0] as { n: number }).n),
     inserted,
