@@ -32,6 +32,7 @@ src/worker/db/schema.ts                Drizzle schema
 src/worker/importer/                   client, normalize, upsert, lock, run
 src/web/                               React SPA
 scripts/probe-lunchflow.ts             P1.1 API probe (prints summaries only)
+scripts/cron-report.sql                P1.7 cron, overlap and duplicate checks (no text)
 scripts/usage-report.ts                P1.8 free-tier usage report
 test/                                  Vitest (workers pool), synthetic fixtures only
 docs/                                  Plan, findings, assessments
