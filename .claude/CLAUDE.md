@@ -46,7 +46,7 @@ Non-obvious rules worth knowing before editing importer, schema, or auth code. F
 - **Gate 1** (P1.1: both accounts return usable transactions) and **Gate 2** (P1.3: logged-out access is proven blocked) block deploying anything backed by real data. Don't skip ahead of them.
 - Never commit directly to `main`. Do each piece of work on its own branch, named `<type>/<short-description>` (e.g. `feat/importer-upsert`, `docs/mvp-plan`) with the same `type` values as commit messages, and merge it into `main` through a pull request. Keep commits small and reviewable — see **Git commit convention** below for format.
 - Before opening a PR, run the owner's pre-PR checks (code review, then simplify) and make sure the step's **Accept when** checks pass. Merge only once the owner approves.
-- Make the smallest correct change that advances the current phase step. Don't build ahead into Phase 2 tables/screens while Phase 1 is still unverified.
+- Make the smallest correct change that advances the current step. Phase 2 can be developed in parallel with the remaining Phase 1 steps; it isn't gated on P1.9 (the owner's call, 2026-10-02). Don't deploy Worker changes while P1.7's cron window or P1.8's measurement is running, so that evidence comes from a single build.
 
 ## Git commit convention
 
