@@ -116,7 +116,7 @@ describe("API routes when authenticated", () => {
   });
 
   it("lets a same-origin JSON POST through to routing", async () => {
-    // No import route exists yet (P1.6), so passing every check ends in the JSON 404.
-    expect((await postJson("/api/import-runs", ORIGIN)).status).toBe(404);
+    // An unknown path, so passing every check ends in the JSON 404 without starting a real import.
+    expect((await postJson("/api/nope", ORIGIN)).status).toBe(404);
   });
 });

@@ -3,11 +3,17 @@ import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
-import { runImport } from "./importer";
+import { runImport, type RunDeps } from "./importer";
+import { accountRoutes } from "./routes/accounts";
+import { importRunRoutes } from "./routes/import-runs";
+import { transactionRoutes } from "./routes/transactions";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-export function createApp(options: AuthOptions = {}) {
+/** Tests inject a key set and a fake Lunch Flow; production uses the defaults. */
+export type AppOptions = AuthOptions & { importDeps?: RunDeps };
+
+export function createApp(options: AppOptions = {}) {
   const app = new Hono<AppEnv>().basePath("/api");
 
   app.use("*", secureHeaders());
@@ -25,6 +31,9 @@ export function createApp(options: AuthOptions = {}) {
   app.use("*", accessAuth(options));
 
   app.get("/health", (c) => c.json({ ok: true, email: c.get("email") }));
+  app.route("/accounts", accountRoutes);
+  app.route("/transactions", transactionRoutes);
+  app.route("/import-runs", importRunRoutes(options.importDeps ?? {}));
 
   // Unknown /api paths must not fall through to the SPA's index.html.
   app.notFound((c) => c.json({ error: "not_found" }, 404));
