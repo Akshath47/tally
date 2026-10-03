@@ -95,6 +95,16 @@ CPU time and network wait are separate. Time spent waiting on Lunch Flow or D1 d
 
 Daily limits reset at 00:00 UTC. When they're exceeded, queries fail until the reset.
 
+### GraphQL Analytics API (checked with `scripts/usage-report.ts --schema`, 2026-10-03)
+
+| Dataset | What it gives | Max window per query | Retention |
+|---|---|---|---|
+| `workersInvocationsScheduled` | One row per cron run: `cpuTimeUs`, `status`, `datetime`, `scheduledDatetime`, `cron` | 7 days | 90 days |
+| `workersInvocationsAdaptive` | Sampled groups: CPU quantiles, `max_cpuTime`, `sum_requests`/`errors`, `status` | 32 days | 90 days |
+| `d1AnalyticsAdaptiveGroups` | `sum_rowsRead`/`rowsWritten`/`readQueries`/`writeQueries` by `date` | 32 days | 90 days |
+
+`workersInvocationsAdaptive` has no trigger or event-type dimension, so HTTP requests and cron runs can't be separated there. Cron CPU comes from `workersInvocationsScheduled` instead.
+
 ### Workers Logs (Free)
 
 200,000 events/day, 3-day retention. Enable with `observability.enabled = true`.
