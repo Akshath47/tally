@@ -55,50 +55,75 @@ describe("summariseStatuses", () => {
       { status: "clientDisconnected", requests: 2, errors: 0, cpuTimeP50: 300, cpuTimeP99: 400, cpuTimeMax: 450 },
       { status: "scriptThrewException", requests: 1, errors: 1, cpuTimeP50: 100, cpuTimeP99: 100, cpuTimeMax: 100 },
     ]);
-    expect(s).toEqual({ requests: 43, errors: 1, byStatus: { success: 40, clientDisconnected: 2, scriptThrewException: 1 } });
+    expect(s).toEqual({ requests: 43, errors: 1, maxMs: 2.5, byStatus: { success: 40, clientDisconnected: 2, scriptThrewException: 1 } });
+  });
+
+  it("has no max without invocations", () => {
+    expect(summariseStatuses([]).maxMs).toBeNull();
   });
 });
 
 describe("summariseD1", () => {
-  it("gives each day's share of the write allowance and flags today as partial", () => {
+  const window = { since: "2026-10-01T18:22:00.000Z", until: "2026-10-03T14:00:00.000Z" };
+
+  it("gives each day's share of the write allowance", () => {
     const days = summariseD1(
       [
         { date: "2026-10-03", rowsRead: 900, rowsWritten: 120 },
         { date: "2026-10-02", rowsRead: 20_000, rowsWritten: 2_500 },
       ],
-      "2026-10-03",
+      window,
     );
-    expect(days).toEqual([
-      { day: "2026-10-02", rowsRead: 20_000, rowsWritten: 2_500, writeShare: 0.025, partial: false },
-      { day: "2026-10-03", rowsRead: 900, rowsWritten: 120, writeShare: 0.0012, partial: true },
+    expect(days.map((d) => [d.day, d.writeShare])).toEqual([
+      ["2026-10-02", 0.025],
+      ["2026-10-03", 0.0012],
+    ]);
+  });
+
+  it("flags the window's first and last UTC days, which it only partly covers", () => {
+    const days = summariseD1(
+      ["2026-10-01", "2026-10-02", "2026-10-03"].map((date) => ({ date, rowsRead: 1, rowsWritten: 1 })),
+      window,
+    );
+    expect(days.map((d) => [d.day, d.partial])).toEqual([
+      ["2026-10-01", true],
+      ["2026-10-02", false],
+      ["2026-10-03", true],
     ]);
   });
 });
 
 describe("verdicts", () => {
-  const d1Ok = summariseD1([{ date: "2026-10-02", rowsRead: 1, rowsWritten: 4_999 }], "2026-10-03");
+  const window = { since: "2026-10-02T00:00:00.000Z", until: "2026-10-03T00:00:00.000Z" };
+  const d1Ok = summariseD1([{ date: "2026-10-02", rowsRead: 1, rowsWritten: 4_999 }], window);
+  const noHttp = summariseStatuses([]);
   const result = (v: ReturnType<typeof verdicts>, check: string) => v.find((x) => x.check === check)!.result;
 
   it("passes just under the limits", () => {
-    const v = verdicts(summariseCron([cronRun(6_900)]), d1Ok);
+    const v = verdicts(summariseCron([cronRun(6_900)]), noHttp, d1Ok);
     expect(v.map((x) => x.result)).toEqual(["pass", "pass", "pass"]);
   });
 
   it("fails import P99 at exactly 7 ms (the limit is strict)", () => {
-    expect(result(verdicts(summariseCron([cronRun(7_000)]), d1Ok), "import P99 CPU")).toBe("fail");
+    expect(result(verdicts(summariseCron([cronRun(7_000)]), noHttp, d1Ok), "cron import P99 CPU")).toBe("fail");
   });
 
   it("fails the heaviest run at 10 ms", () => {
-    expect(result(verdicts(summariseCron([cronRun(10_000)]), d1Ok), "heaviest run CPU")).toBe("fail");
+    expect(result(verdicts(summariseCron([cronRun(10_000)]), noHttp, d1Ok), "heaviest run CPU")).toBe("fail");
+  });
+
+  it("counts a heavy manual (HTTP) import towards the heaviest run", () => {
+    const http = summariseStatuses([{ status: "success", requests: 3, errors: 0, cpuTimeP50: 1_000, cpuTimeP99: 9_000, cpuTimeMax: 12_000 }]);
+    expect(result(verdicts(summariseCron([cronRun(2_000)]), http, d1Ok), "heaviest run CPU")).toBe("fail");
   });
 
   it("fails D1 writes at 5% of the daily allowance", () => {
-    const d1 = summariseD1([{ date: "2026-10-02", rowsRead: 1, rowsWritten: 5_000 }], "2026-10-03");
-    expect(result(verdicts(summariseCron([cronRun(1_000)]), d1), "daily D1 writes")).toBe("fail");
+    const d1 = summariseD1([{ date: "2026-10-02", rowsRead: 1, rowsWritten: 5_000 }], window);
+    expect(result(verdicts(summariseCron([cronRun(1_000)]), noHttp, d1), "daily D1 writes")).toBe("fail");
   });
 
   it("never passes without data", () => {
-    const v = verdicts(summariseCron([]), []);
+    const v = verdicts(summariseCron([]), noHttp, []);
     expect(v.map((x) => x.result)).toEqual(["not enough data", "not enough data", "not enough data"]);
   });
 });

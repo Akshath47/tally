@@ -120,7 +120,7 @@ async function printReport() {
   const groups: StatusGroup[] = acct.invocations.map((g) => ({ status: g.dimensions.status, ...g.sum, ...g.quantiles, cpuTimeMax: g.max.cpuTime }));
   const statuses = summariseStatuses(groups);
   const d1Days: D1Day[] = acct.d1.map((d) => ({ date: d.dimensions.date, ...d.sum }));
-  const d1 = summariseD1(d1Days, new Date().toISOString().slice(0, 10));
+  const d1 = summariseD1(d1Days, { since, until });
 
   console.log(`Window ${since} .. ${until}\n`);
   console.log(`Cron runs: ${cron.runs}   CPU P50 ${ms(cron.p50Ms)}   P99 ${ms(cron.p99Ms)}   max ${ms(cron.maxMs)}`);
@@ -136,14 +136,14 @@ async function printReport() {
     );
   }
 
-  console.log(`\nD1 per UTC day (allowance ${LIMITS.d1ReadsPerDay.toLocaleString()} read / ${LIMITS.d1WritesPerDay.toLocaleString()} written):`);
+  console.log(`\nD1 per UTC day (allowance ${LIMITS.d1ReadsPerDay.toLocaleString("en-GB")} read / ${LIMITS.d1WritesPerDay.toLocaleString("en-GB")} written):`);
   for (const d of d1) {
     console.log(`  ${d.day}${d.partial ? "*" : " "}  read ${String(d.rowsRead).padStart(9)}   written ${String(d.rowsWritten).padStart(7)} (${(d.writeShare * 100).toFixed(2)}%)`);
   }
-  if (d1.some((d) => d.partial)) console.log("  * today, still filling up");
+  if (d1.some((d) => d.partial)) console.log("  * whole UTC day, only partly inside the window (or still filling up)");
 
   console.log("\nP1.8 verdicts:");
-  for (const v of verdicts(cron, d1)) console.log(`  ${v.check.padEnd(18)} ${v.value.padStart(12)}  (${v.limit})  ${v.result}`);
+  for (const v of verdicts(cron, statuses, d1)) console.log(`  ${v.check.padEnd(20)} ${v.value.padStart(12)}  (${v.limit})  ${v.result}`);
 }
 
 await (args.schema ? printSchema() : printReport());

@@ -44,16 +44,22 @@ export function summariseStatuses(groups: StatusGroup[]) {
   const byStatus: Record<string, number> = {};
   let requests = 0;
   let errors = 0;
+  let maxUs: number | null = null;
   for (const g of groups) {
     byStatus[g.status] = (byStatus[g.status] ?? 0) + g.requests;
     requests += g.requests;
     errors += g.errors;
+    maxUs = Math.max(maxUs ?? 0, g.cpuTimeMax);
   }
-  return { requests, errors, byStatus };
+  return { requests, errors, maxMs: maxUs === null ? null : maxUs / 1000, byStatus };
 }
 
-/** Oldest day first. `today` (UTC) is still filling up, so it's marked partial. */
-export function summariseD1(days: D1Day[], today: string) {
+/**
+ * Oldest day first. D1 reports whole UTC days, so the window's first and last days are
+ * marked partial: they include activity outside the window, and the last may still be filling up.
+ */
+export function summariseD1(days: D1Day[], window: { since: string; until: string }) {
+  const edges = new Set([window.since.slice(0, 10), window.until.slice(0, 10)]);
   return [...days]
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((d) => ({
@@ -61,7 +67,7 @@ export function summariseD1(days: D1Day[], today: string) {
       rowsRead: d.rowsRead,
       rowsWritten: d.rowsWritten,
       writeShare: d.rowsWritten / LIMITS.d1WritesPerDay,
-      partial: d.date === today,
+      partial: edges.has(d.date),
     }));
 }
 
@@ -76,12 +82,21 @@ function verdict(check: string, value: number | null, limit: number, unit: strin
   };
 }
 
-/** P1.8's three acceptance checks. Missing data is never a pass. */
-export function verdicts(cron: ReturnType<typeof summariseCron>, d1: ReturnType<typeof summariseD1>): Verdict[] {
+/**
+ * P1.8's three acceptance checks. Missing data is never a pass. P99 is cron-only (HTTP
+ * figures mix in light page loads), but the heaviest run also counts HTTP invocations,
+ * since a manual import runs the same importer, backfill included.
+ */
+export function verdicts(
+  cron: ReturnType<typeof summariseCron>,
+  invocations: ReturnType<typeof summariseStatuses>,
+  d1: ReturnType<typeof summariseD1>,
+): Verdict[] {
   const maxWrites = d1.length === 0 ? null : Math.max(...d1.map((d) => d.rowsWritten));
+  const maxes = [cron.maxMs, invocations.maxMs].filter((v) => v !== null);
   return [
-    verdict("import P99 CPU", cron.p99Ms, LIMITS.importP99Ms, "ms"),
-    verdict("heaviest run CPU", cron.maxMs, LIMITS.heaviestRunMs, "ms"),
+    verdict("cron import P99 CPU", cron.p99Ms, LIMITS.importP99Ms, "ms"),
+    verdict("heaviest run CPU", maxes.length === 0 ? null : Math.max(...maxes), LIMITS.heaviestRunMs, "ms"),
     verdict("daily D1 writes", maxWrites, LIMITS.d1WritesPerDay * LIMITS.d1WriteShare, "rows"),
   ];
 }
