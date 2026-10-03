@@ -5,5 +5,5 @@
     "lib": ["ES2024"],
     "types": ["@cloudflare/vitest-plugin/types"]
   },
-  "include": ["./**/*.ts", "../src/worker", "../src/web/format.ts","../worker-configuration.d.ts"]
+  "include": ["./**/*.ts", "../src/worker", "../src/web/format.ts", "../scripts/usage-report/report.ts", "../worker-configuration.d.ts"]
 }
