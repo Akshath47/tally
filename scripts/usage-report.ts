@@ -6,7 +6,7 @@
 // owner's shell) and CLOUDFLARE_ACCOUNT_ID. Reports Worker CPU for cron runs and all
 // invocations, invocation statuses, and D1 rows read/written per UTC day, then P1.8's
 // verdicts. The token is never printed. The window defaults to the last 24 hours and
-// can't exceed 7 days, the Workers datasets' maximum. `--schema` prints each dataset's
+// can't exceed 7 days, the cron dataset's maximum (verified with --schema, 2026-10-03). `--schema` prints each dataset's
 // available fields instead, to check the queries below against the live API.
 
 import { readFileSync } from "node:fs";
@@ -79,7 +79,12 @@ type Report = {
   viewer: {
     accounts: {
       cron: CronRow[];
-      invocations: { dimensions: { status: string }; sum: { requests: number; errors: number }; quantiles: { cpuTimeP50: number; cpuTimeP99: number } }[];
+      invocations: {
+        dimensions: { status: string };
+        sum: { requests: number; errors: number };
+        quantiles: { cpuTimeP50: number; cpuTimeP99: number };
+        max: { cpuTime: number };
+      }[];
       d1: { dimensions: { date: string }; sum: { rowsRead: number; rowsWritten: number } }[];
     }[];
   };
@@ -91,7 +96,7 @@ const REPORT_QUERY = `query ($a: string!, $script: string!, $since: Time!, $unti
       datetime cpuTimeUs status
     }
     invocations: workersInvocationsAdaptive(limit: ${GROUP_LIMIT}, filter: { scriptName: $script, datetime_geq: $since, datetime_leq: $until }) {
-      dimensions { status } sum { requests errors } quantiles { cpuTimeP50 cpuTimeP99 }
+      dimensions { status } sum { requests errors } quantiles { cpuTimeP50 cpuTimeP99 } max { cpuTime }
     }
     d1: d1AnalyticsAdaptiveGroups(limit: ${GROUP_LIMIT}, filter: { databaseId: $db, date_geq: $sinceDate, date_leq: $untilDate }) {
       dimensions { date } sum { rowsRead rowsWritten }
@@ -112,7 +117,7 @@ async function printReport() {
   }
 
   const cron = summariseCron(acct.cron);
-  const groups: StatusGroup[] = acct.invocations.map((g) => ({ status: g.dimensions.status, ...g.sum, ...g.quantiles }));
+  const groups: StatusGroup[] = acct.invocations.map((g) => ({ status: g.dimensions.status, ...g.sum, ...g.quantiles, cpuTimeMax: g.max.cpuTime }));
   const statuses = summariseStatuses(groups);
   const d1Days: D1Day[] = acct.d1.map((d) => ({ date: d.dimensions.date, ...d.sum }));
   const d1 = summariseD1(d1Days, new Date().toISOString().slice(0, 10));
@@ -123,9 +128,12 @@ async function printReport() {
   console.log("  heaviest:");
   for (const r of cron.heaviest) console.log(`    ${r.datetime}  ${ms(r.cpuTimeUs / 1000)}  ${r.status}`);
 
-  console.log(`\nAll invocations (sampled): ${statuses.requests} requests, ${statuses.errors} errors`);
+  // The API has no trigger dimension here, so HTTP requests and cron runs are counted together.
+  console.log(`\nAll invocations, HTTP and cron together (sampled): ${statuses.requests} requests, ${statuses.errors} errors`);
   for (const g of groups) {
-    console.log(`  ${g.status.padEnd(24)} ${String(g.requests).padStart(6)}   CPU P50 ${ms(g.cpuTimeP50 / 1000)}   P99 ${ms(g.cpuTimeP99 / 1000)}`);
+    console.log(
+      `  ${g.status.padEnd(24)} ${String(g.requests).padStart(6)}   CPU P50 ${ms(g.cpuTimeP50 / 1000)}   P99 ${ms(g.cpuTimeP99 / 1000)}   max ${ms(g.cpuTimeMax / 1000)}`,
+    );
   }
 
   console.log(`\nD1 per UTC day (allowance ${LIMITS.d1ReadsPerDay.toLocaleString()} read / ${LIMITS.d1WritesPerDay.toLocaleString()} written):`);

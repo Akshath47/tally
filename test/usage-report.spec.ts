@@ -51,9 +51,9 @@ describe("summariseCron", () => {
 describe("summariseStatuses", () => {
   it("totals requests and errors and keys requests by status", () => {
     const s = summariseStatuses([
-      { status: "success", requests: 40, errors: 0, cpuTimeP50: 900, cpuTimeP99: 2000 },
-      { status: "clientDisconnected", requests: 2, errors: 0, cpuTimeP50: 300, cpuTimeP99: 400 },
-      { status: "scriptThrewException", requests: 1, errors: 1, cpuTimeP50: 100, cpuTimeP99: 100 },
+      { status: "success", requests: 40, errors: 0, cpuTimeP50: 900, cpuTimeP99: 2000, cpuTimeMax: 2500 },
+      { status: "clientDisconnected", requests: 2, errors: 0, cpuTimeP50: 300, cpuTimeP99: 400, cpuTimeMax: 450 },
+      { status: "scriptThrewException", requests: 1, errors: 1, cpuTimeP50: 100, cpuTimeP99: 100, cpuTimeMax: 100 },
     ]);
     expect(s).toEqual({ requests: 43, errors: 1, byStatus: { success: 40, clientDisconnected: 2, scriptThrewException: 1 } });
   });

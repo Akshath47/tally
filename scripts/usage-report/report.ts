@@ -3,8 +3,11 @@
 
 /** One cron invocation from `workersInvocationsScheduled`. */
 export type CronRow = { datetime: string; cpuTimeUs: number; status: string };
-/** One `workersInvocationsAdaptive` group, grouped by status. CPU quantiles are in µs. */
-export type StatusGroup = { status: string; requests: number; errors: number; cpuTimeP50: number; cpuTimeP99: number };
+/**
+ * One `workersInvocationsAdaptive` group, grouped by status. CPU figures are in µs. The
+ * dataset has no trigger dimension, so these cover HTTP requests and cron runs together.
+ */
+export type StatusGroup = { status: string; requests: number; errors: number; cpuTimeP50: number; cpuTimeP99: number; cpuTimeMax: number };
 /** One `d1AnalyticsAdaptiveGroups` row, grouped by UTC date. */
 export type D1Day = { date: string; rowsRead: number; rowsWritten: number };
 
