@@ -16,7 +16,8 @@ export const LIMITS = {
   importP99Ms: 7,
   heaviestRunMs: 10,
   d1WritesPerDay: 100_000,
-  d1WriteShare: 0.05,
+  // P1.8: daily writes stay under 5% of the allowance.
+  d1WritesBudget: 5_000,
   d1ReadsPerDay: 5_000_000,
 };
 
@@ -27,7 +28,8 @@ export function percentile(sortedAsc: number[], p: number): number | null {
 }
 
 export function summariseCron(rows: CronRow[]) {
-  const ms = rows.map((r) => r.cpuTimeUs / 1000).sort((a, b) => a - b);
+  const byCpu = [...rows].sort((a, b) => b.cpuTimeUs - a.cpuTimeUs);
+  const ms = byCpu.map((r) => r.cpuTimeUs / 1000).reverse();
   const nonSuccess: Record<string, number> = {};
   for (const r of rows) if (r.status !== "success") nonSuccess[r.status] = (nonSuccess[r.status] ?? 0) + 1;
   return {
@@ -35,23 +37,17 @@ export function summariseCron(rows: CronRow[]) {
     p50Ms: percentile(ms, 0.5),
     p99Ms: percentile(ms, 0.99),
     maxMs: ms.at(-1) ?? null,
-    heaviest: [...rows].sort((a, b) => b.cpuTimeUs - a.cpuTimeUs).slice(0, 5),
+    heaviest: byCpu.slice(0, 5),
     nonSuccess,
   };
 }
 
 export function summariseStatuses(groups: StatusGroup[]) {
-  const byStatus: Record<string, number> = {};
-  let requests = 0;
-  let errors = 0;
-  let maxUs: number | null = null;
-  for (const g of groups) {
-    byStatus[g.status] = (byStatus[g.status] ?? 0) + g.requests;
-    requests += g.requests;
-    errors += g.errors;
-    maxUs = Math.max(maxUs ?? 0, g.cpuTimeMax);
-  }
-  return { requests, errors, maxMs: maxUs === null ? null : maxUs / 1000, byStatus };
+  return {
+    requests: groups.reduce((n, g) => n + g.requests, 0),
+    errors: groups.reduce((n, g) => n + g.errors, 0),
+    maxMs: groups.length === 0 ? null : Math.max(...groups.map((g) => g.cpuTimeMax)) / 1000,
+  };
 }
 
 /**
@@ -60,15 +56,7 @@ export function summariseStatuses(groups: StatusGroup[]) {
  */
 export function summariseD1(days: D1Day[], window: { since: string; until: string }) {
   const edges = new Set([window.since.slice(0, 10), window.until.slice(0, 10)]);
-  return [...days]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map((d) => ({
-      day: d.date,
-      rowsRead: d.rowsRead,
-      rowsWritten: d.rowsWritten,
-      writeShare: d.rowsWritten / LIMITS.d1WritesPerDay,
-      partial: edges.has(d.date),
-    }));
+  return [...days].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({ ...d, partial: edges.has(d.date) }));
 }
 
 export type Verdict = { check: string; value: string; limit: string; result: "pass" | "fail" | "not enough data" };
@@ -97,6 +85,6 @@ export function verdicts(
   return [
     verdict("cron import P99 CPU", cron.p99Ms, LIMITS.importP99Ms, "ms"),
     verdict("heaviest run CPU", maxes.length === 0 ? null : Math.max(...maxes), LIMITS.heaviestRunMs, "ms"),
-    verdict("daily D1 writes", maxWrites, LIMITS.d1WritesPerDay * LIMITS.d1WriteShare, "rows"),
+    verdict("daily D1 writes", maxWrites, LIMITS.d1WritesBudget, "rows"),
   ];
 }

@@ -9,12 +9,12 @@
 // can't exceed 7 days, the cron dataset's maximum (verified with --schema, 2026-10-03). `--schema` prints each dataset's
 // available fields instead, to check the queries below against the live API.
 
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { experimental_readRawConfig } from "wrangler";
 import { LIMITS, summariseCron, summariseD1, summariseStatuses, verdicts, type CronRow, type D1Day, type StatusGroup } from "./usage-report/report.ts";
 
 const ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
-const SCRIPT_NAME = "tally";
 const MAX_WINDOW_MS = 7 * 24 * 3_600_000;
 const CRON_LIMIT = 1000;
 const GROUP_LIMIT = 100;
@@ -69,10 +69,12 @@ function window() {
   return { since: since.toISOString(), until: until.toISOString() };
 }
 
-/** The one D1 database, read from wrangler.jsonc so its id isn't duplicated here. */
-function databaseId(): string {
-  const id = /"database_id":\s*"([^"]+)"/.exec(readFileSync("wrangler.jsonc", "utf8"))?.[1];
-  return id ?? fail("No database_id found in wrangler.jsonc.");
+/** The Worker's name and its DB binding's database, from wrangler.jsonc so neither is duplicated here. */
+function workerConfig() {
+  const { rawConfig } = experimental_readRawConfig({ config: fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)) });
+  const db = rawConfig.d1_databases?.find((d: { binding: string }) => d.binding === "DB")?.database_id;
+  if (!rawConfig.name || !db) fail("wrangler.jsonc needs a name and a DB binding with a database_id.");
+  return { scriptName: rawConfig.name, databaseId: db };
 }
 
 type Report = {
@@ -108,8 +110,9 @@ const ms = (v: number | null) => (v === null ? "n/a" : `${v.toFixed(2)} ms`);
 
 async function printReport() {
   const { since, until } = window();
+  const { scriptName, databaseId } = workerConfig();
   const data = await gql<Report>(REPORT_QUERY, {
-    a: ACCOUNT, script: SCRIPT_NAME, since, until, sinceDate: since.slice(0, 10), untilDate: until.slice(0, 10), db: databaseId(),
+    a: ACCOUNT, script: scriptName, since, until, sinceDate: since.slice(0, 10), untilDate: until.slice(0, 10), db: databaseId,
   });
   const acct = data.viewer.accounts[0]!;
   if (acct.cron.length === CRON_LIMIT || acct.invocations.length === GROUP_LIMIT || acct.d1.length === GROUP_LIMIT) {
@@ -138,7 +141,7 @@ async function printReport() {
 
   console.log(`\nD1 per UTC day (allowance ${LIMITS.d1ReadsPerDay.toLocaleString("en-GB")} read / ${LIMITS.d1WritesPerDay.toLocaleString("en-GB")} written):`);
   for (const d of d1) {
-    console.log(`  ${d.day}${d.partial ? "*" : " "}  read ${String(d.rowsRead).padStart(9)}   written ${String(d.rowsWritten).padStart(7)} (${(d.writeShare * 100).toFixed(2)}%)`);
+    console.log(`  ${d.date}${d.partial ? "*" : " "}  read ${String(d.rowsRead).padStart(9)}   written ${String(d.rowsWritten).padStart(7)} (${((d.rowsWritten / LIMITS.d1WritesPerDay) * 100).toFixed(2)}%)`);
   }
   if (d1.some((d) => d.partial)) console.log("  * whole UTC day, only partly inside the window (or still filling up)");
 
