@@ -1,8 +1,11 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/worker";
+import { enableAccount, linkAccounts, loadAccount } from "../src/worker/db/account-review";
 import { runImport } from "../src/worker/importer";
-import { NOW, resetDb } from "./db";
+import { CountingDb } from "../src/worker/importer/db";
+import { claimLock } from "../src/worker/importer/lock";
+import { NOW, insertRun, resetDb } from "./db";
 import { AMEX, REVOLUT, accountJson, txn, world, type WorldAccount } from "./fixtures/lunchflow";
 
 // A reconnect gives the Amex a new Lunch Flow id (4). Tally ids: Revolut 1, Amex 2, the new id 3.
@@ -119,10 +122,28 @@ describe("POST /api/accounts/:id/link", () => {
     expect(fetchedFrom(2, before)).toBe(false);
   });
 
-  it("catches up from 7 days before the account's newest transaction", async () => {
+  it("catches up from 7 days before the newest transaction of an account that finished backfilling", async () => {
+    await env.DB.prepare("UPDATE accounts SET backfill_complete = 1 WHERE id = 2").run();
     await link(HELD, 2);
     const row = await env.DB.prepare("SELECT backfill_floor_date, backfill_complete, import_enabled FROM accounts WHERE id = 2").first();
     expect(row).toEqual({ backfill_floor_date: "2026-09-24", backfill_complete: 0, import_enabled: 1 });
+  });
+
+  it("gives a target that was still backfilling a full backfill, so no older history is skipped", async () => {
+    await env.DB.prepare("UPDATE accounts SET backfill_complete = 0, backfill_cursor_date = '2026-06-01' WHERE id = 2").run();
+    await link(HELD, 2);
+    const row = await env.DB.prepare("SELECT backfill_floor_date, backfill_cursor_date FROM accounts WHERE id = 2").first();
+    expect(row).toEqual({ backfill_floor_date: null, backfill_cursor_date: null });
+  });
+
+  it("refuses while an import holds the lock, so the run can't overwrite the link", async () => {
+    // The route reads the real clock, so the lease is claimed from it too.
+    await claimLock(new CountingDb(env.DB), await insertRun(), new Date(), 60_000);
+    const before = await accountRows();
+    const res = await link(HELD, 2);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "import_running" });
+    expect(await accountRows()).toEqual(before);
   });
 
   it("gives an account with no transactions a full backfill", async () => {
@@ -164,6 +185,11 @@ describe("POST /api/accounts/:id/link", () => {
     });
 
     it("a link from an account that isn't awaiting review", () => refuses(1, 2, "not_awaiting_review"));
+
+    it("a link from an account whose currency isn't known yet", async () => {
+      await env.DB.prepare(`UPDATE accounts SET currency = NULL WHERE id IN (${HELD}, 2)`).run();
+      await refuses(HELD, 2, "invalid_link_target");
+    });
   });
 
   it("returns 404 for unknown accounts and 400 for a bad body", async () => {
@@ -177,5 +203,34 @@ describe("POST /api/accounts/:id/link", () => {
       env,
     );
     expect(bad.status).toBe(400);
+  });
+});
+
+// The routes validate a snapshot, then write; these writes must re-check it, so a request that
+// raced another (a double tap, or enable and link together) changes nothing.
+describe("review writes against a stale snapshot", () => {
+  it("enable changes nothing once the row has been linked", async () => {
+    await link(HELD, 2);
+    const before = await accountRows();
+    expect(await enableAccount(env.DB, HELD, NOW)).toBe(false);
+    expect(await accountRows()).toEqual(before);
+  });
+
+  it("link changes nothing once the row has been enabled", async () => {
+    const held = (await loadAccount(env.DB, HELD))!;
+    const target = (await loadAccount(env.DB, 2))!;
+    await enable(HELD);
+    const before = await accountRows();
+    expect(await linkAccounts(env.DB, held, target, NOW)).toBe(false);
+    expect(await accountRows()).toEqual(before);
+  });
+
+  it("link changes nothing once the target has changed provider id", async () => {
+    const held = (await loadAccount(env.DB, HELD))!;
+    const target = (await loadAccount(env.DB, 2))!;
+    await env.DB.prepare("UPDATE accounts SET provider_account_id = '99' WHERE id = 2").run();
+    const before = await accountRows();
+    expect(await linkAccounts(env.DB, held, target, NOW)).toBe(false);
+    expect(await accountRows()).toEqual(before);
   });
 });
