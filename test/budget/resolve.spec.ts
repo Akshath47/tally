@@ -64,8 +64,8 @@ describe("resolved", () => {
 
     // Two 4-character patterns that both match: the older one wins.
     const t2 = await L.txn(a1, { merchant: "Bar Deli" });
-    const older = await insertRule("contains", "bar ", SEEDED.shopping);
-    await insertRule("contains", " del", SEEDED.groceries);
+    const older = await insertRule("contains", "ar d", SEEDED.shopping);
+    await insertRule("contains", "r de", SEEDED.groceries);
     expect((await resolve(t2))!.rule_id).toBe(older);
   });
 
