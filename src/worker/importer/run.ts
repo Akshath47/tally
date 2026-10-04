@@ -28,7 +28,7 @@ export type { AccountSummary };
 const DEFAULT_BACKFILL_DAYS = 90;
 // Time past a run's budget for its last D1 writes and closing the run.
 const LEASE_MARGIN_MS = 30_000;
-const BUDGET_CURRENCY = "GBP";
+export const BUDGET_CURRENCY = "GBP";
 const DAY_MS = 86_400_000;
 
 export type ImportEnv = { DB: D1Database; LUNCHFLOW_API_KEY: string; BACKFILL_DAYS?: string };
