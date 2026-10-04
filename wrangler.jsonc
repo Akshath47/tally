@@ -27,10 +27,10 @@
 	"observability": {
 		"enabled": true
 	},
-	// Cron is UTC. Hourly during P1.7 verification, every 6h afterwards.
+	// Cron is UTC. Every 3h: Lunch Flow only refreshes a few times a day (docs/phase1-assessment.md).
 	"triggers": {
 		"crons": [
-			"0 * * * *"
+			"0 */3 * * *"
 		]
 	},
 	"d1_databases": [

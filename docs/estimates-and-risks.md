@@ -30,7 +30,7 @@
    - Detect it with a per-account staleness signal plus `status` and error codes.
 5. **Rate limits and pagination:**
    - Both are undocumented.
-   - Stay conservative: cron every 6 hours after Phase 1, and manual imports with a 60 s cooldown.
+   - Stay conservative: cron every 3 hours after Phase 1, and manual imports with a 60 s cooldown.
 6. **Free-tier limits:**
    - 10 ms CPU per invocation.
    - 50 D1 statements per invocation, with each `batch()` statement counted separately; this is why bulk upserts use `json_each`.
