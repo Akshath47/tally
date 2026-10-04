@@ -2,48 +2,21 @@
 //
 // Run:  node scripts/usage-report.ts [--since <ISO>] [--until <ISO>] [--schema]
 //
-// Needs CLOUDFLARE_ANALYTICS_TOKEN (a read-only Account Analytics token, exported in the
-// owner's shell) and CLOUDFLARE_ACCOUNT_ID. Reports Worker CPU for cron runs and all
+// Needs the env vars in scripts/lib/cloudflare.ts. Reports Worker CPU for cron runs and all
 // invocations, invocation statuses, and D1 rows read/written per UTC day, then P1.8's
-// verdicts. The token is never printed. The window defaults to the last 24 hours and
-// can't exceed 7 days, the cron dataset's maximum (verified with --schema, 2026-10-03). `--schema` prints each dataset's
+// verdicts. The window defaults to the last 24 hours and can't exceed 7 days, the cron
+// dataset's maximum (verified with --schema, 2026-10-03). `--schema` prints each dataset's
 // available fields instead, to check the queries below against the live API.
 
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { experimental_readRawConfig } from "wrangler";
+import { ACCOUNT, fail, gql, workerConfig } from "./lib/cloudflare.ts";
 import { LIMITS, summariseCron, summariseD1, summariseStatuses, verdicts, type CronRow, type D1Day, type StatusGroup } from "./usage-report/report.ts";
 
-const ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
 const MAX_WINDOW_MS = 7 * 24 * 3_600_000;
 const CRON_LIMIT = 1000;
 const GROUP_LIMIT = 100;
 
-const TOKEN = process.env.CLOUDFLARE_ANALYTICS_TOKEN;
-const ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID;
-
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
-
-if (!TOKEN || !ACCOUNT) fail("Set CLOUDFLARE_ANALYTICS_TOKEN and CLOUDFLARE_ACCOUNT_ID in your shell first.");
-
 const { values: args } = parseArgs({ options: { since: { type: "string" }, until: { type: "string" }, schema: { type: "boolean" } } });
-
-async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) fail(`Analytics API answered HTTP ${res.status}.`);
-  const body = (await res.json()) as { data: T | null; errors: { message: string }[] | null };
-  // A wrong-scope token still gets 200, with the reason in `errors`.
-  if (body.errors?.length) fail(`Analytics API errors:\n${body.errors.map((e) => `  - ${e.message}`).join("\n")}`);
-  return body.data!;
-}
 
 const DATASETS = ["workersInvocationsScheduled", "workersInvocationsAdaptive", "d1AnalyticsAdaptiveGroups"] as const;
 
@@ -67,14 +40,6 @@ function window() {
   if (since >= until) fail("--since must be before --until.");
   if (until.getTime() - since.getTime() > MAX_WINDOW_MS) fail("The window can't exceed 7 days.");
   return { since: since.toISOString(), until: until.toISOString() };
-}
-
-/** The Worker's name and its DB binding's database, from wrangler.jsonc so neither is duplicated here. */
-function workerConfig() {
-  const { rawConfig } = experimental_readRawConfig({ config: fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)) });
-  const db = rawConfig.d1_databases?.find((d: { binding: string }) => d.binding === "DB")?.database_id;
-  if (!rawConfig.name || !db) fail("wrangler.jsonc needs a name and a DB binding with a database_id.");
-  return { scriptName: rawConfig.name, databaseId: db };
 }
 
 type Report = {
