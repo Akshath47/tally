@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Transactions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;height:844px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+.muted{color:#8F9498}
+.acct{display:inline-flex;align-items:center;height:17px;padding:0 5px;border-radius:5px;font-size:9.5px;font-weight:600;letter-spacing:.05em}
+.rev{background:#2E3133;color:#D5D7DA}
+.amex{background:#24303A;color:#A8BACB}
+.iconbtn{width:44px;height:44px;border:0;border-radius:12px;background:transparent;display:inline-grid;place-items:center;color:#C9CCCF;cursor:pointer}
+.iconbtn:hover{background:#222426;color:#E6E7E9}
+.chip{flex:none;min-height:36px;padding:0 13px;border-radius:18px;border:1px solid #2F3234;background:transparent;font-size:13px;cursor:pointer;color:#C9CCCF;display:inline-flex;align-items:center}
+.chip:hover{border-color:#4A4E52;color:#E6E7E9}
+.chip.on{background:#222A26;border-color:#3D4A43;color:#B9CEC2}
+.dhead{display:flex;justify-content:space-between;align-items:baseline;padding:16px 20px 6px;font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:#8F9498}
+.tx{display:flex;align-items:center;gap:12px;min-height:62px;padding:8px 20px;color:#E6E7E9;text-decoration:none;border-bottom:1px solid #1F2123}
+.tx:hover{background:#18191B;color:#E6E7E9}
+.mono{width:36px;height:36px;border-radius:11px;background:#1D1F20;border:1px solid #2B2E30;display:grid;place-items:center;font-size:13px;font-weight:500;color:#C9CCCF;flex:none}
+.meta{display:flex;align-items:center;gap:6px;font-size:12px;color:#8F9498;margin-top:2px}
+.mk{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:500}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:84px;padding:0 8px 30px;background:rgba(20,21,22,.94);border-top:1px solid #26292B;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.tab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;font-weight:500;color:#7E8388;text-decoration:none}
+.tab:hover{color:#E6E7E9}
+.tab.on,.tab.on:hover{color:#A9C0B3}
+.pip{position:absolute;top:3px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#8FA89A;color:#121513;font-size:10.5px;font-weight:600;display:grid;place-items:center}
+</style>
+</helmet>
+<div class="app">
+<div style="position: absolute; inset: 0 0 84px 0; overflow-y: auto">
+
+<div style="padding: 52px 12px 0 20px; display: flex; align-items: center; justify-content: space-between">
+<h1 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Transactions</h1>
+<div style="display: flex; align-items: center">
+<button class="iconbtn" type="button" aria-label="Previous month"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+<span style="font-size: 14px; min-width: 34px; text-align: center">Oct</span>
+<button class="iconbtn" type="button" aria-label="Next month" disabled style="opacity: .35"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+</div>
+</div>
+
+<div style="padding: 10px 16px 0">
+<label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 12px; background: #1D1F20; border: 1px solid #26292B">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8F9498" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+<input type="search" placeholder="Merchant, amount or category" aria-label="Search transactions" style="flex: 1; border: 0; background: transparent; outline: none; font-size: 14.5px; color: #E6E7E9">
+</label>
+</div>
+<div style="display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px 0; scrollbar-width: none">
+<button class="chip on" type="button" aria-pressed="true">All</button>
+<button class="chip" type="button" aria-pressed="false">Revolut</button>
+<button class="chip" type="button" aria-pressed="false">Amex</button>
+<button class="chip" type="button" aria-pressed="false">Pending</button>
+<button class="chip" type="button" aria-pressed="false">Edited</button>
+<button class="chip" type="button" aria-pressed="false">Category ▾</button>
+</div>
+<div style="padding: 10px 20px 0; font-size: 12.5px; color: #8F9498">68 transactions · £1,254 counted towards budget</div>
+
+<div class="dhead"><span>Today · Fri 16 Oct</span><span style="letter-spacing: 0; text-transform: none">−£56.50</span></div>
+<a class="tx" href="EditorPending.dc.html">
+<span class="mono">N</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Northside Pharmacy</div><div class="meta"><span class="acct rev">REV</span>Uncategorised<span class="mk" style="color: #C9CCCF"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>Pending</span></div></div>
+<span style="font-size: 14.5px; color: #8F9498; font-style: italic">−£8.49</span>
+</a>
+<a class="tx" href="EditorPending.dc.html">
+<span class="mono">H</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Harlow's Market</div><div class="meta"><span class="acct amex">AMEX</span>Groceries<span class="mk" style="color: #C9CCCF"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>Pending</span></div></div>
+<span style="font-size: 14.5px; color: #8F9498; font-style: italic">−£33.81</span>
+</a>
+<a class="tx" href="Editor.dc.html">
+<span class="mono">C</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">City Cabs</div><div class="meta"><span class="acct rev">REV</span>Transport</div></div>
+<span style="font-size: 14.5px">−£14.20</span>
+</a>
+
+<div class="dhead"><span>Thu 15 Oct</span><span style="letter-spacing: 0; text-transform: none">−£50.99</span></div>
+<a class="tx" href="Editor.dc.html">
+<span class="mono">V</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Via Roma Kitchen</div><div class="meta"><span class="acct amex">AMEX</span>Eating out<span class="mk" style="color: #B9CEC2"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>Edited</span></div></div>
+<div style="text-align: right"><div style="font-size: 14.5px">−£32.00</div><div style="font-size: 11px; color: #8F9498; text-decoration: line-through">£64.00</div></div>
+</a>
+<a class="tx" href="Editor.dc.html">
+<span class="mono">P</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Paper &amp; Ink Books</div><div class="meta"><span class="acct amex">AMEX</span>One-offs · tracked</div></div>
+<span style="font-size: 14.5px">−£18.99</span>
+</a>
+<a class="tx" href="Editor.dc.html">
+<span class="mono">A</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Amex payment</div><div class="meta"><span class="acct rev">REV</span>Card repayment · excluded</div></div>
+<span style="font-size: 14.5px; color: #8F9498">−£400.00</span>
+</a>
+
+<div class="dhead"><span>Wed 14 Oct</span><span style="letter-spacing: 0; text-transform: none">−£96.40</span></div>
+<a class="tx" href="Editor.dc.html">
+<span class="mono">H</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Harbour Energy</div><div class="meta"><span class="acct rev">REV</span>Bills</div></div>
+<span style="font-size: 14.5px">−£96.40</span>
+</a>
+<a class="tx" href="Editor.dc.html">
+<span class="mono">S</span>
+<div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Salary</div><div class="meta"><span class="acct rev">REV</span>Income · excluded</div></div>
+<span style="font-size: 14.5px; color: #8F9498">+£2,450.00</span>
+</a>
+</div>
+
+<nav class="tabbar" aria-label="Main">
+<a class="tab" href="Main.dc.html"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8" opacity=".35"></circle><path d="M12 4a8 8 0 0 1 7.6 10.5"></path></svg>Home</a>
+<a class="tab on" href="Transactions.dc.html" aria-current="page"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01"></path></svg>Transactions</a>
+<a class="tab" href="Budget.dc.html"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg>Budget</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

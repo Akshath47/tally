@@ -1,6 +1,6 @@
 # Mobile UI design spec
 
-The agreed design for Tally's Phase 2 screens, from a design session with the owner on 2026-10-04. The canvas with every screen and state is a private artifact: <https://claude.ai/artifact/NtWiFpP439EPM98ryVMVE3>. This doc is the written record of it, so the build doesn't depend on the canvas staying around.
+The agreed design for Tally's Phase 2 screens, from a design session with the owner on 2026-10-04. The canvas with every screen and state is a private artifact: <https://claude.ai/artifact/NtWiFpP439EPM98ryVMVE3>. This doc is the written record of it, so the build doesn't depend on the canvas staying around. The screen sources and screenshots are in [design/](design/README.md).
 
 [phase-2-spec.md](phase-2-spec.md) stays the authority on data, budgeting rules and the API. This doc covers what the screens show and how they behave. Where the design asks for something the spec doesn't do yet, it's listed under [Differences from the backend spec](#differences-from-the-backend-spec) for the owner to settle.
 

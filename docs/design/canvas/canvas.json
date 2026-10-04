@@ -1,0 +1,41 @@
+{
+  "v": 3,
+  "attachments": {},
+  "createdOnFiles": {"at": "2026-10-04T12:00:00Z", "v": 1},
+  "title": "Tally mobile UI",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Palettes.dc.html": {"x": 0, "y": 0, "w": 1376, "h": 540, "title": "Style: Charcoal + Sage, Manrope", "radius": 24},
+    "Main.dc.html": {"x": 0, "y": 950, "w": 390, "h": 844, "title": "Home (11 to sort)", "is_interactive": true, "radius": 44},
+    "Inbox.dc.html": {"x": 470, "y": 950, "w": 390, "h": 844, "title": "To sort (opened from the Home chip)", "is_interactive": true, "radius": 44},
+    "Editor.dc.html": {"x": 940, "y": 950, "w": 390, "h": 844, "title": "Transaction editor", "is_interactive": true, "radius": 44},
+    "Budget.dc.html": {"x": 1410, "y": 950, "w": 390, "h": 844, "title": "Budget settings", "is_interactive": true, "radius": 44},
+    "BudgetError.dc.html": {"x": 1880, "y": 950, "w": 390, "h": 844, "title": "Budget settings: over-allocated", "is_interactive": true, "radius": 44},
+
+    "Transactions.dc.html": {"x": 0, "y": 2290, "w": 390, "h": 844, "title": "Transactions", "is_interactive": true, "radius": 44},
+    "EditorPending.dc.html": {"x": 470, "y": 2290, "w": 390, "h": 844, "title": "Editor: pending (read-only)", "is_interactive": true, "radius": 44},
+    "Categories.dc.html": {"x": 940, "y": 2290, "w": 390, "h": 1200, "title": "Categories (full scroll)", "is_interactive": true},
+    "Rules.dc.html": {"x": 1410, "y": 2290, "w": 390, "h": 844, "title": "Merchant rules", "is_interactive": true, "radius": 44},
+    "Accounts.dc.html": {"x": 1880, "y": 2290, "w": 390, "h": 844, "title": "Accounts status (Amex stale)", "is_interactive": true, "radius": 44},
+    "NewAccount.dc.html": {"x": 2350, "y": 2290, "w": 390, "h": 844, "title": "New account found: review", "is_interactive": true, "radius": 44},
+    "Review.dc.html": {"x": 2820, "y": 2290, "w": 390, "h": 1180, "title": "Monthly review (full scroll)", "is_interactive": true},
+
+    "FirstRun.dc.html": {"x": 0, "y": 3870, "w": 390, "h": 844, "title": "First run: no budget yet", "radius": 44},
+    "HomeOver.dc.html": {"x": 470, "y": 3870, "w": 390, "h": 844, "title": "Home: over budget, stale Amex, nothing to sort (no chip)", "is_interactive": true, "radius": 44},
+    "Loading.dc.html": {"x": 940, "y": 3870, "w": 390, "h": 844, "title": "Home: loading", "radius": 44},
+    "Error.dc.html": {"x": 1410, "y": 3870, "w": 390, "h": 844, "title": "Home: error", "is_interactive": true, "radius": 44}
+  },
+  "order": [
+    "Palettes.dc.html", "Main.dc.html", "Inbox.dc.html", "Editor.dc.html", "Budget.dc.html", "BudgetError.dc.html",
+    "Transactions.dc.html", "EditorPending.dc.html", "Categories.dc.html", "Rules.dc.html", "Accounts.dc.html", "NewAccount.dc.html", "Review.dc.html",
+    "FirstRun.dc.html", "HomeOver.dc.html","Loading.dc.html", "Error.dc.html"
+  ],
+  "notes": {
+    "row0": {"kind": "title1", "maxW": 1376, "text": "Style", "w": 240, "x": 0, "y": -270},
+    "row1": {"kind": "title1", "maxW": 2270, "text": "Priority screens", "w": 240, "x": 0, "y": 690},
+    "row2": {"kind": "title1", "maxW": 3210, "text": "Everything else", "w": 240, "x": 0, "y": 2030},
+    "row3": {"kind": "title1", "maxW": 2270, "text": "States", "w": 240, "x": 0, "y": 3610}
+  },
+  "designSystems": []
+}

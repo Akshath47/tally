@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Monthly review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;min-height:1180px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;padding-bottom:40px}
+.card{background:#1D1F20;border:1px solid #26292B;border-radius:18px}
+.st{font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#8F9498}
+.crow{padding:11px 0;border-bottom:1px solid #26292B;display:flex;flex-direction:column;gap:7px}
+.crow:last-child{border-bottom:0}
+.b{height:4px;border-radius:2px}
+.up{color:#D8B47F}
+.down{color:#A9C0B3}
+.m{display:flex;align-items:center;gap:12px;min-height:52px;border-bottom:1px solid #26292B;font-size:14.5px}
+.m:last-child{border-bottom:0}
+.rank{width:22px;font-size:12.5px;color:#8F9498}
+</style>
+</helmet>
+<div class="app">
+<div style="padding: 52px 12px 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="Main.dc.html" style="min-height: 44px; display: inline-flex; align-items: center; gap: 2px; padding: 0 8px; font-size: 15px; text-decoration: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>Home</a>
+<span style="font-size: 12px; color: #8F9498; padding-right: 8px">Later slice</span>
+</div>
+<h1 style="margin: 4px 20px 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">September review</h1>
+<p style="margin: 4px 20px 0; font-size: 13px; color: #8F9498">Compared with August</p>
+
+<div style="margin: 16px 16px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div class="card" style="padding: 14px">
+<div style="font-size: 12px; color: #8F9498">September spent</div>
+<div style="font-size: 30px; font-weight: 200; letter-spacing: -0.03em; margin-top: 2px">£1,742</div>
+<div style="font-size: 12.5px; color: #A9C0B3; margin-top: 2px">£58 under £1,800</div>
+</div>
+<div class="card" style="padding: 14px">
+<div style="font-size: 12px; color: #8F9498">August spent</div>
+<div style="font-size: 30px; font-weight: 200; letter-spacing: -0.03em; margin-top: 2px; color: #B5B9BD">£1,905</div>
+<div style="font-size: 12.5px; color: #D6968E; margin-top: 2px">£105 over £1,800</div>
+</div>
+</div>
+
+<div style="margin: 22px 20px 8px; display: flex; justify-content: space-between; align-items: baseline">
+<span class="st">By category</span>
+<span style="display: inline-flex; gap: 12px; font-size: 11.5px; color: #8F9498"><span style="display: inline-flex; align-items: center; gap: 5px"><span style="width: 10px; height: 4px; border-radius: 2px; background: #8FA89A"></span>Sep</span><span style="display: inline-flex; align-items: center; gap: 5px"><span style="width: 10px; height: 4px; border-radius: 2px; background: #4A4E52"></span>Aug</span></span>
+</div>
+<div class="card" style="margin: 0 16px; padding: 2px 16px">
+<div class="crow">
+<div style="display: flex; align-items: baseline; font-size: 14.5px"><span>Bills</span><span style="margin-left: auto">£650</span><span class="up" style="width: 70px; text-align: right; font-size: 12.5px">+£10</span></div>
+<div class="b" style="width: 82%; background: #8FA89A"></div><div class="b" style="width: 81%; background: #4A4E52"></div>
+</div>
+<div class="crow">
+<div style="display: flex; align-items: baseline; font-size: 14.5px"><span>Groceries</span><span style="margin-left: auto">£287</span><span class="down" style="width: 70px; text-align: right; font-size: 12.5px">−£44</span></div>
+<div class="b" style="width: 36%; background: #8FA89A"></div><div class="b" style="width: 42%; background: #4A4E52"></div>
+</div>
+<div class="crow">
+<div style="display: flex; align-items: baseline; font-size: 14.5px"><span>Eating out</span><span style="font-size: 11px; color: #D6968E; background: #2E2120; border-radius: 6px; padding: 1px 6px; margin-left: 8px">over £200</span><span style="margin-left: auto">£241</span><span class="up" style="width: 70px; text-align: right; font-size: 12.5px">+£43</span></div>
+<div class="b" style="width: 30%; background: #C7837B"></div><div class="b" style="width: 25%; background: #4A4E52"></div>
+</div>
+<div class="crow">
+<div style="display: flex; align-items: baseline; font-size: 14.5px"><span>Transport</span><span style="margin-left: auto">£118</span><span class="down" style="width: 70px; text-align: right; font-size: 12.5px">−£24</span></div>
+<div class="b" style="width: 15%; background: #8FA89A"></div><div class="b" style="width: 18%; background: #4A4E52"></div>
+</div>
+<div class="crow">
+<div style="display: flex; align-items: baseline; font-size: 14.5px"><span>Misc</span><span style="margin-left: auto">£446</span><span class="down" style="width: 70px; text-align: right; font-size: 12.5px">−£148</span></div>
+<div class="b" style="width: 56%; background: #8FA89A"></div><div class="b" style="width: 75%; background: #4A4E52"></div>
+</div>
+</div>
+<div style="margin: 10px 20px 0; font-size: 12.5px; color: #8F9498">Tracked, not in budget: Clothes £85 (Aug £0) · One-offs £42 (Aug £120)</div>
+
+<div style="margin: 24px 20px 8px" class="st">Top merchants</div>
+<div class="card" style="margin: 0 16px; padding: 0 16px">
+<div class="m"><span class="rank">1</span><span style="flex: 1">Oakfield Lettings</span><span>£550</span></div>
+<div class="m"><span class="rank">2</span><span style="flex: 1">Harlow's Market<span style="display: block; font-size: 11.5px; color: #8F9498">14 visits</span></span><span>£212</span></div>
+<div class="m"><span class="rank">3</span><span style="flex: 1">Harbour Energy</span><span>£96</span></div>
+<div class="m"><span class="rank">4</span><span style="flex: 1">Via Roma Kitchen<span style="display: block; font-size: 11.5px; color: #8F9498">3 visits</span></span><span>£96</span></div>
+<div class="m"><span class="rank">5</span><span style="flex: 1">City Cabs<span style="display: block; font-size: 11.5px; color: #8F9498">9 trips</span></span><span>£74</span></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
