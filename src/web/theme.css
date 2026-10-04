@@ -1,0 +1,69 @@
+/* Design tokens from docs/ui-design.md (dark only). Manrope is self-hosted because the CSP allows only same-origin fonts. */
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./fonts/manrope-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./fonts/manrope-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #141516;
+  --color-surface: #1d1f20;
+  --color-raised: #242628;
+  --color-sheet: #17181a;
+  --color-line: #2b2e30;
+  --color-divider: #26292b;
+
+  --color-fg: #e6e7e9;
+  --color-muted: #8f9498;
+  --color-subtle: #7e8388;
+
+  --color-accent: #8fa89a;
+  --color-accent-fg: #a9c0b3;
+  --color-accent-tint: #222a26;
+  --color-on-accent: #121513;
+
+  --color-warn: #c9a26a;
+  --color-warn-fg: #d8b47f;
+  --color-warn-tint: #2c261c;
+
+  --color-over: #c7837b;
+  --color-over-fg: #d6968e;
+  --color-over-tint: #2e2120;
+
+  --color-acct-rev: #2e3133;
+  --color-acct-rev-fg: #d5d7da;
+  --color-acct-amex: #24303a;
+  --color-acct-amex-fg: #a8bacb;
+
+  --radius-input: 11px;
+  --radius-button: 14px;
+  --radius-card: 18px;
+
+  --text-display: 2.875rem;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 200;
+  --text-title: 1.875rem;
+  --text-title--line-height: 1.2;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 300;
+  --text-body: 0.90625rem;
+  --text-body--line-height: 1.45;
+  --text-meta: 0.78125rem;
+  --text-meta--line-height: 1.4;
+}
