@@ -36,13 +36,19 @@ export async function insertRun(trigger = "manual", status = "running", startedA
 
 type TxnOverrides = { txnDate?: string; amountMinor?: unknown; isPending?: unknown };
 
-export function insertTransaction(accountId: number, runId: number, providerTxnId: string, overrides: TxnOverrides = {}) {
+export async function insertTransaction(
+  accountId: number,
+  runId: number,
+  providerTxnId: string,
+  overrides: TxnOverrides = {},
+): Promise<number> {
   const { txnDate = "2026-10-01", amountMinor = -1230, isPending = 0 } = overrides;
-  return env.DB.prepare(
+  const row = await env.DB.prepare(
     `INSERT INTO transactions (account_id, provider_txn_id, amount_minor, provider_amount, currency, txn_date,
        merchant, description, is_pending, fingerprint, first_seen_at, last_seen_at, updated_at, first_import_run_id)
-     VALUES (?1, ?2, ?3, '-12.3', 'GBP', ?4, 'Synthetic Cafe', '', ?5, 'fp', ?6, ?6, ?6, ?7)`,
+     VALUES (?1, ?2, ?3, '-12.3', 'GBP', ?4, 'Synthetic Cafe', '', ?5, 'fp', ?6, ?6, ?6, ?7) RETURNING id`,
   )
     .bind(accountId, providerTxnId, amountMinor, txnDate, isPending, NOW, runId)
-    .run();
+    .first<{ id: number }>();
+  return row!.id;
 }
