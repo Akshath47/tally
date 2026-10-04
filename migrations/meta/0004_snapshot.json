@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2fed6eb4-dc87-44be-a36b-7fb420cd243b",
+  "id": "f35caa76-b3f2-4f41-97c4-dc9a8e6cd749",
   "prevId": "6b68455f-7a35-4d74-b71c-6730e82e8c39",
   "tables": {
     "accounts": {
@@ -244,7 +244,7 @@
         },
         "name": {
           "name": "name",
-          "type": "text",
+          "type": "text COLLATE NOCASE",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -282,7 +282,7 @@
         "categories_name_uq": {
           "name": "categories_name_uq",
           "columns": [
-            "\"name\" COLLATE NOCASE"
+            "name"
           ],
           "isUnique": true
         }
@@ -291,6 +291,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "categories_name_ck": {
+          "name": "categories_name_ck",
+          "value": "\"categories\".\"name\" = trim(\"categories\".\"name\") AND \"categories\".\"name\" <> ''"
+        },
         "categories_kind_ck": {
           "name": "categories_kind_ck",
           "value": "\"categories\".\"kind\" IN ('budgeted', 'tracked', 'excluded')"
@@ -641,6 +645,17 @@
           "notNull": false,
           "autoincrement": false
         },
+        "account_scope": {
+          "name": "account_scope",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "generated": {
+            "as": "(coalesce(\"account_id\", 0))",
+            "type": "virtual"
+          }
+        },
         "category_id": {
           "name": "category_id",
           "type": "integer",
@@ -669,7 +684,7 @@
           "columns": [
             "match_type",
             "pattern",
-            "(CASE WHEN \"account_id\" IS NULL THEN 0 ELSE \"account_id\" END)"
+            "account_scope"
           ],
           "isUnique": true
         }
@@ -705,6 +720,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "merchant_rules_pattern_ck": {
+          "name": "merchant_rules_pattern_ck",
+          "value": "\"merchant_rules\".\"pattern\" = lower(trim(\"merchant_rules\".\"pattern\")) AND \"merchant_rules\".\"pattern\" <> ''"
+        },
         "merchant_rules_match_type_ck": {
           "name": "merchant_rules_match_type_ck",
           "value": "\"merchant_rules\".\"match_type\" IN ('exact', 'contains')"
@@ -851,7 +870,7 @@
         },
         "transaction_overrides_note_ck": {
           "name": "transaction_overrides_note_ck",
-          "value": "length(\"transaction_overrides\".\"note\") <= 500"
+          "value": "\"transaction_overrides\".\"note\" IS NULL OR (typeof(\"transaction_overrides\".\"note\") = 'text' AND length(\"transaction_overrides\".\"note\") <= 500)"
         }
       }
     },
@@ -1077,21 +1096,6 @@
     "columns": {}
   },
   "internal": {
-    "indexes": {
-      "categories_name_uq": {
-        "columns": {
-          "\"name\" COLLATE NOCASE": {
-            "isExpression": true
-          }
-        }
-      },
-      "merchant_rules_scope_uq": {
-        "columns": {
-          "(CASE WHEN \"account_id\" IS NULL THEN 0 ELSE \"account_id\" END)": {
-            "isExpression": true
-          }
-        }
-      }
-    }
+    "indexes": {}
   }
 }

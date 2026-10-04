@@ -1,14 +1,15 @@
 CREATE TABLE `categories` (
 	`id` integer PRIMARY KEY NOT NULL,
-	`name` text NOT NULL,
+	`name` text COLLATE NOCASE NOT NULL,
 	`kind` text NOT NULL,
 	`archived_at` text,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL,
+	CONSTRAINT "categories_name_ck" CHECK("categories"."name" = trim("categories"."name") AND "categories"."name" <> ''),
 	CONSTRAINT "categories_kind_ck" CHECK("categories"."kind" IN ('budgeted', 'tracked', 'excluded'))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `categories_name_uq` ON `categories` ("name" COLLATE NOCASE);--> statement-breakpoint
+CREATE UNIQUE INDEX `categories_name_uq` ON `categories` (`name`);--> statement-breakpoint
 CREATE TABLE `category_budgets` (
 	`category_id` integer NOT NULL,
 	`effective_month` text NOT NULL,
@@ -25,15 +26,17 @@ CREATE TABLE `merchant_rules` (
 	`match_type` text NOT NULL,
 	`pattern` text NOT NULL,
 	`account_id` integer,
+	`account_scope` integer GENERATED ALWAYS AS (coalesce("account_id", 0)) VIRTUAL NOT NULL,
 	`category_id` integer NOT NULL,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL,
 	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "merchant_rules_pattern_ck" CHECK("merchant_rules"."pattern" = lower(trim("merchant_rules"."pattern")) AND "merchant_rules"."pattern" <> ''),
 	CONSTRAINT "merchant_rules_match_type_ck" CHECK("merchant_rules"."match_type" IN ('exact', 'contains'))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `merchant_rules_scope_uq` ON `merchant_rules` (`match_type`,`pattern`,(CASE WHEN "account_id" IS NULL THEN 0 ELSE "account_id" END));--> statement-breakpoint
+CREATE UNIQUE INDEX `merchant_rules_scope_uq` ON `merchant_rules` (`match_type`,`pattern`,`account_scope`);--> statement-breakpoint
 CREATE TABLE `monthly_budgets` (
 	`effective_month` text PRIMARY KEY NOT NULL,
 	`amount_minor` integer NOT NULL,
@@ -55,5 +58,5 @@ CREATE TABLE `transaction_overrides` (
 	CONSTRAINT "transaction_overrides_excluded_ck" CHECK("transaction_overrides"."excluded" IN (0, 1)),
 	CONSTRAINT "transaction_overrides_counted_amount_minor_ck" CHECK("transaction_overrides"."counted_amount_minor" IS NULL OR typeof("transaction_overrides"."counted_amount_minor") = 'integer'),
 	CONSTRAINT "transaction_overrides_counted_date_ck" CHECK(date("transaction_overrides"."counted_date") IS "transaction_overrides"."counted_date"),
-	CONSTRAINT "transaction_overrides_note_ck" CHECK(length("transaction_overrides"."note") <= 500)
+	CONSTRAINT "transaction_overrides_note_ck" CHECK("transaction_overrides"."note" IS NULL OR (typeof("transaction_overrides"."note") = 'text' AND length("transaction_overrides"."note") <= 500))
 );

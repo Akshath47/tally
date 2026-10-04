@@ -49,8 +49,7 @@ describe("phase 2 schema", () => {
     await resetDb();
     accountId = await insertAccount();
     const runId = await insertRun();
-    await insertTransaction(accountId, runId, "t1");
-    transactionId = (await env.DB.prepare("SELECT id FROM transactions").first<{ id: number }>())!.id;
+    transactionId = await insertTransaction(accountId, runId, "t1");
     categoryId = await insertCategory("Synthetic category");
   });
 
@@ -67,6 +66,15 @@ describe("phase 2 schema", () => {
 
     it("rejects a name that differs from an existing one only by case", async () => {
       await expect(insertCategory("synthetic CATEGORY")).rejects.toThrow(/UNIQUE/);
+    });
+
+    it.each(["", " Padded", "Padded "])("rejects the empty or untrimmed name %j", async (name) => {
+      await expect(insertCategory(name)).rejects.toThrow(/CHECK/);
+    });
+
+    it("finds a category by name in any case with a plain equality", async () => {
+      const row = await env.DB.prepare("SELECT id FROM categories WHERE name = ?1").bind("SYNTHETIC category").first();
+      expect(row).toEqual({ id: categoryId });
     });
   });
 
@@ -94,6 +102,30 @@ describe("phase 2 schema", () => {
     it("allows the same pattern once for any account and once scoped to an account", async () => {
       await insertRule("exact", "abc", null, categoryId);
       await expect(insertRule("exact", "abc", accountId, categoryId)).resolves.toBeDefined();
+    });
+
+    // An empty contains pattern would match every merchant.
+    it.each(["", "Abc", " abc", "abc "])("rejects the empty or unnormalised pattern %j", async (pattern) => {
+      await expect(insertRule("contains", pattern, null, categoryId)).rejects.toThrow(/CHECK/);
+    });
+
+    it.each([
+      ["any-account", () => null],
+      ["account-scoped", () => accountId],
+    ])("upserts an %s rule on its match type, pattern and account scope", async (_, scope) => {
+      const otherCategoryId = await insertCategory("Other synthetic category");
+      const upsert = (catId: number) =>
+        env.DB.prepare(
+          `INSERT INTO merchant_rules (match_type, pattern, account_id, category_id, created_at, updated_at)
+           VALUES ('exact', 'abc', ?1, ?2, ?3, ?3)
+           ON CONFLICT (match_type, pattern, account_scope) DO UPDATE SET category_id = excluded.category_id`,
+        )
+          .bind(scope(), catId, NOW)
+          .run();
+      await upsert(categoryId);
+      await upsert(otherCategoryId);
+      const { results } = await env.DB.prepare("SELECT category_id FROM merchant_rules").all();
+      expect(results).toEqual([{ category_id: otherCategoryId }]);
     });
 
     it("rejects an unknown category or account", async () => {
@@ -129,6 +161,10 @@ describe("phase 2 schema", () => {
 
     it("rejects a 501-character note", async () => {
       await expect(insertOverride(transactionId, { note: "a".repeat(501) })).rejects.toThrow(/CHECK/);
+    });
+
+    it("rejects a note that isn't text", async () => {
+      await expect(insertOverride(transactionId, { note: new Uint8Array([104, 105]).buffer })).rejects.toThrow(/CHECK/);
     });
 
     it("rejects a second override for the same transaction", async () => {

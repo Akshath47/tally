@@ -1,5 +1,16 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex, type AnySQLiteColumn, type SQLiteColumn } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  customType,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+  type AnySQLiteColumn,
+  type SQLiteColumn,
+} from "drizzle-orm/sqlite-core";
 
 // See docs/schema-and-api.md. Timestamps are ISO-8601 UTC text; calendar dates are
 // YYYY-MM-DD text and never pass through Date. Money is integer minor units,
@@ -23,6 +34,10 @@ const isInteger = (col: SQLiteColumn) => sql`typeof(${col}) = 'integer'`;
 // date() normalises or nulls anything that isn't a real YYYY-MM-DD calendar date; NULL passes.
 const isDate = (col: SQLiteColumn) => sql`date(${col}) IS ${col}`;
 const isMonth = (col: SQLiteColumn) => sql`date(${col} || '-01') IS ${col} || '-01'`;
+const isTrimmedNonEmpty = (col: SQLiteColumn) => sql`${col} = trim(${col}) AND ${col} <> ''`;
+
+// Drizzle's sqlite text() has no collation option. NOCASE folds ASCII only.
+const nocaseText = customType<{ data: string }>({ dataType: () => "text COLLATE NOCASE" });
 
 export const accounts = sqliteTable(
   "accounts",
@@ -178,19 +193,23 @@ export const categories = sqliteTable(
   "categories",
   {
     id: integer("id").primaryKey(),
-    name: text("name").notNull(),
+    // The column collation makes both the UNIQUE index and plain `name = ?` lookups case-insensitive.
+    name: nocaseText("name").notNull(),
     kind: text("kind", { enum: CATEGORY_KINDS }).notNull(),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("categories_name_uq").on(sql`${t.name} COLLATE NOCASE`),
+    uniqueIndex("categories_name_uq").on(t.name),
+    check("categories_name_ck", isTrimmedNonEmpty(t.name)),
     check("categories_kind_ck", isOneOf(t.kind, CATEGORY_KINDS)),
   ],
 );
 
-// A pattern is stored lower-cased and trimmed, and matched against lower(trim(merchant)).
+// A pattern is matched against lower(trim(merchant)), so it's stored normalised by those same
+// SQLite functions: lower() folds ASCII only and trim() strips spaces only, unlike their JS
+// namesakes. Writers should normalise with SQL (lower(trim(?))) so the CHECK and matching agree.
 export const merchantRules = sqliteTable(
   "merchant_rules",
   {
@@ -199,6 +218,12 @@ export const merchantRules = sqliteTable(
     pattern: text("pattern").notNull(),
     // Null = any account.
     accountId: integer("account_id").references(() => accounts.id),
+    // NULLs are distinct in a UNIQUE, so the scope maps "any account" to 0 (account ids start at 1).
+    // A column rather than an index expression, so an upsert can name it:
+    // ON CONFLICT (match_type, pattern, account_scope).
+    accountScope: integer("account_scope")
+      .notNull()
+      .generatedAlwaysAs(sql`coalesce("account_id", 0)`, { mode: "virtual" }),
     categoryId: integer("category_id")
       .notNull()
       .references(() => categories.id),
@@ -206,13 +231,9 @@ export const merchantRules = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    // NULLs are distinct in a plain UNIQUE, so the scope maps "any account" to 0 (ids start at 1).
-    // CASE rather than coalesce(): drizzle-kit splits index expressions at commas.
-    uniqueIndex("merchant_rules_scope_uq").on(
-      t.matchType,
-      t.pattern,
-      sql`(CASE WHEN ${t.accountId} IS NULL THEN 0 ELSE ${t.accountId} END)`,
-    ),
+    uniqueIndex("merchant_rules_scope_uq").on(t.matchType, t.pattern, t.accountScope),
+    // An empty contains pattern would match every merchant.
+    check("merchant_rules_pattern_ck", sql`${t.pattern} = lower(trim(${t.pattern})) AND ${t.pattern} <> ''`),
     check("merchant_rules_match_type_ck", isOneOf(t.matchType, MATCH_TYPES)),
   ],
 );
@@ -240,7 +261,11 @@ export const transactionOverrides = sqliteTable(
       sql`${t.countedAmountMinor} IS NULL OR ${isInteger(t.countedAmountMinor)}`,
     ),
     check("transaction_overrides_counted_date_ck", isDate(t.countedDate)),
-    check("transaction_overrides_note_ck", sql`length(${t.note}) <= ${sql.raw(String(NOTE_MAX_LENGTH))}`),
+    // length() counts characters only for text; a BLOB would be measured in bytes.
+    check(
+      "transaction_overrides_note_ck",
+      sql`${t.note} IS NULL OR (typeof(${t.note}) = 'text' AND length(${t.note}) <= ${sql.raw(String(NOTE_MAX_LENGTH))})`,
+    ),
   ],
 );
 
