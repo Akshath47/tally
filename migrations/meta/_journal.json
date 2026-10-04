@@ -15,6 +15,13 @@
       "when": 1790901317177,
       "tag": "0001_seed_import_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791139414883,
+      "tag": "0002_pending_superseded_by",
+      "breakpoints": true
     }
   ]
 }

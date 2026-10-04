@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex, type SQLiteColumn } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex, type AnySQLiteColumn, type SQLiteColumn } from "drizzle-orm/sqlite-core";
 
 // See docs/schema-and-api.md. Timestamps are ISO-8601 UTC text; calendar dates are
 // YYYY-MM-DD text and never pass through Date. Money is integer minor units,
@@ -100,8 +100,11 @@ export const transactions = sqliteTable(
     firstSeenAt: text("first_seen_at").notNull(),
     // Set on insert and whenever the importer changes the row; an unchanged re-import never touches it.
     lastSeenAt: text("last_seen_at").notNull(),
-    // Set when a pending row disappears from a successful window; cleared if it reappears.
+    // Set when a row stops counting: a pending row superseded by its posted version, or one
+    // that expired (src/worker/importer/pending.ts). Cleared if an unsuperseded row reappears.
     vanishedAt: text("vanished_at"),
+    // The posted row that replaced this pending one.
+    supersededBy: integer("superseded_by").references((): AnySQLiteColumn => transactions.id),
     updatedAt: text("updated_at").notNull(),
     firstImportRunId: integer("first_import_run_id")
       .notNull()
