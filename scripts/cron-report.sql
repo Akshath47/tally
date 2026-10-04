@@ -1,6 +1,8 @@
 -- P1.7 acceptance queries. Prints ids, times, counts and amounts only, never merchant or
 -- description text. Run after the hourly cron has had 24 hours:
---   npx wrangler d1 execute DB --remote --file scripts/cron-report.sql
+--   npx wrangler d1 execute DB --remote --json --command="$(grep -v '^--' scripts/cron-report.sql)"
+-- Not --file: against the remote database that returns only execution stats, no rows.
+-- The comment lines are stripped because wrangler would read a leading "--" as a flag.
 
 -- 1. Cron runs in the last 24 hours. Expect ~24 rows, gap_min ~60, status 'success'.
 SELECT id, started_at, status, error_summary,
