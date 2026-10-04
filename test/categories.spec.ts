@@ -1,22 +1,14 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "../src/worker";
 import { resetDb } from "./db";
+import { get, send } from "./http";
 import { SEEDED } from "./budget/helpers";
 
-// Requests go to localhost, where the local-dev auth bypass applies. All data is synthetic.
+// All data is synthetic.
 
-const ORIGIN = "http://localhost";
-const app = createApp();
 type Category = { id: number; name: string; kind: string; archived: boolean };
 
-const send = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
-  app.request(
-    `${ORIGIN}${path}`,
-    { method, headers: { Origin: ORIGIN, "Content-Type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) },
-    env,
-  );
-const list = async () => ((await (await app.request(`${ORIGIN}/api/categories`, {}, env)).json()) as { categories: Category[] }).categories;
+const list = async () => ((await (await get("/api/categories")).json()) as { categories: Category[] }).categories;
 const create = (body: unknown) => send("POST", "/api/categories", body);
 const patch = (id: number | string, body: unknown) => send("PATCH", `/api/categories/${id}`, body);
 
@@ -59,7 +51,7 @@ describe("POST /api/categories", () => {
 
   it("rejects a cross-site request and a non-JSON body", async () => {
     expect((await send("POST", "/api/categories", { name: "Pets", kind: "budgeted" }, { Origin: "https://evil.example" })).status).toBe(403);
-    const plain = await app.request(`${ORIGIN}/api/categories`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "text/plain" }, body: "{}" }, env);
+    const plain = await send("POST", "/api/categories", { name: "Pets", kind: "budgeted" }, { "Content-Type": "text/plain" });
     expect(plain.status).toBe(415);
   });
 });
