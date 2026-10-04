@@ -12,28 +12,37 @@ export function normalizePattern(text: string): string {
 }
 
 /**
- * `resolved AS (...)`: one row per transaction, vanished ones included (consumers filter).
+ * `merchant_rule AS (...), resolved AS (...)`. `resolved` has one row per transaction,
+ * vanished ones included (consumers filter). Use as `WITH ${RESOLVED_CTE} SELECT ... FROM resolved`.
+ *
  * Rule precedence: exact before contains, then account-scoped before any-account, then the
  * longer pattern, then the older rule. `instr()` matches a contains pattern literally, so a
- * `%` or `_` in it is never a wildcard. Use as `WITH ${RESOLVED_CTE} SELECT ... FROM resolved`.
+ * `%` or `_` in it is never a wildcard.
+ *
+ * D1 bills rows read, so each distinct (account, merchant) is matched once rather than every
+ * transaction against every rule: exact rules are an index lookup on (match_type, pattern,
+ * account_scope), and only contains rules are scanned.
  */
-export const RESOLVED_CTE = `resolved AS (
-  SELECT x.*,
-    COALESCE(x.override_category_id, (SELECT category_id FROM merchant_rules WHERE id = x.rule_id)) AS category_id,
-    CASE WHEN x.override_category_id IS NOT NULL THEN 'override' WHEN x.rule_id IS NOT NULL THEN 'rule' END AS category_source
-  FROM (
-    SELECT t.id, t.account_id, t.amount_minor, t.txn_date, t.merchant, t.is_pending, t.vanished_at,
-      o.category_id AS override_category_id, COALESCE(o.excluded, 0) AS excluded,
-      o.counted_amount_minor, o.counted_date, o.note,
-      CASE WHEN o.category_id IS NULL THEN (
-        SELECT r.id FROM merchant_rules r
-        WHERE (r.account_id IS NULL OR r.account_id = t.account_id)
-          AND ((r.match_type = 'exact' AND r.pattern = lower(trim(t.merchant)))
-            OR (r.match_type = 'contains' AND instr(lower(t.merchant), r.pattern) > 0))
-        ORDER BY r.match_type = 'contains', r.account_id IS NULL, length(r.pattern) DESC, r.id
-        LIMIT 1
-      ) END AS rule_id
-    FROM transactions t
-    LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
-  ) AS x
+export const RESOLVED_CTE = `merchant_rule AS MATERIALIZED (
+  SELECT m.account_id, m.merchant, COALESCE(
+    (SELECT r.id FROM merchant_rules r
+     WHERE r.match_type = 'exact' AND r.pattern = lower(trim(m.merchant)) AND r.account_scope IN (m.account_id, 0)
+     ORDER BY r.account_scope = 0 LIMIT 1),
+    (SELECT r.id FROM merchant_rules r
+     WHERE r.match_type = 'contains' AND r.account_scope IN (m.account_id, 0) AND instr(lower(m.merchant), r.pattern) > 0
+     ORDER BY r.account_scope = 0, length(r.pattern) DESC, r.id LIMIT 1)
+  ) AS rule_id
+  FROM (SELECT DISTINCT account_id, merchant FROM transactions) AS m
+),
+resolved AS (
+  SELECT t.id, t.account_id, t.amount_minor, t.txn_date, t.merchant, t.is_pending, t.vanished_at,
+    o.category_id AS override_category_id, COALESCE(o.excluded, 0) AS excluded,
+    o.counted_amount_minor, o.counted_date, o.note,
+    CASE WHEN o.category_id IS NULL THEN mr.rule_id END AS rule_id,
+    COALESCE(o.category_id, r.category_id) AS category_id,
+    CASE WHEN o.category_id IS NOT NULL THEN 'override' WHEN mr.rule_id IS NOT NULL THEN 'rule' END AS category_source
+  FROM transactions t
+  LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
+  LEFT JOIN merchant_rule mr ON mr.account_id = t.account_id AND mr.merchant = t.merchant
+  LEFT JOIN merchant_rules r ON r.id = mr.rule_id
 )`;

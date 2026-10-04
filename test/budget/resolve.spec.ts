@@ -80,8 +80,10 @@ describe("resolved", () => {
     const plain = await L.txn(a1, { merchant: "Shop 50 off" });
     await insertRule("contains", "50%", SEEDED.shopping);
     await insertRule("contains", "a_b", SEEDED.other);
+    const underscore = await L.txn(a1, { merchant: "Shop axb" });
     expect((await resolve(wild))!.category_id).toBe(SEEDED.shopping);
     expect((await resolve(plain))!.category_id).toBeNull();
+    expect((await resolve(underscore))!.category_id).toBeNull();
   });
 
   it("matches an exact rule made from merchant text with non-ASCII letters and spaces", async () => {
@@ -105,6 +107,38 @@ describe("resolved", () => {
     await insertRule("exact", "synthetic cafe", SEEDED.eatingOut);
     expect((await resolve(pending))!.category_id).toBe(SEEDED.eatingOut);
     expect((await resolve(vanished))!.category_id).toBe(SEEDED.eatingOut);
+  });
+});
+
+// D1's free tier allows 5M rows read a day, so resolution mustn't cost transactions × rules.
+describe("resolved: rows read", () => {
+  it("stays well below transactions × rules on a realistic history", async () => {
+    // 600 transactions across 120 merchants, and 80 rules of each match type that match none of them.
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)
+       INSERT INTO transactions (account_id, provider_txn_id, amount_minor, provider_amount, currency, txn_date,
+         merchant, description, is_pending, fingerprint, first_seen_at, last_seen_at, updated_at, first_import_run_id)
+       SELECT ?1, 'bulk' || i, -100, '-1', 'GBP', '2026-09-01', 'Synthetic Merchant ' || (i % 120), '', 0, 'fp', ?2, ?2, ?2,
+         (SELECT min(id) FROM import_runs)
+       FROM n`,
+    )
+      .bind(a1, "2026-10-01T00:00:00.000Z")
+      .run();
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 80)
+       INSERT INTO merchant_rules (match_type, pattern, account_id, category_id, created_at, updated_at)
+       SELECT m.t, 'no match ' || i, NULL, ?1, ?2, ?2 FROM n, (SELECT 'exact' AS t UNION ALL SELECT 'contains') m`,
+    )
+      .bind(SEEDED.other, "2026-10-01T00:00:00.000Z")
+      .run();
+    await insertRule("contains", "merchant 1", SEEDED.shopping);
+
+    const res = await env.DB.prepare(`WITH ${RESOLVED_CTE} SELECT count(*) AS n FROM resolved WHERE category_id IS NOT NULL`).run<{ n: number }>();
+    // Merchants 1, 10–19 and 100–119 contain "merchant 1": 31 merchants × 5 transactions.
+    expect(res.results[0]!.n).toBe(155);
+    // Every transaction against every rule would be about 600 × 161 ≈ 97,000, and every
+    // merchant against every transaction 120 × 600 = 72,000.
+    expect(res.meta.rows_read).toBeLessThan(20_000);
   });
 });
 
