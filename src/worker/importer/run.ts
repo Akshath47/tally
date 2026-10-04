@@ -1,7 +1,7 @@
 import type { IMPORT_TRIGGERS, IMPORT_RUN_STATUSES } from "../db/schema";
 import { createClient, type LunchFlowClient, type ProviderAccount } from "./client";
 import { CountingDb } from "./db";
-import { londonToday } from "./dates";
+import { addDays, londonToday } from "./dates";
 import { ImportError } from "./errors";
 import { LEASE_MS, claimLock, closeAbandonedRuns, releaseLock } from "./lock";
 import { toMinor } from "./money";
@@ -235,10 +235,12 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
       idsJson: JSON.stringify(windows.flatMap((w, i) => (w.from >= r.from && w.to <= r.to ? fetched.idsByWindow[i]! : []))),
     }));
 
+    const retire = await retirePending(ctx, row.id, fetched.rows);
     const upserts = upsertTransactions(db, row.id, runId, nowIso, fetched.rows);
     const results = await db.batch([
       ...checks.map((c) => countMissingPosted(db, row.id, c.range, c.idsJson)),
       ...upserts,
+      ...retire,
       statusUpdate({
         ok: true, error: null,
         backfillCursor: backfill?.nextCursor ?? null,
@@ -246,8 +248,7 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
       }),
     ]);
 
-    Object.assign(summary, tallyResults(results, checks.length, upserts.length), { status: "success", httpStatus: 200 });
-    summary.vanishedMarked = await retirePending(ctx, row.id, JSON.stringify(fetched.rows.map((r) => r.provider_txn_id)));
+    Object.assign(summary, tallyResults(results, checks.length, upserts.length, retire.length), { status: "success", httpStatus: 200 });
   } catch (e) {
     summary.error = errorText(e);
     summary.httpStatus = e instanceof ImportError ? e.httpStatus : null;
@@ -267,21 +268,37 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
 }
 
 /**
- * Retires pending rows superseded by a posted version, or expired. Runs after the main batch so
- * this run's posted rows have ids. Returns how many rows it retired.
+ * The writes that retire pending rows, for the account's main batch: superseded by a posted
+ * row (this run's new ones included, matched by provider id), or expired. Empty when the
+ * account has no live pending rows.
  */
-async function retirePending(ctx: Ctx, accountId: number, fetchedIdsJson: string): Promise<number> {
+async function retirePending(ctx: Ctx, accountId: number, fetched: TransactionRow[]): Promise<D1PreparedStatement[]> {
   const { db, nowIso } = ctx;
-  const candidates = (await db.all<PendingCandidate>(selectPendingCandidates(db, accountId))).results;
-  if (!candidates.some((c) => c.is_pending === 1)) return 0;
+  type Stored = PendingCandidate & { linked: number };
+  const stored = (await db.all<Stored>(selectPendingCandidates(db, accountId, PENDING_TTL_DAYS))).results;
+  const live = stored.filter((r) => r.is_pending === 1);
+  if (live.length === 0) return [];
 
-  const matches = matchPending(candidates);
-  const cutoff = new Date(Date.parse(nowIso) - PENDING_TTL_DAYS * 86_400_000).toISOString();
-  const results = await db.batch([
-    ...(matches.length > 0 ? [supersedePending(db, nowIso, JSON.stringify(matches))] : []),
-    expirePending(db, accountId, nowIso, cutoff, fetchedIdsJson),
+  const fetchedIds = new Set(fetched.map((r) => r.provider_txn_id));
+  const storedIds = new Set(stored.map((r) => r.provider_txn_id));
+  const dates = live.map((r) => r.txn_date).sort();
+  const from = dates[0]!;
+  const to = addDays(dates[dates.length - 1]!, PENDING_TTL_DAYS);
+  const matches = matchPending([
+    // A pending row the provider still returns hasn't posted yet.
+    ...live.filter((r) => !fetchedIds.has(r.provider_txn_id)),
+    ...stored.filter((r) => r.is_pending === 0 && r.linked === 0),
+    // Posted rows this run inserts: any stored row dated in this range is already in `stored`.
+    ...fetched
+      .filter((r) => r.is_pending === 0 && !storedIds.has(r.provider_txn_id) && r.txn_date >= from && r.txn_date <= to)
+      .map((r) => ({ ...r, first_seen_at: nowIso })),
   ]);
-  return results.reduce((n, r) => n + r.meta.changes, 0);
+
+  const cutoff = new Date(Date.parse(nowIso) - PENDING_TTL_DAYS * 86_400_000).toISOString();
+  return [
+    ...(matches.length > 0 ? [supersedePending(db, accountId, nowIso, JSON.stringify(matches))] : []),
+    expirePending(db, accountId, nowIso, cutoff, JSON.stringify([...fetchedIds])),
+  ];
 }
 
 async function fetchWindows(client: LunchFlowClient, providerId: number, accountId: number, currency: string, windows: Window[]) {
@@ -303,7 +320,7 @@ async function fetchWindows(client: LunchFlowClient, providerId: number, account
 }
 
 /** Reads the batch results back in the order run.ts laid the statements out. */
-function tallyResults(results: D1Result[], checks: number, upserts: number) {
+function tallyResults(results: D1Result[], checks: number, upserts: number, retires: number) {
   const sum = (rs: D1Result[], pick: (r: D1Result) => number) => rs.reduce((total, r) => total + pick(r), 0);
   const upsertResults = results.slice(checks, checks + upserts);
   const inserted = sum(upsertResults, (r) => (r.results as { inserted: number }[]).filter((x) => x.inserted === 1).length);
@@ -311,5 +328,6 @@ function tallyResults(results: D1Result[], checks: number, upserts: number) {
     missingPosted: sum(results.slice(0, checks), (r) => (r.results[0] as { n: number }).n),
     inserted,
     updated: sum(upsertResults, (r) => r.results.length) - inserted,
+    vanishedMarked: sum(results.slice(checks + upserts, checks + upserts + retires), (r) => r.meta.changes),
   };
 }

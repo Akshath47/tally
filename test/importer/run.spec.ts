@@ -189,13 +189,49 @@ describe("runImport: pending transactions", () => {
     expect((await run(w)).accounts[1]!.vanishedMarked).toBe(0);
   });
 
-  it("keeps a superseded pending transaction retired if the provider returns it again", async () => {
+  it("does not supersede a pending transaction the provider still returns", async () => {
     const w = pendingWorld();
     await run(w);
-    w.txns[2] = [...w.txns[2]!, txn(2, "posted-hex", { amount: -9.99, date: "2026-10-01" })];
+    // Still pending at the bank, next to an unrelated posted charge of the same amount.
+    w.txns[2] = [...w.txns[2]!, txn(2, "other-hex", { amount: -9.99, date: "2026-10-01" })];
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 1, vanishedMarked: 0 });
+    expect(await pendingRow("pend")).toMatchObject({ vanished_at: null, superseded_by: null });
+  });
+
+  it("revives a superseded pending transaction the provider returns again, and frees its posted match", async () => {
+    const w = pendingWorld();
     await run(w);
-    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 0, updated: 0, vanishedMarked: 0 });
-    expect((await pendingRow("pend"))!.vanished_at).not.toBeNull();
+    const pend = w.txns[2]![1]!;
+    w.txns[2] = [w.txns[2]![0]!, txn(2, "posted-hex", { amount: -9.99, date: "2026-10-01" })];
+    await run(w);
+
+    w.txns[2] = [...w.txns[2]!, pend];
+    expect((await run(w)).accounts[1]).toMatchObject({ updated: 1, vanishedMarked: 0 });
+    expect(await pendingRow("pend")).toMatchObject({ vanished_at: null, superseded_by: null });
+
+    // Gone again: the freed posted row supersedes it again.
+    w.txns[2] = [w.txns[2]![0]!, w.txns[2]![1]!];
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 1 });
+    expect((await pendingRow("pend"))!.superseded_by).toBe((await pendingRow("posted-hex"))!.id);
+  });
+
+  it("records a run that only retires pending rows as a data change", async () => {
+    const w = pendingWorld();
+    await run(w);
+    w.txns[2] = [w.txns[2]![0]!];
+    minute += 8 * DAY_MINUTES;
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 0, updated: 0, vanishedMarked: 1 });
+    const account = await env.DB.prepare("SELECT last_data_change_at FROM accounts WHERE id = 2").first<{ last_data_change_at: string }>();
+    expect(account!.last_data_change_at).toBe((await pendingRow("pend"))!.vanished_at);
+  });
+
+  it("expires a pending transaction dated outside the fetched windows 7 days after first seen", async () => {
+    const w = pendingWorld();
+    // Dated before the incremental window: Lunch Flow can't return it, so it would otherwise count forever.
+    w.txns[2] = [w.txns[2]![0]!, txn(2, "pend", { amount: -9.99, date: "2026-09-10", isPending: true })];
+    await run(w, { backfillDays: "30" });
+    minute += 8 * DAY_MINUTES;
+    expect((await run(w, { backfillDays: "30" })).accounts[1]).toMatchObject({ vanishedMarked: 1 });
   });
 
   it("keeps it counted next to a different-amount posted one until it expires 7 days after first seen", async () => {
@@ -529,19 +565,18 @@ describe("runImport: backfill", () => {
 describe("runImport: budgets", () => {
   it("stays under 40 D1 statements and the subrequest cap on a first backfill run with three accounts", async () => {
     const w = world([REVOLUT, AMEX, POCKET]);
-    // Pending rows with posted matches on both accounts, so each also runs the supersede/expire batch.
-    w.txns[1] = [
-      txn(1, "a", { date: "2026-10-01" }), txn(1, "b", { date: "2026-08-01" }),
-      txn(1, null, { amount: -1, date: "2026-09-30", isPending: true }), txn(1, "a2", { amount: -1, date: "2026-10-01" }),
-    ];
-    w.txns[2] = [
-      txn(2, "c", { date: "2026-09-25" }),
-      txn(2, null, { amount: -2, date: "2026-09-30", isPending: true }), txn(2, "c2", { amount: -2, date: "2026-10-01" }),
-    ];
+    w.txns[1] = [txn(1, "a", { date: "2026-10-01" }), txn(1, "b", { date: "2026-08-01" }), txn(1, null, { amount: -1, date: "2026-09-30", isPending: true })];
+    w.txns[2] = [txn(2, "c", { date: "2026-09-25" }), txn(2, null, { amount: -2, date: "2026-09-30", isPending: true })];
     const res = await run(w, { backfillDays: "730" });
-    expect(res.accounts.map((a) => a.vanishedMarked)).toEqual([1, 1]);
     expect(res.status).toBe("success");
     expect(res.statements).toBeLessThan(40);
+
+    // Still backfilling, and both pending rows are superseded, so each account also writes the retire statements.
+    w.txns[1] = [...w.txns[1]!.slice(0, 2), txn(1, "a2", { amount: -1, date: "2026-10-01" })];
+    w.txns[2] = [w.txns[2]![0]!, txn(2, "c2", { amount: -2, date: "2026-10-01" })];
+    const second = await run(w, { backfillDays: "730" });
+    expect(second.accounts.map((a) => a.vanishedMarked)).toEqual([1, 1]);
+    expect(second.statements).toBeLessThan(40);
     expect(res.subrequests).toBeLessThanOrEqual(20);
   });
 

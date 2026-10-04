@@ -62,9 +62,9 @@ export function upsertAccounts(db: CountingDb, now: string, accounts: AccountPay
 }
 
 /**
- * Inserts new transactions and updates only those whose bank fields changed (or that come
- * back after expiring), so an identical re-import writes nothing. A superseded pending row
- * stays retired even if the provider returns it again. RETURNING yields one row per
+ * Inserts new transactions and updates only those whose bank fields changed (or that were
+ * retired), so an identical re-import writes nothing. A returned row always counts again: a
+ * superseded pending row the provider returns hasn't posted, so its link is cleared too. RETURNING yields one row per
  * insert or update; `inserted` tells them apart. Needs `WHERE true` on the SELECT so SQLite
  * doesn't read ON CONFLICT as part of a join.
  */
@@ -83,8 +83,7 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
            amount_minor = excluded.amount_minor, provider_amount = excluded.provider_amount, currency = excluded.currency,
            txn_date = excluded.txn_date, merchant = excluded.merchant, description = excluded.description,
            is_pending = excluded.is_pending, fingerprint = excluded.fingerprint,
-           last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at,
-           vanished_at = CASE WHEN transactions.superseded_by IS NULL THEN NULL ELSE transactions.vanished_at END
+           last_seen_at = excluded.last_seen_at, vanished_at = NULL, superseded_by = NULL, updated_at = excluded.updated_at
          WHERE transactions.amount_minor IS NOT excluded.amount_minor
             OR transactions.provider_amount IS NOT excluded.provider_amount
             OR transactions.currency IS NOT excluded.currency
@@ -92,7 +91,7 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
             OR transactions.merchant IS NOT excluded.merchant
             OR transactions.description IS NOT excluded.description
             OR transactions.is_pending IS NOT excluded.is_pending
-            OR (transactions.vanished_at IS NOT NULL AND transactions.superseded_by IS NULL)
+            OR transactions.vanished_at IS NOT NULL
          RETURNING first_import_run_id = ?3 AS inserted`,
       )
       .bind(accountId, now, runId, chunk),
@@ -100,32 +99,38 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
 }
 
 /**
- * Live pending rows, plus the posted rows that could supersede them: on or after the oldest
- * pending date and not already linked to a pending row. Read for `matchPending`.
+ * Live pending rows, plus every posted row dated where one of them could match (0–7 days on),
+ * with `linked` set when a pending row already points at it. Read before the run's writes.
  */
-export function selectPendingCandidates(db: CountingDb, accountId: number) {
+export function selectPendingCandidates(db: CountingDb, accountId: number, ttlDays: number) {
   return db
     .prepare(
       `WITH live AS (SELECT * FROM transactions WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL)
-       SELECT id, is_pending, amount_minor, txn_date, first_seen_at FROM live
+       SELECT provider_txn_id, is_pending, amount_minor, txn_date, first_seen_at, 0 AS linked FROM live
        UNION ALL
-       SELECT id, is_pending, amount_minor, txn_date, first_seen_at FROM transactions
-       WHERE account_id = ?1 AND is_pending = 0 AND txn_date >= (SELECT min(txn_date) FROM live)
-         AND id NOT IN (SELECT superseded_by FROM transactions WHERE account_id = ?1 AND superseded_by IS NOT NULL)`,
+       SELECT t.provider_txn_id, t.is_pending, t.amount_minor, t.txn_date, t.first_seen_at,
+         EXISTS (SELECT 1 FROM transactions p WHERE p.superseded_by = t.id) AS linked
+       FROM transactions t
+       WHERE t.account_id = ?1 AND t.is_pending = 0
+         AND t.txn_date BETWEEN (SELECT min(txn_date) FROM live) AND (SELECT date(max(txn_date), '+' || ?2 || ' days') FROM live)`,
     )
-    .bind(accountId);
+    .bind(accountId, ttlDays);
 }
 
-/** Retires (never deletes) each matched pending row and links it to its posted version. */
-export function supersedePending(db: CountingDb, now: string, matchesJson: string) {
+/**
+ * Retires (never deletes) each matched pending row and links it to its posted version. Runs
+ * after the upserts in the same batch, so posted rows inserted this run can be linked.
+ */
+export function supersedePending(db: CountingDb, accountId: number, now: string, matchesJson: string) {
   return db
     .prepare(
-      `UPDATE transactions SET superseded_by = m.posted_id, vanished_at = ?1, updated_at = ?1
-       FROM (SELECT json_extract(value, '$.pending_id') AS pending_id, json_extract(value, '$.posted_id') AS posted_id
-             FROM json_each(?2)) AS m
-       WHERE transactions.id = m.pending_id AND transactions.vanished_at IS NULL`,
+      `UPDATE transactions SET superseded_by = p.id, vanished_at = ?2, updated_at = ?2
+       FROM (SELECT json_extract(value, '$.pending_txn_id') AS pending_txn_id, json_extract(value, '$.posted_txn_id') AS posted_txn_id
+             FROM json_each(?3)) AS m
+       JOIN transactions AS p ON p.account_id = ?1 AND p.provider_txn_id = m.posted_txn_id
+       WHERE transactions.account_id = ?1 AND transactions.provider_txn_id = m.pending_txn_id AND transactions.vanished_at IS NULL`,
     )
-    .bind(now, matchesJson);
+    .bind(accountId, now, matchesJson);
 }
 
 /**
