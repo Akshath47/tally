@@ -32,7 +32,7 @@ CREATE TABLE `merchant_rules` (
 	`updated_at` text NOT NULL,
 	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "merchant_rules_pattern_ck" CHECK("merchant_rules"."pattern" = lower(trim("merchant_rules"."pattern")) AND "merchant_rules"."pattern" <> ''),
+	CONSTRAINT "merchant_rules_pattern_ck" CHECK("merchant_rules"."pattern" = trim("merchant_rules"."pattern") AND "merchant_rules"."pattern" <> '' AND "merchant_rules"."pattern" = lower("merchant_rules"."pattern")),
 	CONSTRAINT "merchant_rules_match_type_ck" CHECK("merchant_rules"."match_type" IN ('exact', 'contains'))
 );
 --> statement-breakpoint

@@ -1,6 +1,6 @@
 {
-  "id": "9ba5af1a-c9ea-4c6e-baac-9b8f55a04250",
-  "prevId": "f35caa76-b3f2-4f41-97c4-dc9a8e6cd749",
+  "id": "b90cb265-bc74-47fb-af11-f31f0d44fdf5",
+  "prevId": "75fc1f28-8620-4e75-be2d-585942cf976d",
   "version": "6",
   "dialect": "sqlite",
   "tables": {
@@ -722,7 +722,7 @@
       "checkConstraints": {
         "merchant_rules_pattern_ck": {
           "name": "merchant_rules_pattern_ck",
-          "value": "\"merchant_rules\".\"pattern\" = lower(trim(\"merchant_rules\".\"pattern\")) AND \"merchant_rules\".\"pattern\" <> ''"
+          "value": "\"merchant_rules\".\"pattern\" = trim(\"merchant_rules\".\"pattern\") AND \"merchant_rules\".\"pattern\" <> '' AND \"merchant_rules\".\"pattern\" = lower(\"merchant_rules\".\"pattern\")"
         },
         "merchant_rules_match_type_ck": {
           "name": "merchant_rules_match_type_ck",

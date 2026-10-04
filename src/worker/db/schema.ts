@@ -207,9 +207,8 @@ export const categories = sqliteTable(
   ],
 );
 
-// A pattern is matched against lower(trim(merchant)), so it's stored normalised by those same
-// SQLite functions: lower() folds ASCII only and trim() strips spaces only, unlike their JS
-// namesakes. Writers should normalise with SQL (lower(trim(?))) so the CHECK and matching agree.
+// A pattern is matched against lower(trim(merchant)), so it's stored in that form. SQLite's lower()
+// and trim() are ASCII- and space-only, unlike JS's, so writers normalise in SQL: lower(trim(?)).
 export const merchantRules = sqliteTable(
   "merchant_rules",
   {
@@ -218,9 +217,8 @@ export const merchantRules = sqliteTable(
     pattern: text("pattern").notNull(),
     // Null = any account.
     accountId: integer("account_id").references(() => accounts.id),
-    // NULLs are distinct in a UNIQUE, so the scope maps "any account" to 0 (account ids start at 1).
-    // A column rather than an index expression, so an upsert can name it:
-    // ON CONFLICT (match_type, pattern, account_scope).
+    // "Any account" as 0 (ids start at 1), since NULLs are distinct in a UNIQUE. A column, not an
+    // index expression, so an upsert can name it: ON CONFLICT (match_type, pattern, account_scope).
     accountScope: integer("account_scope")
       .notNull()
       .generatedAlwaysAs(sql`coalesce("account_id", 0)`, { mode: "virtual" }),
@@ -233,7 +231,7 @@ export const merchantRules = sqliteTable(
   (t) => [
     uniqueIndex("merchant_rules_scope_uq").on(t.matchType, t.pattern, t.accountScope),
     // An empty contains pattern would match every merchant.
-    check("merchant_rules_pattern_ck", sql`${t.pattern} = lower(trim(${t.pattern})) AND ${t.pattern} <> ''`),
+    check("merchant_rules_pattern_ck", sql`${isTrimmedNonEmpty(t.pattern)} AND ${t.pattern} = lower(${t.pattern})`),
     check("merchant_rules_match_type_ck", isOneOf(t.matchType, MATCH_TYPES)),
   ],
 );
