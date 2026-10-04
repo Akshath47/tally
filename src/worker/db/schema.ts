@@ -11,12 +11,18 @@ import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex, type
 export const PROVIDERS = ["lunchflow"] as const;
 export const IMPORT_TRIGGERS = ["cron", "manual"] as const;
 export const IMPORT_RUN_STATUSES = ["running", "success", "partial", "failed", "skipped_locked"] as const;
+export const CATEGORY_KINDS = ["budgeted", "tracked", "excluded"] as const;
+export const MATCH_TYPES = ["exact", "contains"] as const;
+export const NOTE_MAX_LENGTH = 500;
 
 // Values are inlined (not bound) because drizzle-kit writes CHECKs into the migration as SQL text.
 const isOneOf = (col: SQLiteColumn, values: readonly string[]) =>
   sql`${col} IN (${sql.raw(values.map((v) => `'${v}'`).join(", "))})`;
 const isBool = (col: SQLiteColumn) => sql`${col} IN (0, 1)`;
 const isInteger = (col: SQLiteColumn) => sql`typeof(${col}) = 'integer'`;
+// date() normalises or nulls anything that isn't a real YYYY-MM-DD calendar date; NULL passes.
+const isDate = (col: SQLiteColumn) => sql`date(${col}) IS ${col}`;
+const isMonth = (col: SQLiteColumn) => sql`date(${col} || '-01') IS ${col} || '-01'`;
 
 export const accounts = sqliteTable(
   "accounts",
@@ -125,8 +131,7 @@ export const transactions = sqliteTable(
     index("transactions_fingerprint_idx").on(t.fingerprint),
     index("transactions_superseded_by_idx").on(t.supersededBy),
     check("transactions_amount_minor_ck", isInteger(t.amountMinor)),
-    // date() normalises or nulls anything that isn't a real YYYY-MM-DD calendar date.
-    check("transactions_txn_date_ck", sql`date(${t.txnDate}) IS ${t.txnDate}`),
+    check("transactions_txn_date_ck", isDate(t.txnDate)),
     check("transactions_is_pending_ck", isBool(t.isPending)),
   ],
 );
@@ -163,4 +168,111 @@ export const importLock = sqliteTable(
     expiresAt: text("expires_at"),
   },
   (t) => [check("import_lock_single_row_ck", sql`${t.id} = 1`)],
+);
+
+// Phase 2 (docs/phase-2-spec.md, Data model). The owner's edits live here, apart from the
+// bank-sourced transactions, so a re-sync never touches them.
+
+// Archived categories stay referenced by rules and overrides; they're only hidden from pickers.
+export const categories = sqliteTable(
+  "categories",
+  {
+    id: integer("id").primaryKey(),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: CATEGORY_KINDS }).notNull(),
+    archivedAt: text("archived_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("categories_name_uq").on(sql`${t.name} COLLATE NOCASE`),
+    check("categories_kind_ck", isOneOf(t.kind, CATEGORY_KINDS)),
+  ],
+);
+
+// A pattern is stored lower-cased and trimmed, and matched against lower(trim(merchant)).
+export const merchantRules = sqliteTable(
+  "merchant_rules",
+  {
+    id: integer("id").primaryKey(),
+    matchType: text("match_type", { enum: MATCH_TYPES }).notNull(),
+    pattern: text("pattern").notNull(),
+    // Null = any account.
+    accountId: integer("account_id").references(() => accounts.id),
+    categoryId: integer("category_id")
+      .notNull()
+      .references(() => categories.id),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    // NULLs are distinct in a plain UNIQUE, so the scope maps "any account" to 0 (ids start at 1).
+    // CASE rather than coalesce(): drizzle-kit splits index expressions at commas.
+    uniqueIndex("merchant_rules_scope_uq").on(
+      t.matchType,
+      t.pattern,
+      sql`(CASE WHEN ${t.accountId} IS NULL THEN 0 ELSE ${t.accountId} END)`,
+    ),
+    check("merchant_rules_match_type_ck", isOneOf(t.matchType, MATCH_TYPES)),
+  ],
+);
+
+// Every null field follows the bank values and the rules. The importer never writes here.
+export const transactionOverrides = sqliteTable(
+  "transaction_overrides",
+  {
+    transactionId: integer("transaction_id")
+      .primaryKey()
+      .references(() => transactions.id),
+    categoryId: integer("category_id").references(() => categories.id),
+    excluded: integer("excluded", { mode: "boolean" }).notNull().default(false),
+    // Same sign convention as transactions.amount_minor.
+    countedAmountMinor: integer("counted_amount_minor"),
+    countedDate: text("counted_date"),
+    // Untrusted text.
+    note: text("note"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    check("transaction_overrides_excluded_ck", isBool(t.excluded)),
+    check(
+      "transaction_overrides_counted_amount_minor_ck",
+      sql`${t.countedAmountMinor} IS NULL OR ${isInteger(t.countedAmountMinor)}`,
+    ),
+    check("transaction_overrides_counted_date_ck", isDate(t.countedDate)),
+    check("transaction_overrides_note_ck", sql`length(${t.note}) <= ${sql.raw(String(NOTE_MAX_LENGTH))}`),
+  ],
+);
+
+// Budgets are positive = spend. A month's figure is the row with the greatest
+// effective_month <= that month; writes only ever go to the current London month.
+export const monthlyBudgets = sqliteTable(
+  "monthly_budgets",
+  {
+    effectiveMonth: text("effective_month").primaryKey(),
+    amountMinor: integer("amount_minor").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    check("monthly_budgets_effective_month_ck", isMonth(t.effectiveMonth)),
+    check("monthly_budgets_amount_minor_ck", sql`${isInteger(t.amountMinor)} AND ${t.amountMinor} > 0`),
+  ],
+);
+
+// 0 removes a category's allocation from that month on.
+export const categoryBudgets = sqliteTable(
+  "category_budgets",
+  {
+    categoryId: integer("category_id")
+      .notNull()
+      .references(() => categories.id),
+    effectiveMonth: text("effective_month").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.categoryId, t.effectiveMonth] }),
+    check("category_budgets_effective_month_ck", isMonth(t.effectiveMonth)),
+    check("category_budgets_amount_minor_ck", sql`${isInteger(t.amountMinor)} AND ${t.amountMinor} >= 0`),
+  ],
 );
