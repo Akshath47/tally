@@ -107,9 +107,9 @@ The weekly tidy-up, opened from the Home chip.
 
 - Back link "‹ Home", title "To sort", count ("11 to sort · 5 merchants") and freshness line.
 - Toggle: **By merchant** (default) / **By date**.
-- **By merchant:** one card per merchant with ×count, date range, account badges and total. A row of category chips: the suggested one first (sage tint), two alternatives, then "More…". **One tap files every transaction in the group.** "Show N transactions" expands the group; each row opens the editor to change just that one.
-- **By date:** one card per transaction with the same chips; a tap files just that one.
-- After filing, a toast: "All 4 Harlow's Market filed under Groceries" with **Always** and **Undo**. Always turns it into a merchant rule ("Rule added: all Harlow's Market → Groceries"). Filing without tapping Always does not create a rule.
+- **By merchant:** one card per merchant with ×count, date range, account badges and total. A row of category chips: the suggested one first (sage tint), two alternatives, then "More…". **One tap creates a merchant rule** (`POST /api/rules`), which files every transaction in the group and future ones from that merchant. The hint says so: "One tap makes a rule and files all 4, plus future ones." "Show N transactions" expands the group; each row opens the editor to change just that one.
+- After a group tap, a toast: "Rule added: Harlow's Market → Groceries. All 4 filed." with **Undo**, which deletes the rule and puts the group back.
+- **By date:** one card per transaction with the same chips; a tap files just that one as an override. Its toast ("Harlow's Market filed under Groceries (just this one)") offers **Always**, which creates the rule and files the rest of that merchant too, and **Undo**.
 - Pending section at the bottom: locked rows (lock icon, italic muted amount, "Pending since Wed"). They open the read-only pending sheet and can't be filed.
 - When the last group is filed: "All sorted", "Your category totals are now up to date", and a "Back to Home" button. The chip disappears from Home.
 
@@ -162,14 +162,15 @@ Over-allocation (validation stays on the client and the server):
   - **Budgeted:** counts against your monthly budget (shows each allocation). Misc is built in and can't be deleted.
   - **Tracked:** shown in spending, never counts against the budget (shows this month's spend).
   - **Excluded:** not spending at all (Savings, Investments, Card repayments, Income).
-- Each row has a "…" button. Editing expands the row inline: rename field, Budgeted / Tracked / Excluded selector, Delete, Cancel, Save.
-- Delete confirms inline: "Delete 'Gifts'? Its 4 transactions go back to To sort, and 1 merchant rule that points to it is removed. Nothing else is deleted."
+- Each row has a "…" button. Editing expands the row inline: rename field, Budgeted / Tracked / Excluded selector, Archive, Cancel, Save.
+- Categories are archived, never deleted. Archive confirms inline: "Archive 'Gifts'? It disappears from category pickers and budget settings. Its 4 transactions and 1 merchant rule keep pointing at it, so nothing moves. You can unarchive it any time." Archiving a budgeted category sets its allocation to 0 from this month (spec).
+- "Show archived (2)" at the bottom lists archived categories, each with Unarchive.
 
 ### Merchant rules
 
 - Explanation: "A rule sets the category for every transaction from that merchant, past and future. Transactions you've edited by hand keep their own category."
-- List of rules: merchant, "27 transactions · from To sort", → category tag.
-- Editing a rule: "Merchant name contains", category picker, an impact line ("Applies to 14 City Cabs transactions: 3 waiting in To sort, 11 already sorted. 1 you edited by hand stays as it is."), Delete rule, Cancel, Save.
+- List of rules: merchant, "Exact · 27 transactions · from To sort", → category tag. Rules made from To sort or "Use for all" are exact; contains rules are made here.
+- Editing a rule: a **Match** choice (Exact name / Name contains, with a hint that contains catches variations like "CITY CABS LTD"), the text to match, category picker, an impact line ("Applies to 14 City Cabs transactions: 3 waiting in To sort, 11 already sorted. 1 you edited by hand stays as it is."), Delete rule, Cancel, Save.
 
 ### Accounts
 
@@ -180,12 +181,12 @@ Over-allocation (validation stays on the client and the server):
 
 ### New account found
 
-- "Lunch Flow started sending a new account. Its transactions are held back from your totals until you decide what it is."
-- Account card: name and last digits, first seen, transactions so far, and a "Looks like BA Amex (same card ending)" hint.
+- "Lunch Flow started sending a new account. Tally hasn't imported anything from it yet, so your totals are unchanged until you decide what it is."
+- Account card: name and last digits, first seen, "Imported: Nothing yet", and a "Looks like BA Amex (name and currency match)" hint.
 - Two choices:
-  - **Link to an existing account:** pick the old account, then a preview: "6 transactions on the new account. 2 match old BA Amex transactions on date and amount, so they're merged, not doubled. Result: one BA Amex with 346 transactions." A mismatch (e.g. Amex → Revolut) shows a warning in the preview.
-  - **It's a new account:** keep it separate; its transactions start counting and go to To sort.
-- The confirm button names the action ("Link to BA Amex" / "Add as a new account"). A done screen confirms what happened and says linking can be undone from Accounts.
+  - **Link to an existing account:** pick the old account, then a preview that matches the spec's link behaviour: "Tally will fetch from 4 Oct, 7 days before BA Amex's newest transaction, and file everything under BA Amex. If Lunch Flow kept the transaction ids, that overlap is de-duplicated automatically. If not, up to 7 days may appear twice and you exclude the doubles by hand." A mismatch (e.g. Amex → Revolut) shows a warning instead. No date-and-amount matching: identical same-day purchases are real.
+  - **It's a new account:** keep it separate. Tally imports its full history and it starts counting; anything without a rule goes to To sort.
+- The confirm button names the action ("Link to BA Amex" / "Add as a new account"). A done screen confirms what happened; after a link it suggests checking the last week in Transactions for doubles.
 
 ### Monthly review (later slice)
 
@@ -198,10 +199,10 @@ Over-allocation (validation stays on the client and the server):
 
 1. **Overall budget first, then allocations.** Misc is always the unallocated remainder. Allocations can never exceed the overall figure.
 2. **Merchant rules apply to all transactions from that merchant that haven't been edited by hand, past and future.** A transaction with its own category override keeps it.
-3. **Changing one transaction's category never moves the others** unless the owner ticks "Use for all <merchant>" or taps "Always" after filing a group.
-4. **Filing a group in To sort files only those transactions.** It's a bulk override, not a rule.
+3. **Changing one transaction's category never moves the others** unless the owner ticks "Use for all <merchant>" in the editor or taps "Always" after filing a single transaction.
+4. **Filing a whole merchant group in To sort creates a rule.** Undo deletes it. Filing one transaction is an override.
 5. **Pending transactions are visible everywhere but can't be edited or filed**, matching the spec.
-6. **A newly found account doesn't count towards totals until the owner reviews it.**
+6. **A newly found account isn't imported until the owner reviews it**, so it can't affect totals. Categories are archived, never deleted.
 7. **To sort can only be opened while there's something to sort.**
 
 ## Mapping to the backend spec
@@ -218,12 +219,7 @@ Most of the design already matches [phase-2-spec.md](phase-2-spec.md):
 
 ## Differences from the backend spec
 
-Waiting on an owner decision. Until then the canvas shows the design version.
-
-1. **Filing a group in To sort.** The design files only those transactions (a bulk override) and offers "Always" to make a rule. The spec's merchant groups are built for "one rule clears a whole group" and has no bulk-override endpoint. Simplest fix: a group tap creates the rule, and Undo deletes it.
-2. **Deleting a category.** The design deletes it and sends its transactions back to To sort. The spec only archives: it's hidden from pickers, and its rules and overrides keep pointing at it.
-3. **Linking a reconnected account.** The design's preview says overlapping transactions are "matched on date and amount, not doubled". The spec rejects fingerprint matching: the link re-fetches from 7 days before the old account's newest transaction, and the overlap only de-duplicates if Lunch Flow keeps transaction ids. Also, a held account isn't imported, so the "transactions so far" count may not be available.
-4. **Rule match type.** "Use for all" creates an `exact` rule. The rules editor shows "Merchant name contains" and needs an exact/contains choice.
+None. Four earlier differences were settled on 2026-10-04 in the spec's favour: a group tap in To sort creates a rule, categories are archived rather than deleted, the link preview describes the spec's 7-day overlap instead of date-and-amount matching, and the rules editor offers exact and contains matching.
 
 ## Open questions
 
