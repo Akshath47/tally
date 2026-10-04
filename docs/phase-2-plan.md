@@ -406,7 +406,10 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 **Decisions:**
 - **Merchant text is normalised the way SQLite does it.** Matching runs in SQL against `lower(trim(merchant))`, and SQLite's `lower()` only folds ASCII and its `trim()` only strips spaces. So patterns are normalised by `normalizePattern()`, which does exactly the same: spaces only, A–Z only. A pattern normalised by JavaScript's own `toLowerCase()` or `trim()` would never match a merchant like `CAFÉ` exactly.
 - **`contains` uses `instr()`, not `LIKE`.** A `%` or `_` in a pattern is matched literally.
-- **The resolution is one CTE, `resolved`, exported as SQL text.** It covers every transaction, vanished ones included, and each consumer filters. The rule is picked by a correlated subquery ordered by tier, then pattern length, then id, so D1 does the work rather than the Worker.
+- **The resolution is exported as SQL text, `RESOLVED_CTE`.** It defines `merchant_rule` and `resolved`, covering every transaction, vanished ones included, and each consumer filters.
+  - Each distinct (account, merchant) pair is matched once, in a `MATERIALIZED` CTE. Exact rules are an index lookup on `(match_type, pattern, account_scope)`, and only `contains` rules are scanned.
+  - Transactions then join that list through an automatic index.
+  - D1 bills rows read, so a test pins the cost. On 600 transactions, 120 merchants and 161 rules it's about 13k rows. Matching every transaction against every rule cost about 84k.
 - **Body references:** an unknown or merged `accountId`, or an unknown `categoryId`, returns `404 not_found`, like an unknown path id. A rule can't point at an archived category (`409 category_archived`), since pickers hide them.
 - **`DELETE` requests also need `Content-Type: application/json`.** The Phase 1 middleware requires it on every state-changing method.
 
