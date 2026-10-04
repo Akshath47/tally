@@ -34,6 +34,7 @@ src/web/                               React SPA
 scripts/probe-lunchflow.ts             P1.1 API probe (prints summaries only)
 scripts/cron-report.sql                P1.7 cron, overlap and duplicate checks (no text)
 scripts/usage-report.ts                P1.8 free-tier usage report
+scripts/check-terminations.ts          Lists runs Cloudflare stopped or imports that didn't finish
 test/                                  Vitest (workers pool), synthetic fixtures only
 docs/                                  Plan, findings, assessments
 ```
