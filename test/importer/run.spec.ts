@@ -4,13 +4,15 @@ import { CountingDb } from "../../src/worker/importer/db";
 import { claimLock } from "../../src/worker/importer/lock";
 import { startImport } from "../../src/worker/importer/run";
 import { insertRun, resetDb } from "../db";
-import { AMEX, REVOLUT, txn, world, type WorldAccount } from "../fixtures/lunchflow";
+import { AMEX, REVOLUT, accountJson, txn, world, type WorldAccount } from "../fixtures/lunchflow";
 
 // All data is synthetic. "Today" is 2026-10-02 in London, so the incremental window is
 // 2026-09-19..2026-10-02.
 
 const T0 = Date.parse("2026-10-02T12:00:00.000Z");
 const POCKET: WorldAccount = { id: 3, name: "GB00POCK00000000000003", institution: "Revolut", currency: "USD" };
+// Lunch Flow's id for a bank connection made after Tally's first import, e.g. a reconnect.
+const LATER: WorldAccount = { id: 4, name: "Synthetic Reconnected Card", institution: "Test Amex", currency: "GBP" };
 
 let minute = 0;
 
@@ -502,6 +504,102 @@ describe("runImport: accounts", () => {
     const b = await env.DB.prepare("SELECT last_data_change_at FROM accounts WHERE id = 1").first();
     expect(b).toEqual({ last_data_change_at: changedAt });
     expect(first.status).toBe("success");
+  });
+});
+
+describe("runImport: new accounts after the first import", () => {
+  /** Lists only `accounts` in the provider's /accounts response, so a later run can add one. */
+  const listOnly = (w: World, accounts: WorldAccount[]) => {
+    w.accountsReply = {
+      body: { accounts: accounts.map((a) => accountJson(a.id, { name: a.name, institution_name: a.institution })), total: accounts.length },
+    };
+  };
+  const account = (id: number) =>
+    env.DB.prepare("SELECT currency, needs_review, import_enabled FROM accounts WHERE provider_account_id = ?1").bind(String(id)).first();
+  const fetchedTxns = (w: World, id: number, since = 0) => w.calls.slice(since).some((c) => c.path.endsWith(`/accounts/${id}/transactions`));
+
+  function laterWorld(extra: WorldAccount = LATER) {
+    const w = world([REVOLUT, AMEX, extra]);
+    w.txns[1] = [txn(1, "r1", { date: "2026-10-01" })];
+    w.txns[2] = [txn(2, "a1", { date: "2026-10-01" })];
+    w.txns[extra.id] = [txn(extra.id, "n1", { date: "2026-10-01", currency: extra.currency })];
+    return w;
+  }
+
+  it("holds a GBP account that appears later for review instead of importing it", async () => {
+    const w = laterWorld();
+    listOnly(w, [REVOLUT, AMEX]);
+    await run(w);
+    w.accountsReply = undefined;
+
+    const before = w.calls.length;
+    const res = await run(w);
+    expect(res.status).toBe("success");
+    expect(res.accounts.map((a) => a.accountId)).toEqual([1, 2]);
+    expect(await account(4)).toEqual({ currency: "GBP", needs_review: 1, import_enabled: 0 });
+    expect(fetchedTxns(w, 4, before)).toBe(false);
+    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id = 'n1'")).toBe(0);
+    expect(await count("SELECT 1 FROM import_run_accounts r JOIN accounts a ON a.id = r.account_id WHERE a.provider_account_id = '4'")).toBe(0);
+
+    // It stays held on later runs, and isn't contacted at all once its currency is known.
+    const again = w.calls.length;
+    await run(w);
+    expect(w.calls.slice(again).some((c) => c.path.includes("/accounts/4/"))).toBe(false);
+  });
+
+  it("retries a held account's failed balance call without importing it", async () => {
+    const w = laterWorld();
+    listOnly(w, [REVOLUT, AMEX]);
+    await run(w);
+    w.accountsReply = undefined;
+
+    w.balanceReply[4] = { status: 503, body: {} };
+    await run(w);
+    expect(await account(4)).toEqual({ currency: null, needs_review: 1, import_enabled: 0 });
+
+    w.balanceReply[4] = undefined;
+    await run(w);
+    expect(await account(4)).toEqual({ currency: "GBP", needs_review: 1, import_enabled: 0 });
+    expect(fetchedTxns(w, 4)).toBe(false);
+  });
+
+  it("disables a non-GBP account that appears later without asking for review", async () => {
+    const w = laterWorld(POCKET);
+    listOnly(w, [REVOLUT, AMEX]);
+    await run(w);
+    w.accountsReply = undefined;
+
+    await run(w);
+    expect(await account(3)).toEqual({ currency: "USD", needs_review: 0, import_enabled: 0 });
+  });
+
+  it("still enables a first-import account whose currency was only learned on a later run", async () => {
+    const w = basicWorld();
+    w.balanceReply[2] = { status: 503, body: {} };
+    await run(w);
+    w.balanceReply[2] = undefined;
+
+    const res = await run(w);
+    expect(await account(2)).toEqual({ currency: "GBP", needs_review: 0, import_enabled: 1 });
+    expect(res.accounts.find((a) => a.accountId === 2)).toMatchObject({ status: "success", inserted: 1 });
+  });
+
+  it("stops an account's backfill at its floor date", async () => {
+    const w = world([REVOLUT]);
+    w.txns[1] = [txn(1, "recent", { date: "2026-10-01" }), txn(1, "catch-up", { date: "2026-09-05" }), txn(1, "old", { date: "2026-08-20" })];
+    await env.DB.prepare(
+      `INSERT INTO accounts (provider, provider_account_id, name, currency, provider_status, import_enabled, backfill_floor_date, created_at, updated_at)
+       VALUES ('lunchflow', '1', 'Revolut · GBP · ••6819', 'GBP', 'ACTIVE', 1, '2026-09-01', ?1, ?1)`,
+    )
+      .bind("2026-10-01T00:00:00.000Z")
+      .run();
+
+    await run(w, { backfillDays: "730" });
+    const windows = w.calls.filter((c) => c.path.endsWith("/transactions")).map((c) => c.query.get("from"));
+    expect(windows.every((from) => from! >= "2026-09-01")).toBe(true);
+    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id IN ('recent', 'catch-up')")).toBe(2);
+    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id = 'old'")).toBe(0);
+    expect(await env.DB.prepare("SELECT backfill_complete FROM accounts").first()).toEqual({ backfill_complete: 1 });
   });
 });
 

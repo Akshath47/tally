@@ -12,6 +12,7 @@ The plan lives in `docs/`, not here:
 - [docs/research/platform-constraints.md](../docs/research/platform-constraints.md) — verified Lunch Flow/Cloudflare facts
 - [docs/setup-responsibilities.md](../docs/setup-responsibilities.md) — what the owner does vs what the agent automates
 - [docs/phase-2-outline.md](../docs/phase-2-outline.md) — loose outline, not a spec
+- [docs/phase-2-spec.md](../docs/phase-2-spec.md) — Phase 2 backend spec; wins over the outline where they differ
 
 This file summarises what matters before touching code; the docs above win on any conflict, because a copy drifts the next time a decision changes. If something here contradicts a doc, or a step's real behaviour doesn't match its written acceptance criteria, stop and ask the owner rather than guessing — this is a one-person project, so there's no one else to silently resolve it for.
 

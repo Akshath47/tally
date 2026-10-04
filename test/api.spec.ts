@@ -183,6 +183,7 @@ describe("GET /api/accounts", () => {
       lastDataChangeAt: "2026-10-02T12:00:00.000Z",
       newestTxnDate: "2026-10-01",
       backfillComplete: false,
+      needsReview: false,
     });
     // The display label never carries the raw IBAN.
     expect(body.accounts[0]!.name).not.toContain("GB29NWBK");
