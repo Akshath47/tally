@@ -184,3 +184,35 @@ describe("phase 2 schema", () => {
     });
   });
 });
+
+describe("category seed", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it("ships the spec's 14 starting categories, unarchived, in order", async () => {
+    const { results } = await env.DB.prepare("SELECT name, kind, archived_at FROM categories ORDER BY id").all();
+    const seeded = (kind: string, names: string[]) => names.map((name) => ({ name, kind, archived_at: null }));
+    expect(results).toEqual([
+      ...seeded("budgeted", ["Groceries", "Eating out", "Transport", "Bills", "Shopping", "Entertainment", "Health", "Other"]),
+      ...seeded("tracked", ["Clothes", "Travel"]),
+      ...seeded("excluded", ["Savings", "Investments", "Card repayment", "Income"]),
+    ]);
+  });
+
+  it("stamps the seeded rows with ISO-8601 UTC timestamps", async () => {
+    const { results } = await env.DB.prepare("SELECT created_at, updated_at FROM categories").all<{
+      created_at: string;
+      updated_at: string;
+    }>();
+    expect(results).toHaveLength(14);
+    for (const row of results) {
+      expect(row.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(row.updated_at).toBe(row.created_at);
+    }
+  });
+
+  it("rejects a new category that matches a seeded name in another case", async () => {
+    await expect(insertCategory("groceries")).rejects.toThrow(/UNIQUE/);
+  });
+});

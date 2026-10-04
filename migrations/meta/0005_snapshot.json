@@ -1,0 +1,1097 @@
+{
+  "id": "ac8ed4cf-d13e-4dfe-b633-3db198d83971",
+  "prevId": "2fed6eb4-dc87-44be-a36b-7fb420cd243b",
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "accounts": {
+      "name": "accounts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_account_id": {
+          "name": "provider_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_connection_id": {
+          "name": "provider_connection_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "institution_name": {
+          "name": "institution_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_status": {
+          "name": "provider_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "balance_minor": {
+          "name": "balance_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "balance_fetched_at": {
+          "name": "balance_fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "import_enabled": {
+          "name": "import_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_seen_in_provider_at": {
+          "name": "last_seen_in_provider_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_import_attempt_at": {
+          "name": "last_import_attempt_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_import_success_at": {
+          "name": "last_import_success_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_import_error": {
+          "name": "last_import_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "consecutive_failures": {
+          "name": "consecutive_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_data_change_at": {
+          "name": "last_data_change_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "newest_txn_date": {
+          "name": "newest_txn_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backfill_cursor_date": {
+          "name": "backfill_cursor_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backfill_complete": {
+          "name": "backfill_complete",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "backfill_floor_date": {
+          "name": "backfill_floor_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "needs_review": {
+          "name": "needs_review",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "merged_into_account_id": {
+          "name": "merged_into_account_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "accounts_provider_account_uq": {
+          "name": "accounts_provider_account_uq",
+          "columns": [
+            "provider",
+            "provider_account_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "accounts_merged_into_account_id_accounts_id_fk": {
+          "name": "accounts_merged_into_account_id_accounts_id_fk",
+          "tableFrom": "accounts",
+          "columnsFrom": [
+            "merged_into_account_id"
+          ],
+          "tableTo": "accounts",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "accounts_provider_ck": {
+          "name": "accounts_provider_ck",
+          "value": "\"accounts\".\"provider\" IN ('lunchflow')"
+        },
+        "accounts_balance_minor_ck": {
+          "name": "accounts_balance_minor_ck",
+          "value": "\"accounts\".\"balance_minor\" IS NULL OR typeof(\"accounts\".\"balance_minor\") = 'integer'"
+        },
+        "accounts_import_enabled_ck": {
+          "name": "accounts_import_enabled_ck",
+          "value": "\"accounts\".\"import_enabled\" IN (0, 1)"
+        },
+        "accounts_backfill_complete_ck": {
+          "name": "accounts_backfill_complete_ck",
+          "value": "\"accounts\".\"backfill_complete\" IN (0, 1)"
+        }
+      }
+    },
+    "categories": {
+      "name": "categories",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "categories_name_uq": {
+          "name": "categories_name_uq",
+          "columns": [
+            "\"name\" COLLATE NOCASE"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "categories_kind_ck": {
+          "name": "categories_kind_ck",
+          "value": "\"categories\".\"kind\" IN ('budgeted', 'tracked', 'excluded')"
+        }
+      }
+    },
+    "category_budgets": {
+      "name": "category_budgets",
+      "columns": {
+        "category_id": {
+          "name": "category_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_month": {
+          "name": "effective_month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "category_budgets_category_id_categories_id_fk": {
+          "name": "category_budgets_category_id_categories_id_fk",
+          "tableFrom": "category_budgets",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "tableTo": "categories",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "category_budgets_category_id_effective_month_pk": {
+          "columns": [
+            "category_id",
+            "effective_month"
+          ],
+          "name": "category_budgets_category_id_effective_month_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "category_budgets_effective_month_ck": {
+          "name": "category_budgets_effective_month_ck",
+          "value": "date(\"category_budgets\".\"effective_month\" || '-01') IS \"category_budgets\".\"effective_month\" || '-01'"
+        },
+        "category_budgets_amount_minor_ck": {
+          "name": "category_budgets_amount_minor_ck",
+          "value": "typeof(\"category_budgets\".\"amount_minor\") = 'integer' AND \"category_budgets\".\"amount_minor\" >= 0"
+        }
+      }
+    },
+    "import_lock": {
+      "name": "import_lock",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "holder_run_id": {
+          "name": "holder_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "import_lock_holder_run_id_import_runs_id_fk": {
+          "name": "import_lock_holder_run_id_import_runs_id_fk",
+          "tableFrom": "import_lock",
+          "columnsFrom": [
+            "holder_run_id"
+          ],
+          "tableTo": "import_runs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "import_lock_single_row_ck": {
+          "name": "import_lock_single_row_ck",
+          "value": "\"import_lock\".\"id\" = 1"
+        }
+      }
+    },
+    "import_run_accounts": {
+      "name": "import_run_accounts",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "http_status": {
+          "name": "http_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "window_from": {
+          "name": "window_from",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "window_to": {
+          "name": "window_to",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fetched": {
+          "name": "fetched",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "inserted": {
+          "name": "inserted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "updated": {
+          "name": "updated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "vanished_marked": {
+          "name": "vanished_marked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "import_run_accounts_run_id_import_runs_id_fk": {
+          "name": "import_run_accounts_run_id_import_runs_id_fk",
+          "tableFrom": "import_run_accounts",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "tableTo": "import_runs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "import_run_accounts_account_id_accounts_id_fk": {
+          "name": "import_run_accounts_account_id_accounts_id_fk",
+          "tableFrom": "import_run_accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "tableTo": "accounts",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "import_run_accounts_run_id_account_id_pk": {
+          "columns": [
+            "run_id",
+            "account_id"
+          ],
+          "name": "import_run_accounts_run_id_account_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "import_runs": {
+      "name": "import_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error_summary": {
+          "name": "error_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "import_runs_trigger_ck": {
+          "name": "import_runs_trigger_ck",
+          "value": "\"import_runs\".\"trigger\" IN ('cron', 'manual')"
+        },
+        "import_runs_status_ck": {
+          "name": "import_runs_status_ck",
+          "value": "\"import_runs\".\"status\" IN ('running', 'success', 'partial', 'failed', 'skipped_locked')"
+        }
+      }
+    },
+    "merchant_rules": {
+      "name": "merchant_rules",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "match_type": {
+          "name": "match_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pattern": {
+          "name": "pattern",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "merchant_rules_scope_uq": {
+          "name": "merchant_rules_scope_uq",
+          "columns": [
+            "match_type",
+            "pattern",
+            "(CASE WHEN \"account_id\" IS NULL THEN 0 ELSE \"account_id\" END)"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "merchant_rules_account_id_accounts_id_fk": {
+          "name": "merchant_rules_account_id_accounts_id_fk",
+          "tableFrom": "merchant_rules",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "tableTo": "accounts",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "merchant_rules_category_id_categories_id_fk": {
+          "name": "merchant_rules_category_id_categories_id_fk",
+          "tableFrom": "merchant_rules",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "tableTo": "categories",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "merchant_rules_match_type_ck": {
+          "name": "merchant_rules_match_type_ck",
+          "value": "\"merchant_rules\".\"match_type\" IN ('exact', 'contains')"
+        }
+      }
+    },
+    "monthly_budgets": {
+      "name": "monthly_budgets",
+      "columns": {
+        "effective_month": {
+          "name": "effective_month",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "monthly_budgets_effective_month_ck": {
+          "name": "monthly_budgets_effective_month_ck",
+          "value": "date(\"monthly_budgets\".\"effective_month\" || '-01') IS \"monthly_budgets\".\"effective_month\" || '-01'"
+        },
+        "monthly_budgets_amount_minor_ck": {
+          "name": "monthly_budgets_amount_minor_ck",
+          "value": "typeof(\"monthly_budgets\".\"amount_minor\") = 'integer' AND \"monthly_budgets\".\"amount_minor\" > 0"
+        }
+      }
+    },
+    "transaction_overrides": {
+      "name": "transaction_overrides",
+      "columns": {
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "excluded": {
+          "name": "excluded",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "counted_amount_minor": {
+          "name": "counted_amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "counted_date": {
+          "name": "counted_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transaction_overrides_transaction_id_transactions_id_fk": {
+          "name": "transaction_overrides_transaction_id_transactions_id_fk",
+          "tableFrom": "transaction_overrides",
+          "columnsFrom": [
+            "transaction_id"
+          ],
+          "tableTo": "transactions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "transaction_overrides_category_id_categories_id_fk": {
+          "name": "transaction_overrides_category_id_categories_id_fk",
+          "tableFrom": "transaction_overrides",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "tableTo": "categories",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "transaction_overrides_excluded_ck": {
+          "name": "transaction_overrides_excluded_ck",
+          "value": "\"transaction_overrides\".\"excluded\" IN (0, 1)"
+        },
+        "transaction_overrides_counted_amount_minor_ck": {
+          "name": "transaction_overrides_counted_amount_minor_ck",
+          "value": "\"transaction_overrides\".\"counted_amount_minor\" IS NULL OR typeof(\"transaction_overrides\".\"counted_amount_minor\") = 'integer'"
+        },
+        "transaction_overrides_counted_date_ck": {
+          "name": "transaction_overrides_counted_date_ck",
+          "value": "date(\"transaction_overrides\".\"counted_date\") IS \"transaction_overrides\".\"counted_date\""
+        },
+        "transaction_overrides_note_ck": {
+          "name": "transaction_overrides_note_ck",
+          "value": "length(\"transaction_overrides\".\"note\") <= 500"
+        }
+      }
+    },
+    "transactions": {
+      "name": "transactions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_txn_id": {
+          "name": "provider_txn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_amount": {
+          "name": "provider_amount",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "txn_date": {
+          "name": "txn_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "merchant": {
+          "name": "merchant",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_pending": {
+          "name": "is_pending",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vanished_at": {
+          "name": "vanished_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "superseded_by": {
+          "name": "superseded_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_import_run_id": {
+          "name": "first_import_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "transactions_account_provider_txn_uq": {
+          "name": "transactions_account_provider_txn_uq",
+          "columns": [
+            "account_id",
+            "provider_txn_id"
+          ],
+          "isUnique": true
+        },
+        "transactions_account_date_idx": {
+          "name": "transactions_account_date_idx",
+          "columns": [
+            "account_id",
+            "txn_date"
+          ],
+          "isUnique": false
+        },
+        "transactions_fingerprint_idx": {
+          "name": "transactions_fingerprint_idx",
+          "columns": [
+            "fingerprint"
+          ],
+          "isUnique": false
+        },
+        "transactions_superseded_by_idx": {
+          "name": "transactions_superseded_by_idx",
+          "columns": [
+            "superseded_by"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "transactions_account_id_accounts_id_fk": {
+          "name": "transactions_account_id_accounts_id_fk",
+          "tableFrom": "transactions",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "tableTo": "accounts",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "transactions_superseded_by_transactions_id_fk": {
+          "name": "transactions_superseded_by_transactions_id_fk",
+          "tableFrom": "transactions",
+          "columnsFrom": [
+            "superseded_by"
+          ],
+          "tableTo": "transactions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "transactions_first_import_run_id_import_runs_id_fk": {
+          "name": "transactions_first_import_run_id_import_runs_id_fk",
+          "tableFrom": "transactions",
+          "columnsFrom": [
+            "first_import_run_id"
+          ],
+          "tableTo": "import_runs",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "transactions_amount_minor_ck": {
+          "name": "transactions_amount_minor_ck",
+          "value": "typeof(\"transactions\".\"amount_minor\") = 'integer'"
+        },
+        "transactions_txn_date_ck": {
+          "name": "transactions_txn_date_ck",
+          "value": "date(\"transactions\".\"txn_date\") IS \"transactions\".\"txn_date\""
+        },
+        "transactions_is_pending_ck": {
+          "name": "transactions_is_pending_ck",
+          "value": "\"transactions\".\"is_pending\" IN (0, 1)"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  },
+  "internal": {
+    "indexes": {
+      "categories_name_uq": {
+        "columns": {
+          "\"name\" COLLATE NOCASE": {
+            "isExpression": true
+          }
+        }
+      },
+      "merchant_rules_scope_uq": {
+        "columns": {
+          "(CASE WHEN \"account_id\" IS NULL THEN 0 ELSE \"account_id\" END)": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}
