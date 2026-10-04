@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, isYmd, londonToday } from "../../src/worker/importer/dates";
+import { addDays, isYmd, londonMonth, londonToday } from "../../src/worker/importer/dates";
 
 describe("londonToday", () => {
   it("is the next calendar day at 23:30 UTC during BST", () => {
@@ -19,6 +19,17 @@ describe("londonToday", () => {
   it("switches at the last-Sunday-of-October changeover", () => {
     expect(londonToday(new Date("2026-10-24T23:30:00Z"))).toBe("2026-10-25");
     expect(londonToday(new Date("2026-10-25T23:30:00Z"))).toBe("2026-10-25");
+  });
+});
+
+describe("londonMonth", () => {
+  it.each([
+    ["2026-03-31T23:30:00Z", "2026-04"], // BST: already 1 April in London
+    ["2026-10-31T23:30:00Z", "2026-10"], // GMT: still 31 October
+    ["2026-12-31T23:59:00Z", "2026-12"],
+    ["2027-01-01T00:00:00Z", "2027-01"],
+  ])("%s is %s", (iso, month) => {
+    expect(londonMonth(new Date(iso))).toBe(month);
   });
 });
 

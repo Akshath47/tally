@@ -15,6 +15,11 @@ export function londonToday(now: Date): string {
   return londonDate.format(now);
 }
 
+/** The current calendar month in Europe/London, as YYYY-MM. */
+export function londonMonth(now: Date): string {
+  return londonToday(now).slice(0, 7);
+}
+
 function parts(ymd: string): [number, number, number] | null {
   const m = YMD.exec(ymd);
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
