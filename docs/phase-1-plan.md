@@ -206,6 +206,6 @@ If CPU is too high, reduce the chunk size. Moving to a paid plan needs discussio
   - what Phase 2 should allow for as a result.
 
   This is an assessment, not a gate. The owner decided on 2026-10-02 to build Phase 2 even if data is up to a day old, because that's still more useful to them than anything available.
-- Change the cron to every 6 hours.
+- Change the cron to every 3 hours. The plan said every 6 hours; the owner chose 3 on 2026-10-04.
 
 **Accept when:** the assessment is written and reviewed by the owner.

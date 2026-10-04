@@ -63,7 +63,7 @@ That is one statement per ~80 KB instead of one per row. The `WHERE` clause avoi
 
 ## Scheduling
 
-- Cron runs hourly during Phase 1 verification, then every 6 hours. Lunch Flow's docs say data updates daily, so more frequent runs add nothing.
+- Cron runs every 3 hours (hourly during Phase 1 verification). Lunch Flow refreshes its data only a few times a day ([phase1-assessment.md](phase1-assessment.md)), so more frequent runs add nothing.
 - Cron expressions are in UTC.
 - "Today" and month boundaries are calculated in `Europe/London`.
 
