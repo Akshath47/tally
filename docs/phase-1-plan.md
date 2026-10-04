@@ -182,13 +182,15 @@ If CPU is too high, reduce the chunk size. Moving to a paid plan needs discussio
 - Check about 20 imported transactions per account against the Revolut and Amex apps: amount, sign, date, merchant and pending state.
 - Write `docs/phase1-assessment.md` covering:
   - connection quality;
-  - how stale data gets (bank → Lunch Flow → Tally), measured rather than assumed: during the hourly P1.7 window, note the time of a few real purchases on each account and compare with `transactions.first_seen_at` (when the importer first saw it) and when it later posts. Resolution is about an hour; a purchase that takes more than a few hours to appear is the signal for the Phase 2 go/no-go;
+  - how stale data gets (bank → Lunch Flow → Tally), measured rather than assumed: during the hourly P1.7 window, note the time of a few real purchases on each account and compare with `transactions.first_seen_at` (when the importer first saw it) and when it later posts. Resolution is about an hour. This sets expectations for how current Phase 2's screens can be;
   - missing fields;
   - pending behaviour and ID stability;
   - how reconnection shows up;
   - free-tier headroom;
   - blockers;
-  - a **go/no-go for Phase 2**.
+  - what Phase 2 should allow for as a result.
+
+  This is an assessment, not a gate. The owner decided on 2026-10-02 to build Phase 2 even if data is up to a day old, because that's still more useful to them than anything available.
 - Change the cron to every 6 hours.
 
 **Accept when:** the assessment is written and reviewed by the owner.
