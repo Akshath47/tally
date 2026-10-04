@@ -16,9 +16,9 @@ Only one person uses it. It runs on a single Cloudflare Worker (React SPA + Hono
 | [docs/schema-and-api.md](docs/schema-and-api.md) | Minimal Phase 1 D1 schema and API endpoints |
 | [docs/setup-responsibilities.md](docs/setup-responsibilities.md) | What the owner does personally vs what the agent automates |
 | [docs/estimates-and-risks.md](docs/estimates-and-risks.md) | Time estimate and main uncertainties |
+| [docs/lunchflow-findings.md](docs/lunchflow-findings.md) | Observed Lunch Flow API behaviour for the owner's accounts (P1.1) |
+| [docs/phase1-assessment.md](docs/phase1-assessment.md) | End-of-Phase-1 assessment: freshness, pending behaviour, what Phase 2 must allow for (P1.9) |
 | [docs/phase-2-outline.md](docs/phase-2-outline.md) | Phase 2 outline, kept loose so the product can evolve |
-
-Phase 1 deliverables that don't exist yet: `docs/lunchflow-findings.md` (P1.1) and `docs/phase1-assessment.md` (P1.9).
 
 ## Repository layout
 
