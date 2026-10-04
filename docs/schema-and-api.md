@@ -43,6 +43,8 @@ transactions              -- bank-sourced fields only
   fingerprint              account|date|amount|normalised description (diagnostic only)
   first_seen_at · last_seen_at · vanished_at · updated_at
                            last_seen_at is set on insert and on each real change, never bumped by an unchanged re-import
+                           vanished_at: the row no longer counts (a pending row superseded or expired)
+  superseded_by FK → transactions.id   the posted row that replaced this pending one
   first_import_run_id
   UNIQUE(account_id, provider_txn_id)
   INDEX(account_id, txn_date)

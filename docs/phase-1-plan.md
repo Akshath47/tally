@@ -117,6 +117,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 - Upsert with `json_each` into `UNIQUE(account_id, provider_txn_id)`. Only bank fields that actually changed are updated.
 - **Nothing is ever deleted.**
 - A pending transaction missing from a *successful* `include_pending=true` window that covers its date gets `vanished_at` set. This is cleared if it reappears.
+  - **Changed 2026-10-04 (owner decision):** Lunch Flow returns only one pending transaction per account, so absence no longer retires one. A pending row is retired when a same-amount posted row supersedes it, or 7 days after first seen once Lunch Flow stops returning it ([architecture.md](architecture.md) import policy).
 - Posted transactions that go missing are only counted in the run stats; no action is taken.
 
 **Runs**
