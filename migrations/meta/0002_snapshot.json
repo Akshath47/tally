@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "04f91207-5539-458a-8311-0ae5a1a62a18",
+  "id": "285b8133-7da9-47b3-8328-aac41b5489ab",
   "prevId": "46b9fc72-718e-429e-af4e-200af75d63ad",
   "tables": {
     "accounts": {
@@ -584,6 +584,13 @@
           "name": "transactions_fingerprint_idx",
           "columns": [
             "fingerprint"
+          ],
+          "isUnique": false
+        },
+        "transactions_superseded_by_idx": {
+          "name": "transactions_superseded_by_idx",
+          "columns": [
+            "superseded_by"
           ],
           "isUnique": false
         }

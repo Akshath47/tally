@@ -114,6 +114,7 @@ export const transactions = sqliteTable(
     uniqueIndex("transactions_account_provider_txn_uq").on(t.accountId, t.providerTxnId),
     index("transactions_account_date_idx").on(t.accountId, t.txnDate),
     index("transactions_fingerprint_idx").on(t.fingerprint),
+    index("transactions_superseded_by_idx").on(t.supersededBy),
     check("transactions_amount_minor_ck", isInteger(t.amountMinor)),
     // date() normalises or nulls anything that isn't a real YYYY-MM-DD calendar date.
     check("transactions_txn_date_ck", sql`date(${t.txnDate}) IS ${t.txnDate}`),
