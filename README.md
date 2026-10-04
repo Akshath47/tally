@@ -4,7 +4,7 @@ A private, mobile-first personal budgeting app. It combines transactions from a 
 
 Only one person uses it. It runs on a single Cloudflare Worker (React SPA + Hono API) with D1, behind Cloudflare Access.
 
-**Status:** planning. Nothing is implemented yet.
+**Status:** Phase 1 is done: the importer, a minimal UI and 3-hourly scheduled imports are deployed behind Cloudflare Access ([docs/phase1-assessment.md](docs/phase1-assessment.md)). Phase 2, budgeting, is next.
 
 ## Plan
 
