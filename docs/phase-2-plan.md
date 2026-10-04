@@ -38,7 +38,7 @@ These are the inputs the spec implies most likely to break P2.1 for the owner. E
 
 ---
 
-## [ ] P2.1 Reconnection guard and link
+## [x] P2.1 Reconnection guard and link
 
 **Deliverable:**
 - Once Tally has accounts, a new Lunch Flow account is recorded **awaiting review** and isn't imported.
@@ -60,6 +60,13 @@ Nothing is deleted, T keeps all its history, freshness fields and overrides, and
 - After the owner approves the merge: the migration is applied remotely and the Worker is deployed. The next scheduled run is `success` for both accounts, and `GET /api/accounts` shows both with `needsReview: false`.
 
 A real reconnect can't be triggered on demand. The link path is accepted on its tests, and the open question in the spec (whether transaction ids survive a reconnect) stays open until it first happens.
+
+**Done (2026-10-05):**
+- On `main` after the merge of #20 and #21: `npm run check` passed with 293 tests.
+- Earlier, on the branch: `0003` applied locally and `db:check` passed.
+- `0003` was applied to production, and version `7881eb0a` was deployed.
+- **Smoke run:** a manual import (run 55) used instead of waiting for the cron, since it runs the same code path. It ended `success`, with both imported accounts returning HTTP 200, and no account was flagged `needs_review` or merged.
+- Logged-out `/api/health` still redirects to the Access login.
 
 ### Task 1: Account columns and migration
 
