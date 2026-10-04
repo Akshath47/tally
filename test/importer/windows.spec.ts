@@ -41,6 +41,25 @@ describe("backfillChunks", () => {
     expect(r.complete).toBe(true);
   });
 
+  describe("with an account's floor date (a linked reconnect's catch-up)", () => {
+    it("stops at the floor date when it is later than BACKFILL_DAYS allows", () => {
+      const r = backfillChunks(null, TODAY, 730, 2, "2026-08-01");
+      expect(r.chunks).toEqual([
+        { from: "2026-08-19", to: "2026-09-18" },
+        { from: "2026-08-01", to: "2026-08-18" },
+      ]);
+      expect(r.complete).toBe(true);
+    });
+
+    it("is complete immediately when the floor is inside the incremental window", () => {
+      expect(backfillChunks(null, TODAY, 730, 2, "2026-09-25")).toEqual({ chunks: [], nextCursor: "2026-09-19", complete: true });
+    });
+
+    it("keeps the BACKFILL_DAYS floor when that is later", () => {
+      expect(backfillChunks(null, TODAY, 60, 2, "2025-01-01")).toEqual(backfillChunks(null, TODAY, 60));
+    });
+  });
+
   it("does nothing once the cursor has reached the floor", () => {
     const r = backfillChunks("2026-08-03", TODAY, 60);
     expect(r).toEqual({ chunks: [], nextCursor: "2026-08-03", complete: true });

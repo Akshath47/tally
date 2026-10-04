@@ -13,15 +13,18 @@ export function incrementalWindow(today: string): Window {
 
 /**
  * Next backfill chunks, working backwards from `cursor` (the oldest date already imported;
- * null means only the incremental window so far) down to `today - backfillDays`.
+ * null means only the incremental window so far) down to `today - backfillDays`, or to
+ * `floorDate` when that is later (a linked account's catch-up).
  */
 export function backfillChunks(
   cursor: string | null,
   today: string,
   backfillDays: number,
   max = MAX_CHUNKS_PER_RUN,
+  floorDate: string | null = null,
 ): { chunks: Window[]; nextCursor: string; complete: boolean } {
-  const floor = addDays(today, -backfillDays);
+  const base = addDays(today, -backfillDays);
+  const floor = floorDate !== null && floorDate > base ? floorDate : base;
   let oldest = cursor ?? incrementalWindow(today).from;
   const chunks: Window[] = [];
 
