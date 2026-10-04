@@ -529,9 +529,17 @@ describe("runImport: backfill", () => {
 describe("runImport: budgets", () => {
   it("stays under 40 D1 statements and the subrequest cap on a first backfill run with three accounts", async () => {
     const w = world([REVOLUT, AMEX, POCKET]);
-    w.txns[1] = [txn(1, "a", { date: "2026-10-01" }), txn(1, "b", { date: "2026-08-01" })];
-    w.txns[2] = [txn(2, "c", { date: "2026-09-25" })];
+    // Pending rows with posted matches on both accounts, so each also runs the supersede/expire batch.
+    w.txns[1] = [
+      txn(1, "a", { date: "2026-10-01" }), txn(1, "b", { date: "2026-08-01" }),
+      txn(1, null, { amount: -1, date: "2026-09-30", isPending: true }), txn(1, "a2", { amount: -1, date: "2026-10-01" }),
+    ];
+    w.txns[2] = [
+      txn(2, "c", { date: "2026-09-25" }),
+      txn(2, null, { amount: -2, date: "2026-09-30", isPending: true }), txn(2, "c2", { amount: -2, date: "2026-10-01" }),
+    ];
     const res = await run(w, { backfillDays: "730" });
+    expect(res.accounts.map((a) => a.vanishedMarked)).toEqual([1, 1]);
     expect(res.status).toBe("success");
     expect(res.statements).toBeLessThan(40);
     expect(res.subrequests).toBeLessThanOrEqual(20);
