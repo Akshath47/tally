@@ -16,7 +16,7 @@
    - Enabled Access on the `tally` Worker with scope All traffic, the **Cloudflare account** policy and a 7-day session.
    - Gave the agent the Access AUD tag; the team domain was read from the login redirect. Neither is secret.
    - Recommended: turn on 2FA for the Cloudflare account.
-7. **Analytics token:** create a scoped **Account Analytics: Read** API token for `scripts/usage-report.ts` and export it in your local shell environment.
+7. **Analytics token:** create a scoped **Account Analytics: Read** API token for `scripts/usage-report.ts`. Add `export CLOUDFLARE_ANALYTICS_TOKEN=...` and `export CLOUDFLARE_ACCOUNT_ID=...` to your shell profile (`~/.zshrc`) yourself, never via chat. The account id isn't secret (`wrangler whoami`).
 8. **Verification**
    - Compare the sample transactions with the Revolut and Amex apps.
    - Log in on the iPhone in Safari and from a Home Screen shortcut.

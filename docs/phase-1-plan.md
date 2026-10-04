@@ -166,9 +166,10 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 ## [ ] P1.8 Free-tier measurement
 
 - `scripts/usage-report.ts` queries the Cloudflare GraphQL Analytics API using a **read-only Account Analytics token**. It reports:
-  - Worker CPU time P50/P99/max, split by cron and HTTP;
+  - Worker CPU time P50/P99/max for cron runs (exact, one row per run), and for all invocations together (sampled). The API has no trigger dimension, so HTTP can't be split from cron there;
   - errors, including any exceeded-CPU errors;
   - D1 rows read and written per day.
+- Run: `node scripts/usage-report.ts --since 2026-10-02T18:22:00Z` (the hourly-cron build's deploy time; the window can't exceed 7 days). `--schema` lists each dataset's live fields.
 
 **Accept when:**
 - import P99 CPU is under 7 ms (30% headroom under 10 ms);
