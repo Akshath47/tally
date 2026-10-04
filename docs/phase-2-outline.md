@@ -2,6 +2,8 @@
 
 This is an outline, not a spec. Screens and features will be decided while building. It starts only after the Phase 1 assessment gives a "go".
 
+The backend decisions now live in [phase-2-spec.md](phase-2-spec.md), which wins where the two differ. For example, it drops buckets, handles card repayments with rules instead of pairing, and counts money sent to people as spending.
+
 ## Data additions
 
 - `categories`
