@@ -65,6 +65,28 @@ describe("schema", () => {
     await expect(insertAccount({ providerAccountId: "1001" })).rejects.toThrow(/UNIQUE/);
   });
 
+  it("starts an account out of review, unmerged and with no backfill floor", async () => {
+    const row = await env.DB.prepare("SELECT needs_review, merged_into_account_id, backfill_floor_date FROM accounts WHERE id = ?1")
+      .bind(accountId)
+      .first();
+    expect(row).toEqual({ needs_review: 0, merged_into_account_id: null, backfill_floor_date: null });
+  });
+
+  const setAccount = (column: string, value: unknown) =>
+    env.DB.prepare(`UPDATE accounts SET ${column} = ?1 WHERE id = ?2`).bind(value, accountId).run();
+
+  it.each([2, "true"])("rejects needs_review %s that isn't 0 or 1", async (value) => {
+    await expect(setAccount("needs_review", value)).rejects.toThrow(/CHECK/);
+  });
+
+  it.each(["2026-02-30", "2026-9-1"])("rejects backfill_floor_date %s that isn't a real date", async (value) => {
+    await expect(setAccount("backfill_floor_date", value)).rejects.toThrow(/CHECK/);
+  });
+
+  it("rejects merging into an unknown account", async () => {
+    await expect(setAccount("merged_into_account_id", 9999)).rejects.toThrow(/FOREIGN KEY/);
+  });
+
   it("rejects unknown import run triggers and statuses", async () => {
     await expect(insertRun("webhook")).rejects.toThrow(/CHECK/);
     await expect(insertRun("manual", "done")).rejects.toThrow(/CHECK/);

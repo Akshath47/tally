@@ -48,6 +48,15 @@ export const accounts = sqliteTable(
     newestTxnDate: text("newest_txn_date"),
     backfillCursorDate: text("backfill_cursor_date"),
     backfillComplete: integer("backfill_complete", { mode: "boolean" }).notNull().default(false),
+    // Set when an account reconnected under a new provider id is linked: a catch-up backfill
+    // stops here instead of re-reading the full history (docs/phase-2-spec.md, Reconnection).
+    backfillFloorDate: text("backfill_floor_date"),
+    // A provider account first seen once Tally already had accounts. It isn't imported until
+    // the owner enables it or links it to an existing account, so a reconnect can't double history.
+    needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
+    // On a review row that was linked: the account its provider id now belongs to. The row keeps
+    // the target's old provider id, disabled, so that id is never seen as new again.
+    mergedIntoAccountId: integer("merged_into_account_id").references((): AnySQLiteColumn => accounts.id),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
