@@ -1,7 +1,7 @@
 import type { IMPORT_TRIGGERS, IMPORT_RUN_STATUSES } from "../db/schema";
 import { createClient, type LunchFlowClient, type ProviderAccount } from "./client";
 import { CountingDb } from "./db";
-import { addDays, londonToday } from "./dates";
+import { londonToday } from "./dates";
 import { ImportError } from "./errors";
 import { LEASE_MS, claimLock, closeAbandonedRuns, releaseLock } from "./lock";
 import { toMinor } from "./money";
@@ -29,6 +29,7 @@ const DEFAULT_BACKFILL_DAYS = 90;
 // Time past a run's budget for its last D1 writes and closing the run.
 const LEASE_MARGIN_MS = 30_000;
 const BUDGET_CURRENCY = "GBP";
+const DAY_MS = 86_400_000;
 
 export type ImportEnv = { DB: D1Database; LUNCHFLOW_API_KEY: string; BACKFILL_DAYS?: string };
 export type RunDeps = {
@@ -50,6 +51,8 @@ export type RunSummary = {
 
 /** A run that exists and has tried for the lease; `finished` settles when it has been closed. */
 export type StartedImport = { runId: number; locked: boolean; finished: Promise<RunSummary> };
+
+type StoredCandidate = PendingCandidate & { is_pending: number; linked: number };
 
 type Ctx = {
   db: CountingDb;
@@ -269,35 +272,30 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
 
 /**
  * The writes that retire pending rows, for the account's main batch: superseded by a posted
- * row (this run's new ones included, matched by provider id), or expired. Empty when the
- * account has no live pending rows.
+ * row (this run's new ones included, matched by provider id), or expired. Empty when there's
+ * nothing to retire.
  */
 async function retirePending(ctx: Ctx, accountId: number, fetched: TransactionRow[]): Promise<D1PreparedStatement[]> {
   const { db, nowIso } = ctx;
-  type Stored = PendingCandidate & { linked: number };
-  const stored = (await db.all<Stored>(selectPendingCandidates(db, accountId, PENDING_TTL_DAYS))).results;
-  const live = stored.filter((r) => r.is_pending === 1);
-  if (live.length === 0) return [];
-
+  const stored = (await db.all<StoredCandidate>(selectPendingCandidates(db, accountId, PENDING_TTL_DAYS))).results;
   const fetchedIds = new Set(fetched.map((r) => r.provider_txn_id));
+  // A pending row the provider still returns hasn't posted, so it is neither matched nor expired.
+  const absent = stored.filter((r) => r.is_pending === 1 && !fetchedIds.has(r.provider_txn_id));
+  if (absent.length === 0) return [];
+
   const storedIds = new Set(stored.map((r) => r.provider_txn_id));
-  const dates = live.map((r) => r.txn_date).sort();
-  const from = dates[0]!;
-  const to = addDays(dates[dates.length - 1]!, PENDING_TTL_DAYS);
-  const matches = matchPending([
-    // A pending row the provider still returns hasn't posted yet.
-    ...live.filter((r) => !fetchedIds.has(r.provider_txn_id)),
+  const matches = matchPending(absent, [
     ...stored.filter((r) => r.is_pending === 0 && r.linked === 0),
-    // Posted rows this run inserts: any stored row dated in this range is already in `stored`.
-    ...fetched
-      .filter((r) => r.is_pending === 0 && !storedIds.has(r.provider_txn_id) && r.txn_date >= from && r.txn_date <= to)
-      .map((r) => ({ ...r, first_seen_at: nowIso })),
+    // Posted rows this run inserts. matchPending enforces the date window.
+    ...fetched.filter((r) => r.is_pending === 0 && !storedIds.has(r.provider_txn_id)).map((r) => ({ ...r, first_seen_at: nowIso })),
   ]);
 
-  const cutoff = new Date(Date.parse(nowIso) - PENDING_TTL_DAYS * 86_400_000).toISOString();
+  const matched = new Set(matches.map((m) => m.pending_txn_id));
+  const cutoff = new Date(Date.parse(nowIso) - PENDING_TTL_DAYS * DAY_MS).toISOString();
+  const expired = absent.filter((r) => !matched.has(r.provider_txn_id) && r.first_seen_at < cutoff).map((r) => r.provider_txn_id);
   return [
     ...(matches.length > 0 ? [supersedePending(db, accountId, nowIso, JSON.stringify(matches))] : []),
-    expirePending(db, accountId, nowIso, cutoff, JSON.stringify([...fetchedIds])),
+    ...(expired.length > 0 ? [expirePending(db, accountId, nowIso, JSON.stringify(expired))] : []),
   ];
 }
 

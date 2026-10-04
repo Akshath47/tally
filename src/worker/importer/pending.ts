@@ -6,10 +6,10 @@ import { addDays } from "./dates";
 export const PENDING_TTL_DAYS = 7;
 
 // Keyed by provider id, not row id, so posted rows this run is about to insert can match too.
-export type PendingCandidate = { provider_txn_id: string; is_pending: number; amount_minor: number; txn_date: string; first_seen_at: string };
+export type PendingCandidate = { provider_txn_id: string; amount_minor: number; txn_date: string; first_seen_at: string };
 export type PendingMatch = { pending_txn_id: string; posted_txn_id: string };
 
-const byDateThenId = (a: PendingCandidate, b: PendingCandidate) =>
+const oldestFirst = (a: PendingCandidate, b: PendingCandidate) =>
   a.txn_date.localeCompare(b.txn_date) || a.first_seen_at.localeCompare(b.first_seen_at) || a.provider_txn_id.localeCompare(b.provider_txn_id);
 
 /**
@@ -17,9 +17,9 @@ const byDateThenId = (a: PendingCandidate, b: PendingCandidate) =>
  * days after the pending date and first seen no earlier than it. Oldest pending first; each
  * posted row is used once. A wrong pairing between equal amounts leaves totals unchanged.
  */
-export function matchPending(rows: PendingCandidate[]): PendingMatch[] {
-  const pending = rows.filter((r) => r.is_pending === 1).sort(byDateThenId);
-  const posted = rows.filter((r) => r.is_pending === 0).sort(byDateThenId);
+export function matchPending(pendingRows: PendingCandidate[], postedRows: PendingCandidate[]): PendingMatch[] {
+  const pending = [...pendingRows].sort(oldestFirst);
+  const posted = [...postedRows].sort(oldestFirst);
   const used = new Set<string>();
   const matches: PendingMatch[] = [];
 

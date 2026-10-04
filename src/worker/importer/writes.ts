@@ -133,18 +133,14 @@ export function supersedePending(db: CountingDb, accountId: number, now: string,
     .bind(accountId, now, matchesJson);
 }
 
-/**
- * Retires (never deletes) pending rows first seen before `cutoff` that this run didn't fetch:
- * reversed, or posted at a different amount. `idsJson` is every id fetched for the account.
- */
-export function expirePending(db: CountingDb, accountId: number, now: string, cutoff: string, idsJson: string) {
+/** Retires (never deletes) expired pending rows: reversed, or posted at a different amount. */
+export function expirePending(db: CountingDb, accountId: number, now: string, idsJson: string) {
   return db
     .prepare(
       `UPDATE transactions SET vanished_at = ?2, updated_at = ?2
-       WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL AND first_seen_at < ?3
-         AND provider_txn_id NOT IN (SELECT value FROM json_each(?4))`,
+       WHERE account_id = ?1 AND vanished_at IS NULL AND provider_txn_id IN (SELECT value FROM json_each(?3))`,
     )
-    .bind(accountId, now, cutoff, idsJson);
+    .bind(accountId, now, idsJson);
 }
 
 /** Posted rows the provider stopped returning: counted for the run stats, never acted on. */
