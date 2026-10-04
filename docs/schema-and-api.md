@@ -141,9 +141,16 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | GET | `/api/transactions?account_id&from&to&limit&cursor` | Paged list, newest first (`txn_date`, then `id`); `limit ≤ 200`, default 50; `from`/`to` are inclusive `YYYY-MM-DD`; pass the response's opaque `nextCursor` back as `cursor` |
 | POST | `/api/import-runs` | Start a manual import: creates the run and claims the lock, answers `202 {status:"started", runId}`, and imports in the background (poll `GET /api/import-runs`); `409 {error:"import_running"}` if the lock is held (the attempt is recorded as `skipped_locked`); `429 {error:"rate_limited", retryAfterSeconds}` plus `Retry-After` if any run (cron included) started under 60 s ago |
 | GET | `/api/import-runs?limit=20` | `{runs, importing}`: recent runs with per-account results (`limit ≤ 50`), and whether a run currently holds the import lease |
+| GET | `/api/categories` | `{categories: {id, name, kind, archived}[]}`, archived ones included, ordered by id (P2.3) |
+| POST | `/api/categories` | `{name, kind}`, with the name trimmed to 1–50 characters → `201 {category}`. `409 name_taken` if the name exists in any case |
+| PATCH | `/api/categories/:id` | `{name?, kind?, archived?}` (at least one) → `{category}`. `404` / `409 name_taken`. Categories are archived, never deleted |
+| GET | `/api/rules` | `{rules: {id, matchType, pattern, accountId, categoryId, transactionCount}[]}`. `transactionCount` = counted rows the rule decides, with no category override (P2.3) |
+| POST | `/api/rules` | `{matchType, pattern, accountId?, categoryId}` → `201 {rule}`. The pattern is stored as SQLite's `lower(trim())` would compute it (ASCII and spaces only), 1–100 characters. `409 rule_exists` / `409 category_archived` / `404` (unknown or merged account, unknown category) |
+| PATCH | `/api/rules/:id` | Any of the create fields. `accountId: null` makes the rule apply to any account. Same errors as create |
+| DELETE | `/api/rules/:id` | `{ok: true}` or `404`. Its transactions fall back to the next matching rule, or to uncategorised |
 
 Responses use camelCase fields. Provider account and connection ids are not exposed.
 
-`POST` requests must send `Content-Type: application/json` (otherwise `415`). Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
+`POST`, `PATCH` and `DELETE` requests must send `Content-Type: application/json` (otherwise `415`). Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
 
 Errors are JSON: `400 {error:"bad_request"}` (invalid query parameter), `401 {error:"unauthenticated"}` (no or invalid Access JWT), `403 {error:"forbidden"}` (valid JWT, wrong email), `404 {error:"not_found"}`, `500 {error:"internal"}` (no details leaked).
