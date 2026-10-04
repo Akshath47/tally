@@ -27,6 +27,9 @@ accounts
   last_data_change_at      last import that inserted or changed a transaction
   newest_txn_date
   backfill_cursor_date · backfill_complete
+  backfill_floor_date      a linked account's catch-up stops here (P2.1); null = BACKFILL_DAYS
+  needs_review             bool; set on accounts first seen once Tally already had accounts (P2.1)
+  merged_into_account_id FK → accounts.id   on a linked review row: it now only holds the target's old provider id
   created_at · updated_at
   UNIQUE(provider, provider_account_id)
 
@@ -86,7 +89,9 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | `{ ok, email }`, used for auth smoke tests; returns no financial data |
-| GET | `/api/accounts` | Accounts plus import status fields |
+| GET | `/api/accounts` | Accounts plus import status fields and `needsReview`; merged rows are left out |
+| POST | `/api/accounts/:id/enable` | An account awaiting review is genuinely new: import it from the next run. `409 not_awaiting_review` / `409 not_importable` (currency isn't GBP) |
+| POST | `/api/accounts/:id/link` | `{intoAccountId}`: an account awaiting review is a reconnect of that account. The two rows swap provider ids in one batch, and the target catches up from 7 days before its newest transaction. `409 not_awaiting_review` / `409 invalid_link_target` |
 | GET | `/api/transactions?account_id&from&to&limit&cursor` | Paged list, newest first (`txn_date`, then `id`); `limit ≤ 200`, default 50; `from`/`to` are inclusive `YYYY-MM-DD`; pass the response's opaque `nextCursor` back as `cursor` |
 | POST | `/api/import-runs` | Start a manual import: creates the run and claims the lock, answers `202 {status:"started", runId}`, and imports in the background (poll `GET /api/import-runs`); `409 {error:"import_running"}` if the lock is held (the attempt is recorded as `skipped_locked`); `429 {error:"rate_limited", retryAfterSeconds}` plus `Retry-After` if any run (cron included) started under 60 s ago |
 | GET | `/api/import-runs?limit=20` | `{runs, importing}`: recent runs with per-account results (`limit ≤ 50`), and whether a run currently holds the import lease |

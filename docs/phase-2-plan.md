@@ -105,7 +105,7 @@ Adding a table-level `check()` to `accounts` would make drizzle-kit **rebuild th
 
 - [ ] **Step 1: write the failing tests:**
   - `backfillChunks(null, "2026-10-02", 730, 2, "2026-09-10")`: the floor is later than the incremental start (`2026-09-19`), so there are no chunks and `complete: true`.
-  - `backfillChunks(null, "2026-10-02", 730, 2, "2026-08-01")`: one chunk `2026-08-18..2026-09-18`, then `2026-08-01..2026-08-17`, then `complete: true`.
+  - `backfillChunks(null, "2026-10-02", 730, 2, "2026-08-01")`: chunks `2026-08-19..2026-09-18` and `2026-08-01..2026-08-18`, and `complete: true`.
   - A null `floorDate` behaves as it does today.
 - [ ] **Step 2:** run `npx vitest run test/importer/windows.spec.ts`. The new tests should fail.
 - [ ] **Step 3:** implement it. Compute `const floor = floorDate && floorDate > base ? floorDate : base`, where `base = addDays(today, -backfillDays)`.
