@@ -21,3 +21,6 @@ export function idParam(c: Context, name = "id"): number | null {
   const parsed = z.coerce.number().int().positive().safeParse(c.req.param(name));
   return parsed.success ? parsed.data : null;
 }
+
+/** D1 surfaces a UNIQUE or PRIMARY KEY violation only in the error message. */
+export const isUniqueViolation = (e: unknown) => e instanceof Error && /UNIQUE constraint failed/.test(e.message);
