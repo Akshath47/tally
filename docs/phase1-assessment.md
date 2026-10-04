@@ -8,7 +8,7 @@ This is the end-of-Phase-1 read on whether Lunch Flow → Tally is good enough t
 
 ## Spot check against the bank apps
 
-> **Open (owner):** compare about 20 transactions per account in Tally's list with the Revolut and Amex apps: amount, sign, date, merchant and pending state. Record the result here as counts, e.g. "Revolut 20/20 match; Amex 19/20, 1 dated a day later (booking date)".
+**Done (owner, 2026-10-04):** about 20 transactions per account in Tally's list were checked against the Revolut and Amex apps (amount, sign, date, merchant and pending state). No discrepancies.
 
 P1.1 already compared the raw API with the bank apps (Gate 1). This check covers what Tally added on top of the API: conversion to minor units, sign, date storage and the pending/vanished handling.
 
@@ -24,7 +24,7 @@ P1.1 already compared the raw API with the bank apps (Gate 1). This check covers
 
 **Lunch Flow → Tally.** New transactions turned up in only **3 of the 49 hourly runs**: 10:00 and 19:00 UTC on 3 Oct, and 04:00 UTC on 4 Oct. Every other run re-read the same data unchanged. So Lunch Flow refreshes its stored data a few times a day, and an hourly poll adds at most an hour on top. The trigger times don't look regular, but two days is too short to call it a schedule.
 
-**Bank → Tally**, measured from the start of the transaction's calendar date (UTC). The real purchase time is still open, below.
+**Bank → Tally**, measured from the start of the transaction's calendar date (UTC), since the API carries no purchase time.
 
 | Account | Kind | n | First seen in Tally |
 |---|---|---|---|
@@ -37,7 +37,7 @@ P1.1 already compared the raw API with the bank apps (Gate 1). This check covers
 - **Posted** transactions reach Tally about **a day after** their booking date. The booking date can itself be a day after the purchase ([lunchflow-findings.md](lunchflow-findings.md)).
 - The sample is 5 transactions. It shows the shape, not reliable numbers.
 
-> **Open (owner):** for a few of your purchases on 2–4 Oct, give the time you made them (from the bank app). Comparing those with `first_seen_at` turns "same day" and "a day later" into real hour counts.
+Exact purchase times weren't collected. They would sharpen these hours but change no Phase 2 decision (owner, 2026-10-04).
 
 **Effect of the 3-hour cron** (owner's choice, 2026-10-04, instead of the planned 6 hours). Runs at 00, 03, 06 … 21 UTC would have picked up each of the three Lunch Flow refreshes above 2 hours later than the hourly cron did. The manual **Import from Lunch Flow** button still gets anything Lunch Flow already has.
 

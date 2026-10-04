@@ -192,7 +192,7 @@ If CPU is too high, reduce the chunk size. Moving to a paid plan needs discussio
 - **Accepted rather than optimised.** The real work is already about 1 ms, and runs succeed.
 - **Watching for kills:** run `node scripts/check-terminations.ts` at least every 90 days (analytics retention). If it ever reports a kill, revisit: minify the bundle, `zod/mini` in the importer, or keep the HTTP app out of the cron path.
 
-## [ ] P1.9 Verification and assessment
+## [x] P1.9 Verification and assessment
 
 - Check about 20 imported transactions per account against the Revolut and Amex apps: amount, sign, date, merchant and pending state.
 - Write `docs/phase1-assessment.md` covering:
@@ -209,3 +209,5 @@ If CPU is too high, reduce the chunk size. Moving to a paid plan needs discussio
 - Change the cron to every 3 hours. The plan said every 6 hours; the owner chose 3 on 2026-10-04.
 
 **Accept when:** the assessment is written and reviewed by the owner.
+
+**Result (2026-10-04): done.** The owner checked about 20 transactions per account against the bank apps with no discrepancies, and reviewed and approved [phase1-assessment.md](phase1-assessment.md). The cron runs every 3 hours, not 6 (owner's choice). Exact purchase times for the staleness measurement were dropped, since they change no Phase 2 decision; lag is measured from transaction dates instead.
