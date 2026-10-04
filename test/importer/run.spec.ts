@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CountingDb } from "../../src/worker/importer/db";
 import { claimLock } from "../../src/worker/importer/lock";
 import { startImport } from "../../src/worker/importer/run";
-import { insertRun, insertTransaction, resetDb } from "../db";
+import { insertRun, resetDb } from "../db";
 import { AMEX, REVOLUT, txn, world, type WorldAccount } from "../fixtures/lunchflow";
 
 // All data is synthetic. "Today" is 2026-10-02 in London, so the incremental window is
@@ -141,32 +141,6 @@ describe("runImport: nothing is ever deleted", () => {
     expect(await count("SELECT 1 FROM transactions WHERE vanished_at IS NOT NULL")).toBe(0);
   });
 
-  it("marks a pending transaction that vanished, keeps the row, and clears it if it reappears", async () => {
-    const w = basicWorld();
-    const pending = txn(2, "pend", { amount: -9.99, date: "2026-09-30", isPending: true });
-    w.txns[2] = [...w.txns[2]!, pending];
-    await run(w);
-
-    // Pending → posted arrives under a new id with the booking date.
-    w.txns[2] = [w.txns[2]![0]!, txn(2, "posted-hex", { amount: -9.99, date: "2026-10-01" })];
-    const second = await run(w);
-    expect(second.accounts[1]).toMatchObject({ inserted: 1, vanishedMarked: 1 });
-    const gone = await env.DB.prepare("SELECT vanished_at, is_pending FROM transactions WHERE provider_txn_id = 'pend'").first<{
-      vanished_at: string | null;
-      is_pending: number;
-    }>();
-    expect(gone!.vanished_at).not.toBeNull();
-    expect(gone!.is_pending).toBe(1);
-
-    // Already-marked rows aren't counted again.
-    expect((await run(w)).accounts[1]!.vanishedMarked).toBe(0);
-
-    w.txns[2] = [...w.txns[2]!, pending];
-    const back = await run(w);
-    expect(back.accounts[1]).toMatchObject({ inserted: 0, updated: 1 });
-    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id = 'pend' AND vanished_at IS NULL")).toBe(1);
-  });
-
   it("never marks a posted transaction as vanished", async () => {
     const w = basicWorld();
     await run(w);
@@ -174,14 +148,85 @@ describe("runImport: nothing is ever deleted", () => {
     await run(w);
     expect(await count("SELECT 1 FROM transactions WHERE vanished_at IS NOT NULL")).toBe(0);
   });
+});
 
-  it("does not mark pending transactions dated outside the fetched window", async () => {
+const pendingRow = (id: string) =>
+  env.DB.prepare("SELECT id, vanished_at, superseded_by FROM transactions WHERE provider_txn_id = ?1").bind(id).first<{
+    id: number;
+    vanished_at: string | null;
+    superseded_by: number | null;
+  }>();
+
+describe("runImport: pending transactions", () => {
+  const DAY_MINUTES = 24 * 60;
+
+  function pendingWorld() {
     const w = basicWorld();
+    w.txns[2] = [...w.txns[2]!, txn(2, "pend", { amount: -9.99, date: "2026-09-30", isPending: true })];
+    return w;
+  }
+
+  it("keeps counting a pending transaction the provider stops returning", async () => {
+    const w = pendingWorld();
     await run(w);
-    // Dated beyond the 20-day backfill floor (2026-09-12), so no fetched window covers it.
-    await insertTransaction(1, 1, "ancient-pend", { txnDate: "2026-01-01", isPending: 1 });
+    w.txns[2] = [w.txns[2]![0]!];
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 0 });
+    expect(await pendingRow("pend")).toMatchObject({ vanished_at: null, superseded_by: null });
+  });
+
+  it("retires a pending transaction when a same-amount posted one arrives, and links them", async () => {
+    const w = pendingWorld();
     await run(w);
-    expect(await count("SELECT 1 FROM transactions WHERE provider_txn_id = 'ancient-pend' AND vanished_at IS NULL")).toBe(1);
+    // The posted version has a new id and the booking date; the pending one is gone.
+    w.txns[2] = [w.txns[2]![0]!, txn(2, "posted-hex", { amount: -9.99, date: "2026-10-01" })];
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 1, vanishedMarked: 1 });
+    const postedId = (await pendingRow("posted-hex"))!.id;
+    const pend = await pendingRow("pend");
+    expect(pend!.superseded_by).toBe(postedId);
+    expect(pend!.vanished_at).not.toBeNull();
+
+    // Already-retired rows aren't counted again.
+    expect((await run(w)).accounts[1]!.vanishedMarked).toBe(0);
+  });
+
+  it("keeps a superseded pending transaction retired if the provider returns it again", async () => {
+    const w = pendingWorld();
+    await run(w);
+    w.txns[2] = [...w.txns[2]!, txn(2, "posted-hex", { amount: -9.99, date: "2026-10-01" })];
+    await run(w);
+    expect((await run(w)).accounts[1]).toMatchObject({ inserted: 0, updated: 0, vanishedMarked: 0 });
+    expect((await pendingRow("pend"))!.vanished_at).not.toBeNull();
+  });
+
+  it("keeps it counted next to a different-amount posted one until it expires 7 days after first seen", async () => {
+    const w = pendingWorld();
+    await run(w);
+    w.txns[2] = [w.txns[2]![0]!, txn(2, "posted-hex", { amount: -10.5, date: "2026-10-01" })];
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 0 });
+    expect(await pendingRow("pend")).toMatchObject({ vanished_at: null });
+
+    minute += 6 * DAY_MINUTES;
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 0 });
+
+    minute += 2 * DAY_MINUTES;
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 1 });
+    expect(await pendingRow("pend")).toMatchObject({ superseded_by: null });
+    expect((await pendingRow("pend"))!.vanished_at).not.toBeNull();
+  });
+
+  it("does not expire a pending transaction the provider still returns, and revives an expired one that comes back", async () => {
+    const w = pendingWorld();
+    await run(w);
+    minute += 8 * DAY_MINUTES;
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 0 });
+
+    const pend = w.txns[2]![1]!;
+    w.txns[2] = [w.txns[2]![0]!];
+    expect((await run(w)).accounts[1]).toMatchObject({ vanishedMarked: 1 });
+
+    w.txns[2] = [...w.txns[2]!, pend];
+    expect((await run(w)).accounts[1]).toMatchObject({ updated: 1, vanishedMarked: 0 });
+    expect(await pendingRow("pend")).toMatchObject({ vanished_at: null });
   });
 });
 
@@ -461,7 +506,7 @@ describe("runImport: backfill", () => {
     // Run 1 covers 07-19..10-02. On run 2 the fetched windows are the incremental one
     // (09-19..10-02) and older chunks, leaving 07-19..09-18 unfetched.
     w.txns[1] = [
-      txn(1, "gap-pending", { date: "2026-08-10", isPending: true }),
+      txn(1, "gap-pending", { amount: -5, date: "2026-08-10", isPending: true }),
       txn(1, "gap-posted", { date: "2026-08-11" }),
       txn(1, "recent", { date: "2026-10-01" }),
     ];

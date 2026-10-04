@@ -6,12 +6,15 @@ import { ImportError } from "./errors";
 import { LEASE_MS, claimLock, closeAbandonedRuns, releaseLock } from "./lock";
 import { toMinor } from "./money";
 import { accountLabel, normalizeTransaction, type TransactionRow } from "./normalize";
+import { PENDING_TTL_DAYS, matchPending, type PendingCandidate } from "./pending";
 import { backfillChunks, coveredRanges, incrementalWindow, type Window } from "./windows";
 import {
   countMissingPosted,
   disableForeignAccount,
+  expirePending,
   insertRunAccount,
-  markVanished,
+  selectPendingCandidates,
+  supersedePending,
   updateAccountStatus,
   upsertAccounts,
   upsertTransactions,
@@ -236,7 +239,6 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     const results = await db.batch([
       ...checks.map((c) => countMissingPosted(db, row.id, c.range, c.idsJson)),
       ...upserts,
-      ...checks.map((c) => markVanished(db, row.id, nowIso, c.range, c.idsJson)),
       statusUpdate({
         ok: true, error: null,
         backfillCursor: backfill?.nextCursor ?? null,
@@ -245,6 +247,7 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     ]);
 
     Object.assign(summary, tallyResults(results, checks.length, upserts.length), { status: "success", httpStatus: 200 });
+    summary.vanishedMarked = await retirePending(ctx, row.id, JSON.stringify(fetched.rows.map((r) => r.provider_txn_id)));
   } catch (e) {
     summary.error = errorText(e);
     summary.httpStatus = e instanceof ImportError ? e.httpStatus : null;
@@ -261,6 +264,24 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     }),
   );
   return summary;
+}
+
+/**
+ * Retires pending rows superseded by a posted version, or expired. Runs after the main batch so
+ * this run's posted rows have ids. Returns how many rows it retired.
+ */
+async function retirePending(ctx: Ctx, accountId: number, fetchedIdsJson: string): Promise<number> {
+  const { db, nowIso } = ctx;
+  const candidates = (await db.all<PendingCandidate>(selectPendingCandidates(db, accountId))).results;
+  if (!candidates.some((c) => c.is_pending === 1)) return 0;
+
+  const matches = matchPending(candidates);
+  const cutoff = new Date(Date.parse(nowIso) - PENDING_TTL_DAYS * 86_400_000).toISOString();
+  const results = await db.batch([
+    ...(matches.length > 0 ? [supersedePending(db, nowIso, JSON.stringify(matches))] : []),
+    expirePending(db, accountId, nowIso, cutoff, fetchedIdsJson),
+  ]);
+  return results.reduce((n, r) => n + r.meta.changes, 0);
 }
 
 async function fetchWindows(client: LunchFlowClient, providerId: number, accountId: number, currency: string, windows: Window[]) {
@@ -286,11 +307,9 @@ function tallyResults(results: D1Result[], checks: number, upserts: number) {
   const sum = (rs: D1Result[], pick: (r: D1Result) => number) => rs.reduce((total, r) => total + pick(r), 0);
   const upsertResults = results.slice(checks, checks + upserts);
   const inserted = sum(upsertResults, (r) => (r.results as { inserted: number }[]).filter((x) => x.inserted === 1).length);
-  const vanishFrom = checks + upserts;
   return {
     missingPosted: sum(results.slice(0, checks), (r) => (r.results[0] as { n: number }).n),
     inserted,
     updated: sum(upsertResults, (r) => r.results.length) - inserted,
-    vanishedMarked: sum(results.slice(vanishFrom, vanishFrom + checks), (r) => r.meta.changes),
   };
 }

@@ -37,7 +37,7 @@ export function backfillChunks(
 
 /**
  * Merges windows that touch or overlap into the ranges a run actually fetched, oldest first.
- * Vanish and missing-row checks must only look inside these: after the first run the
+ * The missing-posted check must only look inside these: after the first run the
  * incremental window and the next backfill chunks have an already-imported gap between them.
  */
 export function coveredRanges(windows: Window[]): Window[] {

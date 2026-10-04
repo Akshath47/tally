@@ -62,8 +62,9 @@ export function upsertAccounts(db: CountingDb, now: string, accounts: AccountPay
 }
 
 /**
- * Inserts new transactions and updates only those whose bank fields changed (or that were
- * marked vanished), so an identical re-import writes nothing. RETURNING yields one row per
+ * Inserts new transactions and updates only those whose bank fields changed (or that come
+ * back after expiring), so an identical re-import writes nothing. A superseded pending row
+ * stays retired even if the provider returns it again. RETURNING yields one row per
  * insert or update; `inserted` tells them apart. Needs `WHERE true` on the SELECT so SQLite
  * doesn't read ON CONFLICT as part of a join.
  */
@@ -82,7 +83,8 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
            amount_minor = excluded.amount_minor, provider_amount = excluded.provider_amount, currency = excluded.currency,
            txn_date = excluded.txn_date, merchant = excluded.merchant, description = excluded.description,
            is_pending = excluded.is_pending, fingerprint = excluded.fingerprint,
-           last_seen_at = excluded.last_seen_at, vanished_at = NULL, updated_at = excluded.updated_at
+           last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at,
+           vanished_at = CASE WHEN transactions.superseded_by IS NULL THEN NULL ELSE transactions.vanished_at END
          WHERE transactions.amount_minor IS NOT excluded.amount_minor
             OR transactions.provider_amount IS NOT excluded.provider_amount
             OR transactions.currency IS NOT excluded.currency
@@ -90,7 +92,7 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
             OR transactions.merchant IS NOT excluded.merchant
             OR transactions.description IS NOT excluded.description
             OR transactions.is_pending IS NOT excluded.is_pending
-            OR transactions.vanished_at IS NOT NULL
+            OR (transactions.vanished_at IS NOT NULL AND transactions.superseded_by IS NULL)
          RETURNING first_import_run_id = ?3 AS inserted`,
       )
       .bind(accountId, now, runId, chunk),
@@ -98,17 +100,46 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
 }
 
 /**
- * Marks (never deletes) pending transactions inside the fetched range that the provider no
- * longer returns. `idsJson` must be every id returned for the whole range (a JSON array), hence one statement.
+ * Live pending rows, plus the posted rows that could supersede them: on or after the oldest
+ * pending date and not already linked to a pending row. Read for `matchPending`.
  */
-export function markVanished(db: CountingDb, accountId: number, now: string, range: { from: string; to: string }, idsJson: string) {
+export function selectPendingCandidates(db: CountingDb, accountId: number) {
   return db
     .prepare(
-      `UPDATE transactions SET vanished_at = ?4, updated_at = ?4
-       WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL AND txn_date BETWEEN ?2 AND ?3
-         AND provider_txn_id NOT IN (SELECT value FROM json_each(?5))`,
+      `WITH live AS (SELECT * FROM transactions WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL)
+       SELECT id, is_pending, amount_minor, txn_date, first_seen_at FROM live
+       UNION ALL
+       SELECT id, is_pending, amount_minor, txn_date, first_seen_at FROM transactions
+       WHERE account_id = ?1 AND is_pending = 0 AND txn_date >= (SELECT min(txn_date) FROM live)
+         AND id NOT IN (SELECT superseded_by FROM transactions WHERE account_id = ?1 AND superseded_by IS NOT NULL)`,
     )
-    .bind(accountId, range.from, range.to, now, idsJson);
+    .bind(accountId);
+}
+
+/** Retires (never deletes) each matched pending row and links it to its posted version. */
+export function supersedePending(db: CountingDb, now: string, matchesJson: string) {
+  return db
+    .prepare(
+      `UPDATE transactions SET superseded_by = m.posted_id, vanished_at = ?1, updated_at = ?1
+       FROM (SELECT json_extract(value, '$.pending_id') AS pending_id, json_extract(value, '$.posted_id') AS posted_id
+             FROM json_each(?2)) AS m
+       WHERE transactions.id = m.pending_id AND transactions.vanished_at IS NULL`,
+    )
+    .bind(now, matchesJson);
+}
+
+/**
+ * Retires (never deletes) pending rows first seen before `cutoff` that this run didn't fetch:
+ * reversed, or posted at a different amount. `idsJson` is every id fetched for the account.
+ */
+export function expirePending(db: CountingDb, accountId: number, now: string, cutoff: string, idsJson: string) {
+  return db
+    .prepare(
+      `UPDATE transactions SET vanished_at = ?2, updated_at = ?2
+       WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL AND first_seen_at < ?3
+         AND provider_txn_id NOT IN (SELECT value FROM json_each(?4))`,
+    )
+    .bind(accountId, now, cutoff, idsJson);
 }
 
 /** Posted rows the provider stopped returning: counted for the run stats, never acted on. */
