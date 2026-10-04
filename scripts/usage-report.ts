@@ -9,7 +9,7 @@
 // available fields instead, to check the queries below against the live API.
 
 import { parseArgs } from "node:util";
-import { ACCOUNT, fail, gql, workerConfig } from "./lib/cloudflare.ts";
+import { fail, gql, workerConfig } from "./lib/cloudflare.ts";
 import { LIMITS, summariseCron, summariseD1, summariseStatuses, verdicts, type CronRow, type D1Day, type StatusGroup } from "./usage-report/report.ts";
 
 const MAX_WINDOW_MS = 7 * 24 * 3_600_000;
@@ -24,8 +24,7 @@ async function printSchema() {
   type Settings = Record<string, { availableFields: string[]; maxDuration: number; notOlderThan: number; maxPageSize: number }>;
   const fields = "availableFields maxDuration notOlderThan maxPageSize";
   const data = await gql<{ viewer: { accounts: { settings: Settings }[] } }>(
-    `query ($a: string!) { viewer { accounts(filter: { accountTag: $a }) { settings { ${DATASETS.map((d) => `${d} { ${fields} }`).join(" ")} } } } }`,
-    { a: ACCOUNT },
+    `query ($a: string!) { viewer { accounts(filter: { accountTag: $a }) { settings { ${DATASETS.map((d) => `${d} { ${fields} }`).join(" ")} } } } }`
   );
   for (const [name, s] of Object.entries(data.viewer.accounts[0]!.settings)) {
     console.log(`${name}  (maxDuration ${s.maxDuration}s, notOlderThan ${s.notOlderThan}s, maxPageSize ${s.maxPageSize})`);
@@ -77,7 +76,7 @@ async function printReport() {
   const { since, until } = window();
   const { scriptName, databaseId } = workerConfig();
   const data = await gql<Report>(REPORT_QUERY, {
-    a: ACCOUNT, script: scriptName, since, until, sinceDate: since.slice(0, 10), untilDate: until.slice(0, 10), db: databaseId,
+    script: scriptName, since, until, sinceDate: since.slice(0, 10), untilDate: until.slice(0, 10), db: databaseId,
   });
   const acct = data.viewer.accounts[0]!;
   if (acct.cron.length === CRON_LIMIT || acct.invocations.length === GROUP_LIMIT || acct.d1.length === GROUP_LIMIT) {

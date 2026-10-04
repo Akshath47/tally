@@ -6,21 +6,21 @@ import { fileURLToPath } from "node:url";
 import { experimental_readRawConfig } from "wrangler";
 
 const ENDPOINT = "https://api.cloudflare.com/client/v4/graphql";
-const TOKEN = process.env.CLOUDFLARE_ANALYTICS_TOKEN;
 
 export function fail(message: string): never {
   console.error(message);
   process.exit(1);
 }
 
-export const ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
-if (!TOKEN || !ACCOUNT) fail("Set CLOUDFLARE_ANALYTICS_TOKEN and CLOUDFLARE_ACCOUNT_ID in your shell first.");
-
-export async function gql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+/** Sends a query with the account tag bound as `$a`. */
+export async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+  const token = process.env.CLOUDFLARE_ANALYTICS_TOKEN;
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!token || !account) fail("Set CLOUDFLARE_ANALYTICS_TOKEN and CLOUDFLARE_ACCOUNT_ID in your shell first.");
   const res = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables: { ...variables, a: account } }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) fail(`Analytics API answered HTTP ${res.status}.`);

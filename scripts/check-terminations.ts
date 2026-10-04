@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { findProblems, weeklyWindows, type ImportRun, type Invocation } from "./check-terminations/problems.ts";
-import { ACCOUNT, fail, gql, workerConfig } from "./lib/cloudflare.ts";
+import { fail, gql, workerConfig } from "./lib/cloudflare.ts";
 import type { CronRow } from "./usage-report/report.ts";
 
 const RETENTION_DAYS = 90;
@@ -29,12 +29,13 @@ type Week = {
   };
 };
 
+const FILTER = "{ scriptName: $script, datetime_geq: $since, datetime_lt: $until }";
 const QUERY = `query ($a: string!, $script: string!, $since: Time!, $until: Time!) {
   viewer { accounts(filter: { accountTag: $a }) {
-    cron: workersInvocationsScheduled(limit: ${LIMIT}, filter: { scriptName: $script, datetime_geq: $since, datetime_lt: $until }) {
+    cron: workersInvocationsScheduled(limit: ${LIMIT}, filter: ${FILTER}) {
       datetime cpuTimeUs status
     }
-    invocations: workersInvocationsAdaptive(limit: ${LIMIT}, filter: { scriptName: $script, datetime_geq: $since, datetime_lt: $until }) {
+    invocations: workersInvocationsAdaptive(limit: ${LIMIT}, filter: ${FILTER}) {
       dimensions { date status } sum { requests }
     }
   } }
@@ -59,7 +60,7 @@ const windows = weeklyWindows(now, days);
 const cron: CronRow[] = [];
 const invocations: Invocation[] = [];
 for (const w of windows) {
-  const acct = (await gql<Week>(QUERY, { a: ACCOUNT, script: scriptName, since: w.since, until: w.until })).viewer.accounts[0]!;
+  const acct = (await gql<Week>(QUERY, { script: scriptName, since: w.since, until: w.until })).viewer.accounts[0]!;
   if (acct.cron.length === LIMIT || acct.invocations.length === LIMIT) console.warn(`WARNING: results from ${w.since} hit the row limit.`);
   cron.push(...acct.cron);
   invocations.push(...acct.invocations.map((g) => ({ ...g.dimensions, requests: g.sum.requests })));
