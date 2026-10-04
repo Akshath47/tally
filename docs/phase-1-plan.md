@@ -151,17 +151,19 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 
 **Accept when:** a manual import (`POST /api/import-runs`) from the iPhone updates the cards and the list, and a second tap within 60 s gets a friendly 429.
 
-## [ ] P1.7 Scheduled imports
+## [x] P1.7 Scheduled imports
 
 - Test locally with `npm run build && npx wrangler dev --test-scheduled`, then trigger `/cdn-cgi/handler/scheduled`. `/__scheduled` doesn't reach the Worker here: only `/api` runs before static assets, so the SPA fallback answers it.
 - Deploy with an hourly cron.
-- `scripts/cron-report.sql` holds the acceptance queries (`npx wrangler d1 execute DB --remote --file scripts/cron-report.sql`). It prints ids, times, counts and amounts, never merchant or description text.
+- `scripts/cron-report.sql` holds the acceptance queries; its header has the remote command (`--command`, since remote `--file` returns no rows). It prints ids, times, counts and amounts, never merchant or description text.
 
 **Accept when:**
 - `import_runs` shows `trigger='cron'` rows at the expected times for **at least 24 hours** with the app closed;
 - no overlapping runs;
 - zero duplicates by `(account_id, provider_txn_id)`;
 - the fingerprint-duplicate query has been reviewed.
+
+**Result (2026-10-02 19:00 to 2026-10-03 19:00 UTC):** 25 cron runs, every gap exactly 60 min, all `success` (longest 9.5 s wall time). All 25 invocations in that window were the cron runs, so the app was closed. No overlapping runs, 0 duplicates by `(account_id, provider_txn_id)`. The 15 same-fingerprint groups are all pairs of posted Revolut transactions that Lunch Flow returned together in one response, so it lists them as separate transactions; none is an id change counted twice.
 
 ## [ ] P1.8 Free-tier measurement
 
