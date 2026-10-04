@@ -40,25 +40,31 @@ export type AccountRow = {
   import_enabled: number;
   backfill_cursor_date: string | null;
   backfill_complete: number;
+  backfill_floor_date: string | null;
+  needs_review: number;
 };
 
-/** Records every provider account. New accounts start disabled until their currency is known. */
-export function upsertAccounts(db: CountingDb, now: string, accounts: AccountPayload[]) {
+/**
+ * Records every provider account. New accounts start disabled until their currency is known,
+ * and with `needsReview` (Tally already had accounts) they stay disabled until the owner decides.
+ */
+export function upsertAccounts(db: CountingDb, now: string, accounts: AccountPayload[], needsReview: boolean) {
   return db
     .prepare(
       `INSERT INTO accounts (provider, provider_account_id, provider_connection_id, name, institution_name,
-         provider_status, import_enabled, last_seen_in_provider_at, created_at, updated_at)
+         provider_status, import_enabled, needs_review, last_seen_in_provider_at, created_at, updated_at)
        SELECT 'lunchflow', CAST(json_extract(j.value, '$.id') AS TEXT), CAST(json_extract(j.value, '$.connection_id') AS TEXT),
          json_extract(j.value, '$.name'), json_extract(j.value, '$.institution_name'), json_extract(j.value, '$.status'),
-         0, ?1, ?1, ?1
+         0, ?3, ?1, ?1, ?1
        FROM json_each(?2) AS j WHERE true
        ON CONFLICT(provider, provider_account_id) DO UPDATE SET
          provider_connection_id = excluded.provider_connection_id, name = excluded.name,
          institution_name = excluded.institution_name, provider_status = excluded.provider_status,
          last_seen_in_provider_at = excluded.last_seen_in_provider_at, updated_at = excluded.updated_at
-       RETURNING id, provider_account_id, currency, import_enabled, backfill_cursor_date, backfill_complete`,
+       RETURNING id, provider_account_id, currency, import_enabled, backfill_cursor_date, backfill_complete,
+         backfill_floor_date, needs_review`,
     )
-    .bind(now, JSON.stringify(accounts));
+    .bind(now, JSON.stringify(accounts), needsReview ? 1 : 0);
 }
 
 /**
@@ -213,15 +219,21 @@ export function updateAccountStatus(db: CountingDb, o: AccountOutcome) {
     );
 }
 
-/** A newly seen account in a currency we don't budget in: record it, switched off. */
-export function disableForeignAccount(db: CountingDb, o: { accountId: number; now: string; currency: string; label: string; balanceMinor: number | null }) {
+/**
+ * A newly seen account that isn't imported: one in a currency we don't budget in
+ * (`needsReview` false, nothing to decide), or one held for the owner's review.
+ */
+export function recordWithoutImport(
+  db: CountingDb,
+  o: { accountId: number; now: string; currency: string; label: string; balanceMinor: number | null; needsReview: boolean },
+) {
   return db
     .prepare(
-      `UPDATE accounts SET currency = ?2, import_enabled = 0, name = ?3, balance_minor = ?4,
+      `UPDATE accounts SET currency = ?2, import_enabled = 0, needs_review = ?6, name = ?3, balance_minor = ?4,
          balance_fetched_at = CASE WHEN ?4 IS NULL THEN NULL ELSE ?1 END, updated_at = ?1
        WHERE id = ?5 AND currency IS NULL`,
     )
-    .bind(o.now, o.currency, o.label, o.balanceMinor, o.accountId);
+    .bind(o.now, o.currency, o.label, o.balanceMinor, o.accountId, o.needsReview ? 1 : 0);
 }
 
 /** One account's result for a run, as logged, returned to callers and stored. */

@@ -10,9 +10,9 @@ import { PENDING_TTL_DAYS, matchPending, type PendingCandidate } from "./pending
 import { backfillChunks, coveredRanges, incrementalWindow, type Window } from "./windows";
 import {
   countMissingPosted,
-  disableForeignAccount,
   expirePending,
   insertRunAccount,
+  recordWithoutImport,
   selectPendingCandidates,
   supersedePending,
   updateAccountStatus,
@@ -164,6 +164,9 @@ async function importAll(ctx: Ctx): Promise<AccountSummary[]> {
         institution_name: a.institution_name,
         status: a.status,
       })),
+      // Accounts seen after the first import may be a reconnect of one Tally already has, so
+      // the owner decides before they're imported (docs/phase-2-spec.md, Reconnection).
+      known.results.length > 0,
     ),
   );
 
@@ -197,7 +200,7 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
   // The status write is the same on success and failure apart from these fields.
   const statusUpdate = (o: Pick<AccountOutcome, "ok" | "error" | "backfillCursor" | "backfillComplete">) =>
     updateAccountStatus(db, {
-      accountId: row.id, now: nowIso, currency, enabled: currency === BUDGET_CURRENCY,
+      accountId: row.id, now: nowIso, currency, enabled: currency === BUDGET_CURRENCY && row.needs_review === 0,
       label: accountLabel(provider, currency), balanceMinor, ...o,
     });
 
@@ -213,9 +216,15 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     // Non-null: the catch above rethrows whenever no currency is known.
     const accountCurrency = currency!;
 
-    if (row.currency === null && accountCurrency !== BUDGET_CURRENCY) {
+    // A non-GBP account is never imported; a held one waits for the owner. Either way only
+    // its currency, label and balance are recorded, and no transactions are fetched.
+    const foreign = accountCurrency !== BUDGET_CURRENCY;
+    if (row.currency === null && (foreign || row.needs_review === 1)) {
       await db.run(
-        disableForeignAccount(db, { accountId: row.id, now: nowIso, currency: accountCurrency, label: accountLabel(provider, currency), balanceMinor }),
+        recordWithoutImport(db, {
+          accountId: row.id, now: nowIso, currency: accountCurrency, label: accountLabel(provider, currency), balanceMinor,
+          needsReview: !foreign,
+        }),
       );
       return null;
     }
@@ -223,7 +232,7 @@ async function importAccount(ctx: Ctx, row: AccountRow, provider: ProviderAccoun
     const windows: Window[] = [incrementalWindow(today)];
     let backfill: ReturnType<typeof backfillChunks> | null = null;
     if (row.backfill_complete === 0) {
-      backfill = backfillChunks(row.backfill_cursor_date, today, ctx.backfillDays);
+      backfill = backfillChunks(row.backfill_cursor_date, today, ctx.backfillDays, undefined, row.backfill_floor_date);
       windows.push(...backfill.chunks);
     }
     range = { from: windows[windows.length - 1]!.from, to: today };
