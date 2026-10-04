@@ -69,9 +69,55 @@ import_run_accounts
 
 import_lock               -- single row, id = 1, seeded by a migration
   holder_run_id · expires_at   lease: 10 min for cron, budget + 30 s for a manual run
+
+categories                -- P2.2; seeded with the spec's 14 starting categories
+  id PK
+  name                     COLLATE NOCASE (ASCII), UNIQUE; trimmed, non-empty
+  kind                     'budgeted' | 'tracked' | 'excluded'
+  archived_at              hidden from pickers; rules and overrides keep pointing at it
+  created_at · updated_at
+
+merchant_rules            -- P2.2; none seeded (a pattern is real merchant text)
+  id PK
+  match_type               'exact' | 'contains'
+  pattern                  = lower(trim(pattern)), non-empty; SQLite's ASCII lower(), so normalise in SQL
+  account_id FK → accounts.id     null = any account
+  account_scope            generated: coalesce(account_id, 0)
+  category_id FK → categories.id
+  created_at · updated_at
+  UNIQUE(match_type, pattern, account_scope)   the upsert conflict target
+
+transaction_overrides     -- P2.2; the owner's edits, keyed by transactions.id; the importer never touches it
+  transaction_id PK FK → transactions.id
+  category_id FK → categories.id  null = follow the rules
+  excluded                 bool, default 0
+  counted_amount_minor     null = bank amount; same sign as amount_minor
+  counted_date             null = txn_date
+  note                     ≤ 500 characters, untrusted text
+  updated_at
+
+monthly_budgets           -- P2.2; positive = spend
+  effective_month PK       YYYY-MM
+  amount_minor             > 0
+  updated_at
+
+category_budgets          -- P2.2
+  category_id FK · effective_month   PK
+  amount_minor             ≥ 0; 0 removes the allocation from that month on
+  updated_at
 ```
 
-SQL `CHECK`s back up the types the bulk `json_each` upsert would otherwise bypass: `amount_minor` must be an integer, `txn_date` a real calendar date, booleans 0/1, and statuses from their documented lists.
+SQL `CHECK`s back up the types the bulk `json_each` upsert would otherwise bypass: `amount_minor` must be an integer, `txn_date` a real calendar date, booleans 0/1, and statuses from their documented lists. The Phase 2 tables follow the same rule:
+- `kind` and `match_type` come from their lists
+- `counted_amount_minor` is an integer
+- `counted_date` is a real date
+- `note` is text of at most 500 characters
+- category names are trimmed and non-empty
+- rule patterns are non-empty and already in `lower(trim())` form
+- `effective_month` is a real `YYYY-MM` month
+- budget amounts are integers, > 0 for the overall figure and ≥ 0 for an allocation
+
+A month's budget figures come from the row with the greatest `effective_month` ≤ that month ([phase-2-spec.md](phase-2-spec.md)).
 
 There is no per-account sign column: P1.1 found both institutions already use negative = money out ([lunchflow-findings.md](lunchflow-findings.md)).
 

@@ -201,13 +201,13 @@ UPDATE accounts SET provider_account_id = ?3, merged_into_account_id = ?4, needs
 
 ---
 
-## [ ] P2.2 Schema and seed
+## [x] P2.2 Schema and seed
 
 **Deliverable:**
 - The tables `categories`, `merchant_rules`, `transaction_overrides`, `monthly_budgets` and `category_budgets`, with CHECKs (in `drizzle-kit`'s table-level form, since these are new tables): `kind` and `match_type` must be one of their listed values, `excluded` must be a bool, amounts must be integers, `effective_month` must match `YYYY-MM`, `counted_date` must be a real date, and `note` length ≤ 500.
 - Unique indexes:
   - categories: name with `COLLATE NOCASE`
-  - rules: `(match_type, pattern, coalesce(account_id, 0))`
+  - rules: `(match_type, pattern, account_scope)`, where `account_scope` is a generated column, `coalesce(account_id, 0)` (see Decisions)
   - category budgets: `(category_id, effective_month)`
 - A seed migration with the 14 spec categories.
 
@@ -218,15 +218,29 @@ UPDATE accounts SET provider_account_id = ?3, merged_into_account_id = ?4, needs
 
 This step adds tables only. Nothing reads or writes them until P2.3, so it changes no route and no importer behaviour. The remote migration waits for the owner's approval of the PR, like every other migration.
 
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 350 tests. The 57 in `test/budget-schema.spec.ts` reject every bad value listed in Task 1.
+  - Before the review fixes, a mutation run that dropped the NOCASE collation, the rule scope and the month, note and amount CHECKs failed exactly the 9 tests that pin them.
+  - The 11 tests added for the review fixes each failed before their fix.
+- `0004` and `0005` applied to a freshly reset local D1, `db:check` passed, and a second `db:generate` reported no changes.
+- `wrangler d1 execute DB --local` listed the 14 seeded categories with their kinds: 8 budgeted, 2 tracked and 4 excluded.
+- Still to do after the owner merges: `npm run db:migrate:remote` applies `0004` and `0005`. No Worker deploy is needed for this step, because no code reads the new tables yet.
+
 **Decisions:**
-- **The rule scope index uses `CASE WHEN account_id IS NULL THEN 0 ELSE account_id END`** rather than `coalesce(account_id, 0)`. They mean the same, but drizzle-kit splits index expressions at commas and writes broken SQL for `coalesce(...)` and `ifnull(...)`. The `CASE` form generates correctly, so the migration needs no hand edits. Account ids start at 1, so 0 is never a real account.
+- **The rule scope is a generated column**, `account_scope GENERATED ALWAYS AS (coalesce(account_id, 0)) VIRTUAL`, with a plain unique index on `(match_type, pattern, account_scope)`. An upsert can name it, `ON CONFLICT (match_type, pattern, account_scope)`, where an index expression would have to repeat the exact SQL text. drizzle-kit also splits index expressions at commas, so `coalesce(...)` can't go in an index directly. Account ids start at 1, so 0 is never a real account.
+- **`categories.name` is `COLLATE NOCASE` on the column**, not just in the index. A plain `WHERE name = ?` then matches case-insensitively, which P2.3 needs to return `409 name_taken` before the insert fails. NOCASE folds ASCII only.
+- **Rule patterns and category names are checked for normal form.**
+  - A pattern must equal `lower(trim(pattern))` and be non-empty, because an empty `contains` pattern would match every merchant.
+  - A name must be trimmed and non-empty.
+  - SQLite's `lower()` and `trim()` are ASCII-only and spaces-only, so writers normalise patterns in SQL (`lower(trim(?))`), the same way merchants are matched, and not with JS `toLowerCase()`.
+- **No extra indexes on the foreign-key columns yet.** Nothing queries `merchant_rules.category_id` or `transaction_overrides.category_id` until P2.3–P2.6. Adding an index later is a plain `CREATE INDEX`, without a table rebuild, so it waits for a query that needs it.
 - **`category_budgets` gets a composite primary key** on `(category_id, effective_month)`, as the spec's data model shows, instead of a separate unique index. SQLite enforces it with a unique index anyway.
 - **These are new tables, so their CHECKs are table-level `check()`s in `schema.ts`.** That's safe here, unlike the `ALTER TABLE accounts` in `0003`, because nothing references these tables yet and there's no existing data.
 - **The seed is a separate custom migration** (`drizzle-kit generate --custom`), like `0001_seed_import_lock.sql`, so the schema migration stays purely generated.
 
 ### Review focus for P2.2
 
-1. **Two any-account rules with the same pattern.** A plain `UNIQUE(match_type, pattern, account_id)` lets both in, because SQLite treats NULLs as distinct. The expression index must reject the second one (Task 1).
+1. **Two any-account rules with the same pattern.** A plain `UNIQUE(match_type, pattern, account_id)` lets both in, because SQLite treats NULLs as distinct. The `account_scope` index must reject the second one (Task 1).
 2. **A category name that differs only by case** (for example `groceries` next to the seeded `Groceries`). It must be rejected (Task 1, Task 2).
 3. **A month that's almost `YYYY-MM`**: `2026-13`, `2026-1`, a full date `2026-10-01`, or the integer `202610`. All of them are rejected (Task 1).
 4. **A non-integer amount**, such as `12.5` or the text `'-12.30'`, in any of the three amount columns. SQLite would keep it as REAL or TEXT without the CHECK (Task 1).
@@ -249,11 +263,12 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 - Produces (DB contract):
 
   ```
-  categories            id PK · name NOT NULL · kind NOT NULL · archived_at · created_at · updated_at
-                        UNIQUE INDEX categories_name_uq (name COLLATE NOCASE)
+  categories            id PK · name text COLLATE NOCASE NOT NULL · kind NOT NULL · archived_at · created_at · updated_at
+                        UNIQUE INDEX categories_name_uq (name)
   merchant_rules        id PK · match_type NOT NULL · pattern NOT NULL · account_id FK → accounts.id (null = any)
+                        · account_scope GENERATED ALWAYS AS (coalesce(account_id, 0)) VIRTUAL
                         · category_id NOT NULL FK → categories.id · created_at · updated_at
-                        UNIQUE INDEX merchant_rules_scope_uq (match_type, pattern, CASE WHEN account_id IS NULL THEN 0 ELSE account_id END)
+                        UNIQUE INDEX merchant_rules_scope_uq (match_type, pattern, account_scope)
   transaction_overrides transaction_id PK FK → transactions.id · category_id FK → categories.id
                         · excluded NOT NULL DEFAULT 0 · counted_amount_minor · counted_date · note · updated_at NOT NULL
   monthly_budgets       effective_month PK · amount_minor NOT NULL · updated_at NOT NULL
@@ -263,10 +278,12 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 
   The CHECKs:
   - `kind` is in `CATEGORY_KINDS`, and `match_type` is in `MATCH_TYPES`
+  - `name` is trimmed and non-empty
+  - `pattern` equals `lower(trim(pattern))` and is non-empty
   - `excluded` is in `(0, 1)`
   - `counted_amount_minor` is NULL or an integer
   - `counted_date` is NULL or a real date (`date(x) IS x`)
-  - `note` is NULL or has `length(note) <= 500`
+  - `note` is NULL, or text with `length(note) <= 500`
   - in both budget tables, `effective_month` is a real month (`date(m || '-01') IS m || '-01'`)
   - `monthly_budgets.amount_minor` is an integer > 0
   - `category_budgets.amount_minor` is an integer ≥ 0
@@ -275,13 +292,17 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
   - categories:
     - `kind` values `'Budgeted'`, `'income'` and `''` are rejected (CHECK)
     - `synthetic CATEGORY` is rejected as a duplicate (UNIQUE)
+    - `WHERE name = 'SYNTHETIC category'` finds the row
+    - the names `''`, `' Padded'` and `'Padded '` are rejected (CHECK)
     - every value in `CATEGORY_KINDS` is accepted
   - merchant_rules:
     - `match_type` values `'regex'` and `'Exact'` are rejected (CHECK)
+    - the patterns `''`, `'Abc'`, `' abc'` and `'abc '` are rejected (CHECK)
     - the same `(exact, 'abc', NULL)` twice is rejected (UNIQUE)
     - the same `(exact, 'abc', accountId)` twice is rejected
     - `(exact, 'abc')` is accepted once as any-account and once account-scoped
     - `(contains, 'abc', NULL)` is accepted next to `(exact, 'abc', NULL)`
+    - `ON CONFLICT (match_type, pattern, account_scope) DO UPDATE` updates the existing rule, for both any-account and account-scoped rules
     - an unknown `category_id` or `account_id` is rejected (FOREIGN KEY)
   - transaction_overrides:
     - a row with only `transaction_id` and `updated_at` stores `excluded = 0` and nulls elsewhere
@@ -290,6 +311,7 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
     - `counted_date` values `'2026-02-30'`, `'2026-9-1'` and `'2026-10-01T00:00:00Z'` are rejected
     - a 500-character note is accepted, and a 501-character one is rejected
     - a 500-character note of a non-ASCII letter (`'é'.repeat(500)`) is accepted
+    - a BLOB note is rejected
     - a second override for the same transaction is rejected (PRIMARY KEY)
     - an unknown `transaction_id` or `category_id` is rejected
   - monthly_budgets:
@@ -304,24 +326,26 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
     - the same category and month twice is rejected
     - an unknown `category_id` is rejected
 - [ ] **Step 2:** run `npx vitest run test/budget-schema.spec.ts`. The expected failure is "no such table".
-- [ ] **Step 3:** add the tables to `schema.ts`, using the existing `isOneOf`, `isBool` and `isInteger` helpers plus two new ones:
+- [ ] **Step 3:** add the tables to `schema.ts`, using the existing `isOneOf`, `isBool` and `isInteger` helpers plus these new ones:
 
   ```ts
   const isDate = (col: SQLiteColumn) => sql`date(${col}) IS ${col}`;
   const isMonth = (col: SQLiteColumn) => sql`date(${col} || '-01') IS ${col} || '-01'`;
+  const isTrimmedNonEmpty = (col: SQLiteColumn) => sql`${col} = trim(${col}) AND ${col} <> ''`;
+  const nocaseText = customType<{ data: string }>({ dataType: () => "text COLLATE NOCASE" });
   ```
 
-  The rule scope index:
+  The rule scope:
 
   ```ts
-  uniqueIndex("merchant_rules_scope_uq").on(
-    t.matchType,
-    t.pattern,
-    sql`(CASE WHEN ${t.accountId} IS NULL THEN 0 ELSE ${t.accountId} END)`,
-  ),
+  accountScope: integer("account_scope")
+    .notNull()
+    .generatedAlwaysAs(sql`coalesce("account_id", 0)`, { mode: "virtual" }),
+  // …
+  uniqueIndex("merchant_rules_scope_uq").on(t.matchType, t.pattern, t.accountScope),
   ```
 
-  Then run `npm run db:generate`, and check that the generated SQL has a well-formed `CREATE UNIQUE INDEX` for both expression indexes.
+  Then run `npm run db:generate`. Check that the generated SQL has `name text COLLATE NOCASE` and the `account_scope` generated column.
 - [ ] **Step 4:** run the new tests, then `npm run check`, `npm run db:check` and `npm run db:migrate:local`. They should all pass. A second `npm run db:generate` should report no changes.
 - [ ] **Step 5:** commit: `feat(db): add category, rule, override and budget tables`, with the trailer `Phase: P2.2`.
 
