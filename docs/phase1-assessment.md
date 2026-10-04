@@ -4,7 +4,7 @@ This is the end-of-Phase-1 read on whether Lunch Flow → Tally is good enough t
 
 **Evidence:** the production D1 (`import_runs`, `import_run_accounts`, `transactions`) from the first import on 2026-10-02 17:42 UTC to 2026-10-04 18:00 UTC, which is 49 hourly cron runs and 3 manual runs. CPU and D1 figures come from the P1.8 result in [phase-1-plan.md](phase-1-plan.md).
 
-**Verdict:** go for Phase 2. There are no blockers. Posted data is about a day behind the bank. **Lunch Flow exposes at most one pending transaction per account**, so pending data is a same-day hint, not a complete picture. Phase 2 has to be designed around both facts.
+**Verdict:** go for Phase 2. There are no blockers. Posted data is about a day behind the bank. **Lunch Flow exposes at most one pending transaction per account**, so Tally sees only some pending charges, and keeps each one counting until it posts (below). Phase 2 has to be designed around both facts.
 
 ## Spot check against the bank apps
 
@@ -55,10 +55,11 @@ These are unchanged since P1.1:
 - **Posted ids are stable.** There are 0 duplicates by `(account_id, provider_txn_id)`. The 15 same-fingerprint pairs are explained in P1.7.
 - **Pending ids are now always null.** All 3 pending transactions that production has seen, 2 on Amex and 1 on Revolut, came with `id: null`. In P1.1 Revolut's pending transaction had a 4-character id. So the importer's `nullid:` fingerprint key is the normal path for pending rows, not an edge case.
 - **Lunch Flow returns at most one pending transaction per account.** The owner's Amex app shows many pending charges. Across all 52 runs, no account ever held more than one live pending row at a time, and both P1.1 probe runs saw at most one per account. The importer stores exactly what it receives: each run's `fetched` count equals the account's live rows in the window (Amex 19 = 18 posted + 1 pending; Revolut 21 = 20 + 1). So the gap is upstream of Tally.
-- **A charge that's still pending at the bank can vanish from Tally.** At 19:00 UTC on 3 Oct, Lunch Flow's Amex response still had 19 rows, but its single pending charge was swapped for a newer one. The importer correctly marked the old one vanished, yet the owner's Amex app still shows it as pending (checked 2026-10-04). It will come back as a new posted row when it posts.
+- **A charge that's still pending at the bank can vanish from Tally.** At 19:00 UTC on 3 Oct, Lunch Flow's Amex response still had 19 rows, but its single pending charge was swapped for a newer one. The importer marked the old one vanished, yet the owner's Amex app still showed it as pending (checked 2026-10-04).
 - **Likely cause (unconfirmed, Lunch Flow's side):** pending transactions arrive with no id, so if Lunch Flow keys stored transactions by id, all of an account's pending charges would collapse into one. Worth reporting to Lunch Flow.
 - The Revolut pending row dated 3 Oct was still pending after about 32 h. P1.1's single Revolut example posted within about 29 h, under a new id, dated a day later.
-- **Effect:** pending totals in Tally undercount, by everything pending at the bank beyond the one charge Lunch Flow shows. Totals are complete only once charges post, which is about a day behind (above).
+- **Fixed in the importer (PR #17, 2026-10-04).** A pending row no longer stops counting just because Lunch Flow stopped returning it. It counts until a posted row of the same amount, booked 0–7 days later, supersedes it (`superseded_by`), or until it expires 7 days after first seen ([architecture.md](architecture.md) import policy). The migration made the Amazon charge above count again.
+- **Remaining effect:** a pending charge Lunch Flow never showed, because a newer one replaced it between refreshes, is missing until it posts. A charge that posts at a different amount, or is reversed, counts twice or stays counted for up to 7 days. Both settle within days; the owner accepted this.
 
 ## How reconnection shows up
 
@@ -93,7 +94,7 @@ None. Open risks:
 ## What Phase 2 should allow for
 
 1. **Show how fresh the data is.** Put "updated <time>" (last data change) next to the totals, and flag an account when `newest_txn_date` stops moving. The data is up to about a day old and the API can't say why.
-2. **Treat pending as a partial hint.** Show the one pending charge per account separately, and label it as such. Base budget totals on posted transactions, or include pending and say plainly that the bank may hold more than Tally shows. If Lunch Flow fixes this, revisit.
-3. **Don't allow edits on pending transactions.** Pending ids are null, and a pending row can vanish while the charge is still pending at the bank, so "move the override to the posted version" can't be automated safely. The [phase-2-outline.md](phase-2-outline.md) rule for this should become "pending transactions aren't editable".
+2. **Show pending and posted spend separately in the budget** (owner plan, 2026-10-04). Count rows with `vanished_at IS NULL`, so pending charges count until they're superseded or expire. Note that the bank may hold pending charges Tally hasn't seen.
+3. **Don't allow edits on pending transactions.** Pending ids are null and the supersede match is a heuristic (same amount, 0–7 days), so moving an override along `superseded_by` could land it on the wrong charge. The [phase-2-outline.md](phase-2-outline.md) rule for this should become "pending transactions aren't editable".
 4. **Month boundaries use the booking date.** Keep the per-transaction counted-date override from the findings for purchases at the end of a month.
 5. **Make reconnection safe.** Before Phase 2 relies on its totals, either link a new Lunch Flow account id to the existing account, or stop importing the old account and hide its rows, so history isn't counted twice.
