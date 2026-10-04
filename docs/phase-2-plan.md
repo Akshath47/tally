@@ -401,6 +401,114 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 - `security-review` is clean
 - `npm run check` passes
 
+This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merges. Allocation zeroing on a kind change or archive belongs to P2.5, which hooks into this step's `PATCH /api/categories/:id`.
+
+**Decisions:**
+- **Merchant text is normalised the way SQLite does it.** Matching runs in SQL against `lower(trim(merchant))`, and SQLite's `lower()` only folds ASCII and its `trim()` only strips spaces. So patterns are normalised by `normalizePattern()`, which does exactly the same: spaces only, A–Z only. A pattern normalised by JavaScript's own `toLowerCase()` or `trim()` would never match a merchant like `CAFÉ` exactly.
+- **`contains` uses `instr()`, not `LIKE`.** A `%` or `_` in a pattern is matched literally.
+- **The resolution is one CTE, `resolved`, exported as SQL text.** It covers every transaction, vanished ones included, and each consumer filters. The rule is picked by a correlated subquery ordered by tier, then pattern length, then id, so D1 does the work rather than the Worker.
+- **Body references:** an unknown or merged `accountId`, or an unknown `categoryId`, returns `404 not_found`, like an unknown path id. A rule can't point at an archived category (`409 category_archived`), since pickers hide them.
+- **`DELETE` requests also need `Content-Type: application/json`.** The Phase 1 middleware requires it on every state-changing method.
+
+### Review focus for P2.3
+
+1. **Merchant text with non-ASCII letters or stray whitespace** (`CAFÉ`, a tab, a leading space). A rule made from it must match the same transactions SQLite would match (Task 1).
+2. **A `contains` pattern holding `%` or `_`.** It matches literally, never as a wildcard (Task 1).
+3. **A pending transaction.** Rules categorise it like any other. Overrides can't exist on it, but the resolution mustn't assume that (Task 1).
+4. **Renaming a category to a different case of its own name** (`groceries` → `Groceries`). This is allowed, while taking another category's name in any case is `409 name_taken` (Task 2).
+5. **A rule for a merged account, or for an archived category.** Both are refused, and a rule's transaction count leaves out vanished rows and overridden rows (Task 3).
+
+### Task 1: Category resolution
+
+**Files:**
+- Create: `src/worker/budget/resolve.ts`
+- Test: `test/budget/resolve.spec.ts`
+
+**Interfaces:**
+- Consumes: the `merchant_rules` and `transaction_overrides` tables (P2.2).
+- Produces:
+  - `normalizePattern(text: string): string`, which mirrors SQLite's `lower(trim(x))`.
+  - `RESOLVED_CTE: string`, SQL text for `resolved AS (...)`, one row per transaction, with these columns:
+    - `id`, `account_id`, `amount_minor`, `txn_date`, `merchant`, `is_pending`, `vanished_at`
+    - `override_category_id`, `excluded`, `counted_amount_minor`, `counted_date`, `note`
+    - `rule_id`
+    - `category_id`
+    - `category_source` (`'override'` / `'rule'` / NULL)
+
+    Consumers write `WITH ${RESOLVED_CTE} SELECT ... FROM resolved`.
+
+- [ ] **Step 1: write the failing tests**, with synthetic merchants and rows inserted with SQL. Each test inserts rules, then reads `category_id`, `category_source` and `rule_id` from `resolved`:
+  - an override beats every rule
+  - account-scoped exact > any-account exact > account-scoped contains > any-account contains
+  - within contains, the longer pattern wins, then the lower id
+  - a rule for another account doesn't apply
+  - no match gives NULL category and source
+  - `contains` with `%` matches literally
+  - an exact rule made with `normalizePattern('  CAFÉ Nero ')` matches the merchant `CAFÉ NERO`, and `normalizePattern` equals SQLite's `lower(trim(x))` for a set of tricky strings
+  - a rule added later re-sorts existing rows and leaves overridden ones alone
+  - pending rows get rule categories
+- [ ] **Step 2:** run `npx vitest run test/budget/resolve.spec.ts`. It should fail because the module is missing.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): resolve each transaction's category from overrides and rules`, with the trailer `Phase: P2.3`.
+
+### Task 2: Category routes
+
+**Files:**
+- Create: `src/worker/routes/categories.ts`
+- Modify: `src/worker/index.ts` (mount it at `/categories`)
+- Test: `test/categories.spec.ts`
+
+**Interfaces:**
+- `GET /api/categories` → `{categories: {id, name, kind, archived}[]}`, ordered by id, archived ones included.
+- `POST /api/categories` with body `{name, kind}`. The name is trimmed and must be 1–50 characters. Returns `201 {category}`, `409 name_taken` or `400 bad_request`.
+- `PATCH /api/categories/:id` with body `{name?, kind?, archived?}`, which must contain at least one key. Returns `200 {category}`, `404`, `409 name_taken` or `400`.
+
+- [ ] **Step 1: write the failing tests:**
+  - the 14 seeded categories are listed
+  - create, then list
+  - a duplicate name in a different case gets `409`
+  - a bad kind, an empty or 51-character name, and an empty patch body get `400`
+  - rename, a case-only rename of itself, a kind change, archive and unarchive
+  - an unknown id gets `404`
+  - requests with no `Origin` or a non-JSON `Content-Type` are rejected, as for the other routes
+- [ ] **Step 2:** run the tests. They should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** commit: `feat(worker): add category routes`, with the trailer `Phase: P2.3`.
+
+### Task 3: Rule routes
+
+**Files:**
+- Create: `src/worker/routes/rules.ts`
+- Modify: `src/worker/index.ts` (mount it at `/rules`)
+- Test: `test/rules.spec.ts`
+
+**Interfaces:**
+- Consumes: `normalizePattern` and `RESOLVED_CTE` from Task 1.
+- `GET /api/rules` → `{rules: {id, matchType, pattern, accountId, categoryId, transactionCount}[]}`. `transactionCount` counts the rows where the rule is the deciding source and `vanished_at IS NULL`.
+- `POST /api/rules` with body `{matchType, pattern, accountId?, categoryId}`. The pattern must be 1–100 characters after normalisation. Returns `201 {rule}`, `409 rule_exists`, `409 category_archived`, `404` (unknown or merged account, unknown category) or `400`.
+- `PATCH /api/rules/:id` takes the same fields, all optional, with the same errors.
+- `DELETE /api/rules/:id` → `200 {ok: true}` or `404`.
+
+- [ ] **Step 1: write the failing tests:**
+  - create normalises the pattern
+  - the counts reflect resolution and leave out vanished and overridden rows
+  - a duplicate (including two any-account rules) gets `409`
+  - an archived category gets `409`
+  - a merged or unknown account, or an unknown category, gets `404`
+  - an empty pattern after trimming, or a bad `matchType`, gets `400`
+  - patch moves the rule's transactions to the new category
+  - delete returns its transactions to uncategorised
+- [ ] **Step 2:** run the tests. They should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review`, then commit: `feat(worker): add merchant rule routes`, with the trailer `Phase: P2.3`.
+
+### Task 4: Docs
+
+- [ ] Add the category and rule endpoints to [schema-and-api.md](schema-and-api.md), then commit: `docs: record the category and rule endpoints`.
+
 ## [ ] P2.4 Overrides, inbox and transaction fields
 
 **Deliverable:**
