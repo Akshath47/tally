@@ -529,6 +529,134 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 - `security-review` is clean
 - `npm run check` passes
 
+This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn't touch the budget tables, `routes/categories.ts` or the London-month helper, which belong to P2.5. It adds no migration.
+
+**Decisions:**
+- **`PUT /override` replaces the whole override.** A field left out of the body takes its default (`categoryId: null`, `excluded: false`, the counted fields and `note` null). The editor sends its full form, so a `PUT` with every default, `{}` included, deletes the row, as the spec requires. An empty note counts as no note.
+- **`applyToMerchant` updates the exact rule that decides this transaction.**
+  - The pattern is `lower(trim(merchant))`, computed in SQL, so it equals what the rule is matched against.
+  - Normally that's the spec's any-account `exact` rule, created, or updated if it exists.
+  - But if this transaction's account already has its own `exact` rule for the merchant, that rule outranks an any-account one. So that account-scoped rule is the one updated, or the row wouldn't follow the rule, which is what the spec intends.
+  - `categoryId` is required (`400` without it). A blank merchant returns `409 no_merchant`, since a rule's pattern can't be empty.
+  - The rule upsert and the override write happen in one batch, and the override stores no category.
+- **Category references work as they do for rules.** An unknown `categoryId` returns `404 not_found`. An archived one returns `409 category_archived`, unless it's already this override's category, so a full-form `PUT` that resends it isn't refused.
+- **The editable check is part of the write.** The override `INSERT … SELECT` only matches a row that is posted and not vanished. When nothing is written, the row is re-read to choose between `404` and `409 not_editable`. `DELETE` refuses a non-editable row the same way.
+- **The inbox is counted, uncategorised and not excluded:** `vanished_at IS NULL AND category_id IS NULL AND excluded = 0`.
+  - Money in and money out both appear, and pending rows are included with `editable: false`.
+  - An excluded transaction has been dealt with, so it leaves the inbox.
+- **Merchant groups are keyed by `lower(trim(merchant))`.** That's the pattern of the any-account `exact` rule that would clear the group. Each group has the raw `merchant` text of its latest row, `count`, `totalMinor` (counted amounts, bank sign) and `latestDate`. Groups are ordered by count, then latest date, so the biggest wins of the first sort come first.
+- **One listing query.** `GET /api/transactions`, `GET /api/inbox` and the override responses share a single `SELECT` over P2.3's `RESOLVED_CTE`, with Phase 1's keyset paging. `PUT` and `DELETE` return the updated `{transaction}` in the list shape, so the UI can update it in place.
+
+### Review focus for P2.4
+
+1. **A full-form `PUT` that resends a category archived since it was set.** It's accepted, because the category hasn't changed (Task 2).
+2. **`applyToMerchant` on an account that already has an account-scoped `exact` rule for the merchant.** That rule is the one updated, and the row follows it (Task 2).
+3. **`applyToMerchant` on a row that has a category override.** The override's category is cleared and its other fields are kept, so the row follows the rule (Task 2).
+4. **Amounts and dates that only look valid:** `countedAmountMinor` `12.5`, `"100"` or `2 ** 53`, and `countedDate` `2026-02-30`. They all return `400` and write nothing (Task 2).
+5. **A pending or vanished row:** `PUT` and `DELETE` return `409 not_editable` and write nothing, while the row still appears in the inbox (Tasks 2 and 3).
+
+### Task 1: Listing with categories and override fields
+
+**Files:**
+- Create: `src/worker/budget/listing.ts` (the shared listing query, cursor and row mapping)
+- Modify: `src/worker/routes/transactions.ts` (`GET /` uses it)
+- Test: `test/transactions.spec.ts` (new; Phase 1's listing tests in `test/api.spec.ts` stay and must still pass)
+
+**Interfaces:**
+- Consumes: `RESOLVED_CTE` (P2.3).
+- Produces:
+  - `cursorParam`, a zod schema moved from `routes/transactions.ts` unchanged.
+  - `listTransactions(db: D1Database, opts: { where: string[]; binds: unknown[]; limit: number; cursor?: { date: string; id: number } }): Promise<{ transactions: Transaction[]; nextCursor: string | null }>`. Each `where` entry is a static SQL condition on `resolved`/`t`, with `?N` placeholders numbered from 1 in the order of `binds`.
+  - `getTransaction(db, id): Promise<Transaction | null>`.
+  - `Transaction` keeps the Phase 1 fields (`id, accountId, amountMinor, currency, txnDate, merchant, description, isPending, vanishedAt, firstSeenAt`) and adds:
+    - `categoryId: number | null`
+    - `categorySource: "override" | "rule" | null`
+    - `excluded: boolean`
+    - `countedAmountMinor: number | null`
+    - `countedDate: string | null`
+    - `note: string | null`
+    - `editable: boolean`
+
+- [ ] **Step 1: write the failing tests** (synthetic `ledger()` rows):
+  - a row decided by a rule has `categorySource: "rule"`
+  - an overridden one has `"override"` along with its override fields
+  - an uncategorised one has nulls and `excluded: false`
+  - `editable` is false for pending and for vanished rows, and true for posted ones
+  - booleans come back as booleans
+- [ ] **Step 2:** run `npx vitest run test/transactions.spec.ts test/api.spec.ts`. The new tests should fail, and the Phase 1 ones should pass.
+- [ ] **Step 3:** implement `listing.ts`, and switch `GET /api/transactions` to it. The account and date filters become `where` entries.
+- [ ] **Step 4:** run both specs again. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): list transactions with their category and override fields`, with the trailer `Phase: P2.4`.
+
+### Task 2: Override routes
+
+**Files:**
+- Create: `src/worker/routes/overrides.ts` (`PUT` and `DELETE /:id/override`, mounted inside `transactionRoutes`)
+- Test: `test/overrides.spec.ts`
+
+**Interfaces:**
+- Consumes: `getTransaction` (Task 1), and `NOTE_MAX_LENGTH` (P2.2).
+- `PUT /api/transactions/:id/override` takes `{categoryId?, excluded?, countedAmountMinor?, countedDate?, note?, applyToMerchant?}`. It returns:
+  - `200 {transaction}`
+  - `400 bad_request`
+  - `404 not_found` (unknown transaction or category)
+  - `409 not_editable`, `409 category_archived` or `409 no_merchant`
+- `DELETE /api/transactions/:id/override` returns `200 {transaction}`, `404` or `409 not_editable`. It succeeds even when there is no override.
+
+- [ ] **Step 1: write the failing tests:**
+  - setting each field and reading it back
+  - the row moves category
+  - `{}` removes an existing override, and so does a body of all defaults
+  - `DELETE` restores the bank values and the rule's category
+  - `409 not_editable` for pending and vanished rows, with no row written
+  - `404` for an unknown id or category
+  - `409 category_archived`, unless it's the unchanged current category
+  - `400` for each bad value in Review focus 4, for a 501-character note, and for `applyToMerchant` without `categoryId`
+  - `applyToMerchant`:
+    - creates an any-account `exact` rule from `lower(trim(merchant))` and stores no category override
+    - other rows with that merchant follow it
+    - on a second call it updates that rule rather than adding one
+    - updates an account-scoped `exact` rule when the row's account has one
+    - clears an existing category override
+    - returns `409 no_merchant` for a blank merchant
+  - a wrong `Origin` gets `403`
+- [ ] **Step 2:** run `npx vitest run test/overrides.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** commit: `feat(worker): add transaction override routes`, with the trailer `Phase: P2.4`.
+
+### Task 3: Inbox routes
+
+**Files:**
+- Create: `src/worker/routes/inbox.ts`
+- Modify: `src/worker/index.ts` (mount it at `/inbox`)
+- Test: `test/inbox.spec.ts`
+
+**Interfaces:**
+- Consumes: `listTransactions` and `cursorParam` (Task 1).
+- `GET /api/inbox?limit&cursor` returns `{transactions, nextCursor, total}`.
+- `GET /api/inbox/merchants` returns `{merchants: {pattern, merchant, count, totalMinor, latestDate}[]}`.
+
+- [ ] **Step 1: write the failing tests:**
+  - uncategorised money in and money out are both listed, newest first, with `total`
+  - rows that are categorised (by a rule or an override), excluded or vanished are left out
+  - a pending row is listed with `editable: false`
+  - paging returns every row exactly once, and `total` doesn't depend on the page
+  - merchant groups fold case and edge spaces
+  - each group's count and total equal the sum of its rows, using the counted amount
+  - the latest raw merchant text and date are shown
+  - groups are ordered by count
+  - one rule created with a group's `pattern` empties that group
+- [ ] **Step 2:** run `npx vitest run test/inbox.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review` on the branch, then commit: `feat(worker): add the inbox and its merchant groups`, with the trailer `Phase: P2.4`.
+
+### Task 4: Docs
+
+- [ ] Add the override and inbox endpoints, and the new transaction fields, to [schema-and-api.md](schema-and-api.md).
+- [ ] Mark P2.4's checkbox once its **Accept when** has run, then commit: `docs: record the override and inbox endpoints`.
+
 ## [ ] P2.5 Budgets
 
 **Deliverable:**
