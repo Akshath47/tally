@@ -34,9 +34,11 @@ export function normalizeTransaction(t: ProviderTransaction, accountId: number, 
   const text = `${t.merchant} ${t.description}`.toLowerCase().split(/\s+/).filter(Boolean).join(" ");
   const fingerprint = `${accountId}|${t.date}|${minor}|${text}`;
 
-  // Pending ids are unstable anyway (the posted row arrives under a new id and vanished_at retires
-  // the pending one), so a pending row with no id is keyed by its fingerprint. Two identical
+  // Pending ids are unstable anyway (the posted row arrives under a new id and supersedes the
+  // pending one), so a pending row with no id is keyed by its fingerprint. Two identical
   // pending purchases on one day would collapse into one row; accepted as vanishingly rare.
+  // If the bank changes a pending charge's text, the old key lingers until it expires, so it
+  // can count twice for up to PENDING_TTL_DAYS; accepted (owner decision, 2026-10-04).
   // A posted row has no such excuse, so a missing id there is a bad response.
   if (t.id === null && !t.isPending) throw new ImportError("invalid_response");
 

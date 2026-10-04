@@ -63,7 +63,8 @@ export function upsertAccounts(db: CountingDb, now: string, accounts: AccountPay
 
 /**
  * Inserts new transactions and updates only those whose bank fields changed (or that were
- * marked vanished), so an identical re-import writes nothing. RETURNING yields one row per
+ * retired), so an identical re-import writes nothing. A returned row always counts again: a
+ * superseded pending row the provider returns hasn't posted, so its link is cleared too. RETURNING yields one row per
  * insert or update; `inserted` tells them apart. Needs `WHERE true` on the SELECT so SQLite
  * doesn't read ON CONFLICT as part of a join.
  */
@@ -82,7 +83,7 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
            amount_minor = excluded.amount_minor, provider_amount = excluded.provider_amount, currency = excluded.currency,
            txn_date = excluded.txn_date, merchant = excluded.merchant, description = excluded.description,
            is_pending = excluded.is_pending, fingerprint = excluded.fingerprint,
-           last_seen_at = excluded.last_seen_at, vanished_at = NULL, updated_at = excluded.updated_at
+           last_seen_at = excluded.last_seen_at, vanished_at = NULL, superseded_by = NULL, updated_at = excluded.updated_at
          WHERE transactions.amount_minor IS NOT excluded.amount_minor
             OR transactions.provider_amount IS NOT excluded.provider_amount
             OR transactions.currency IS NOT excluded.currency
@@ -98,17 +99,48 @@ export function upsertTransactions(db: CountingDb, accountId: number, runId: num
 }
 
 /**
- * Marks (never deletes) pending transactions inside the fetched range that the provider no
- * longer returns. `idsJson` must be every id returned for the whole range (a JSON array), hence one statement.
+ * Live pending rows, plus every posted row dated where one of them could match (0–7 days on),
+ * with `linked` set when a pending row already points at it. Read before the run's writes.
  */
-export function markVanished(db: CountingDb, accountId: number, now: string, range: { from: string; to: string }, idsJson: string) {
+export function selectPendingCandidates(db: CountingDb, accountId: number, ttlDays: number) {
   return db
     .prepare(
-      `UPDATE transactions SET vanished_at = ?4, updated_at = ?4
-       WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL AND txn_date BETWEEN ?2 AND ?3
-         AND provider_txn_id NOT IN (SELECT value FROM json_each(?5))`,
+      `WITH live AS (SELECT * FROM transactions WHERE account_id = ?1 AND is_pending = 1 AND vanished_at IS NULL)
+       SELECT provider_txn_id, is_pending, amount_minor, txn_date, first_seen_at, 0 AS linked FROM live
+       UNION ALL
+       SELECT t.provider_txn_id, t.is_pending, t.amount_minor, t.txn_date, t.first_seen_at,
+         EXISTS (SELECT 1 FROM transactions p WHERE p.superseded_by = t.id) AS linked
+       FROM transactions t
+       WHERE t.account_id = ?1 AND t.is_pending = 0
+         AND t.txn_date BETWEEN (SELECT min(txn_date) FROM live) AND (SELECT date(max(txn_date), '+' || ?2 || ' days') FROM live)`,
     )
-    .bind(accountId, range.from, range.to, now, idsJson);
+    .bind(accountId, ttlDays);
+}
+
+/**
+ * Retires (never deletes) each matched pending row and links it to its posted version. Runs
+ * after the upserts in the same batch, so posted rows inserted this run can be linked.
+ */
+export function supersedePending(db: CountingDb, accountId: number, now: string, matchesJson: string) {
+  return db
+    .prepare(
+      `UPDATE transactions SET superseded_by = p.id, vanished_at = ?2, updated_at = ?2
+       FROM (SELECT json_extract(value, '$.pending_txn_id') AS pending_txn_id, json_extract(value, '$.posted_txn_id') AS posted_txn_id
+             FROM json_each(?3)) AS m
+       JOIN transactions AS p ON p.account_id = ?1 AND p.provider_txn_id = m.posted_txn_id
+       WHERE transactions.account_id = ?1 AND transactions.provider_txn_id = m.pending_txn_id AND transactions.vanished_at IS NULL`,
+    )
+    .bind(accountId, now, matchesJson);
+}
+
+/** Retires (never deletes) expired pending rows: reversed, or posted at a different amount. */
+export function expirePending(db: CountingDb, accountId: number, now: string, idsJson: string) {
+  return db
+    .prepare(
+      `UPDATE transactions SET vanished_at = ?2, updated_at = ?2
+       WHERE account_id = ?1 AND vanished_at IS NULL AND provider_txn_id IN (SELECT value FROM json_each(?3))`,
+    )
+    .bind(accountId, now, idsJson);
 }
 
 /** Posted rows the provider stopped returning: counted for the run stats, never acted on. */

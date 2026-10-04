@@ -34,7 +34,7 @@ Non-obvious rules worth knowing before editing importer, schema, or auth code. F
 
 - **Money** is integer minor units (`amount_minor`), sign normalised to negative = money out. The original decimal stays in `provider_amount`. Never do float arithmetic on `amount_minor`.
 - **Dates** (`txn_date`) are plain `YYYY-MM-DD` text, never round-tripped through `Date` — that's how UTC shift bugs happen. "Today" and month boundaries are computed in `Europe/London`.
-- **Nothing is ever deleted.** A pending transaction that vanishes from a successful window gets `vanished_at` set, not removed, and it's cleared if it reappears.
+- **Nothing is ever deleted.** A pending transaction stops counting (`vanished_at` set, never removed) only when a same-amount posted transaction supersedes it (`superseded_by`) or 7 days after first seen once Lunch Flow stops returning it. Absence alone doesn't retire it, because Lunch Flow returns only one pending transaction per account.
 - `transactions` is bank-sourced only; the importer is its only writer. User edits (Phase 2's `transaction_overrides`) live in a separate table keyed by `transactions.id` so they survive re-sync.
 - D1 free tier caps invocations at 50 statements and 100 bound params each — bulk upserts go through one `json_each` statement per chunk, not one statement per row. Keep new bulk-write code on this pattern; don't reintroduce per-row statements.
 - The Worker validates `Cf-Access-Jwt-Assertion` itself (signature against the team JWKS, `aud`, `email`) because Workers with Static Assets don't forward `ctx.access`. Don't remove this and rely on the Access edge alone — it's the second half of the auth story, not a redundant check.
