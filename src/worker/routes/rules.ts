@@ -11,8 +11,13 @@ import { idParam, isUniqueViolation, parseBody } from "./query";
 const COLUMNS = "id, match_type AS matchType, pattern, account_id AS accountId, category_id AS categoryId";
 type Rule = { id: number; matchType: string; pattern: string; accountId: number | null; categoryId: number };
 
-// Normalised as SQLite matches it; the stored pattern is what the response shows.
-const pattern = z.string().transform(normalizePattern).pipe(z.string().min(1).max(100));
+// Normalised as SQLite matches it; the stored pattern is what the response shows. SQLite's
+// trim() leaves tabs and newlines, so a pattern still edged with whitespace is refused: an
+// exact one could never match, and a lone tab would catch every merchant containing one.
+const pattern = z
+  .string()
+  .transform(normalizePattern)
+  .pipe(z.string().min(1).max(100).refine((p) => !/^\s|\s$/.test(p)));
 const fields = {
   matchType: z.enum(MATCH_TYPES),
   pattern,
@@ -72,7 +77,17 @@ export const ruleRoutes = new Hono<AppEnv>()
     );
     if (!body.ok) return body.res;
     const { matchType, pattern: p, accountId, categoryId } = body.data;
-    const refused = await checkRefs(c.env.DB, categoryId, accountId);
+    const current = await c.env.DB.prepare("SELECT category_id, account_id FROM merchant_rules WHERE id = ?1")
+      .bind(id)
+      .first<{ category_id: number; account_id: number | null }>();
+    if (!current) return c.json({ error: "not_found" }, 404);
+    // Only references that change are checked, so a full-form edit of a rule whose category was
+    // archived since (the spec keeps such rules working) isn't refused for that.
+    const refused = await checkRefs(
+      c.env.DB,
+      categoryId === current.category_id ? undefined : categoryId,
+      accountId === current.account_id ? undefined : accountId,
+    );
     if (refused) return c.json({ error: refused.error }, refused.status);
     try {
       // accountId: undefined keeps the scope, null makes the rule apply to any account.

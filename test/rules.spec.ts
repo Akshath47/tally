@@ -1,23 +1,15 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "../src/worker";
 import { RESOLVED_CTE } from "../src/worker/budget/resolve";
 import { resetDb } from "./db";
+import { get, send } from "./http";
 import { SEEDED, insertOverride, ledger } from "./budget/helpers";
 
-// Requests go to localhost, where the local-dev auth bypass applies. All data is synthetic.
+// All data is synthetic.
 
-const ORIGIN = "http://localhost";
-const app = createApp();
 type Rule = { id: number; matchType: string; pattern: string; accountId: number | null; categoryId: number; transactionCount?: number };
 
-const send = (method: string, path: string, body?: unknown) =>
-  app.request(
-    `${ORIGIN}${path}`,
-    { method, headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) },
-    env,
-  );
-const list = async () => ((await (await app.request(`${ORIGIN}/api/rules`, {}, env)).json()) as { rules: Rule[] }).rules;
+const list = async () => ((await (await get("/api/rules")).json()) as { rules: Rule[] }).rules;
 const create = (body: unknown) => send("POST", "/api/rules", body);
 const createdRule = async (body: unknown) => ((await (await create(body)).json()) as { rule: Rule }).rule;
 const categoryOf = async (id: number) =>
@@ -67,6 +59,8 @@ describe("POST /api/rules", () => {
 
   it.each([
     { matchType: "exact", pattern: "   ", categoryId: 1 },
+    { matchType: "contains", pattern: "\t", categoryId: 1 },
+    { matchType: "exact", pattern: "Synthetic Cafe\n", categoryId: 1 },
     { matchType: "exact", pattern: "x".repeat(101), categoryId: 1 },
     { matchType: "starts_with", pattern: "x", categoryId: 1 },
     { matchType: "exact", categoryId: 1 },
@@ -125,6 +119,21 @@ describe("PATCH /api/rules/:id", () => {
     const res = await send("PATCH", `/api/rules/${b.id}`, { pattern: "A" });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "rule_exists" });
+  });
+
+  it("lets a rule be edited while its category is archived, as long as the category isn't changed", async () => {
+    const rule = await createdRule({ matchType: "exact", pattern: "a", accountId: a1, categoryId: SEEDED.other });
+    await env.DB.prepare("UPDATE categories SET archived_at = '2026-10-01T00:00:00.000Z' WHERE id = ?1").bind(SEEDED.other).run();
+    const res = await send("PATCH", `/api/rules/${rule.id}`, { matchType: "exact", pattern: "b", accountId: a1, categoryId: SEEDED.other });
+    expect(res.status).toBe(200);
+    // Moving a rule to an archived category is still refused.
+    const other = await createdRule({ matchType: "exact", pattern: "c", categoryId: SEEDED.groceries });
+    expect((await send("PATCH", `/api/rules/${other.id}`, { categoryId: SEEDED.other })).status).toBe(409);
+  });
+
+  it("says an unknown rule is unknown before looking at the body's references", async () => {
+    await env.DB.prepare("UPDATE categories SET archived_at = '2026-10-01T00:00:00.000Z' WHERE id = ?1").bind(SEEDED.other).run();
+    expect((await send("PATCH", "/api/rules/999", { categoryId: SEEDED.other })).status).toBe(404);
   });
 
   it("returns 404 for an unknown rule or category, and 400 for an empty change", async () => {
