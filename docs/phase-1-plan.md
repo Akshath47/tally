@@ -165,7 +165,7 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 
 **Result (2026-10-02 19:00 to 2026-10-03 19:00 UTC):** 25 cron runs, every gap exactly 60 min, all `success` (longest 9.5 s wall time). All 25 invocations in that window were the cron runs, so the app was closed. No overlapping runs, 0 duplicates by `(account_id, provider_txn_id)`. The 15 same-fingerprint groups are all pairs of posted Revolut transactions that Lunch Flow returned together in one response, so it lists them as separate transactions; none is an id change counted twice.
 
-## [ ] P1.8 Free-tier measurement
+## [x] P1.8 Free-tier measurement
 
 - `scripts/usage-report.ts` queries the Cloudflare GraphQL Analytics API using a **read-only Account Analytics token**. It reports:
   - Worker CPU time P50/P99/max for cron runs (exact, one row per run), and for all invocations together (sampled). The API has no trigger dimension, so HTTP can't be split from cron there;
@@ -179,6 +179,17 @@ If either account fails, stop and resolve it with Lunch Flow before building fur
 - daily D1 writes are under 5% of the allowance.
 
 If CPU is too high, reduce the chunk size. Moving to a paid plan needs discussion first.
+
+**Result (P1.7 window, 2026-10-02 18:22 to 2026-10-03 19:05 UTC): done with an exception the owner accepted on 2026-10-04.**
+- **CPU fails both checks.** 25 cron runs: P50 41.6 ms, P99 = max 52.1 ms, against 7 ms and 10 ms.
+- **D1 writes pass.** The busiest day was 3,182 rows (3.2%), including the backfill.
+- **Every run still succeeded.** Cloudflare allows each isolate to run over the limit "infrequently", and an hourly cron almost always starts a fresh isolate. It does say a Worker that goes over "consistently" can be terminated.
+- **The CPU isn't the import's work, so smaller chunks wouldn't help.**
+  - Backfill runs (9 Lunch Flow calls, ~140 transactions) averaged 42 ms; incremental runs (5 calls, ~40 transactions) averaged 37 ms.
+  - The importer's own JavaScript, run under Node with synthetic data, costs about 4 ms cold and 1 ms warm.
+  - The remaining ~30 ms per run is fixed overhead. The most likely cause is loading and compiling the bundle on a cold isolate, which is mostly zod and drizzle. That isn't proven.
+- **Accepted rather than optimised.** The real work is already about 1 ms, and runs succeed.
+- **Watching for kills:** run `node scripts/check-terminations.ts` at least every 90 days (analytics retention). If it ever reports a kill, revisit: minify the bundle, `zod/mini` in the importer, or keep the HTTP app out of the cron path.
 
 ## [ ] P1.9 Verification and assessment
 
