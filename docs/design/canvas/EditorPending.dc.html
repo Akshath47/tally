@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Pending transaction</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;height:844px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+.acct{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:10px;font-weight:600;letter-spacing:.05em}
+.rev{background:#2E3133;color:#D5D7DA}
+.group{background:#1D1F20;border:1px solid #26292B;border-radius:16px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;min-height:50px;padding:8px 14px;border-bottom:1px solid #26292B;font-size:14.5px}
+.row:last-child{border-bottom:0}
+.rv{margin-left:auto;color:#8F9498;display:inline-flex;align-items:center;gap:6px}
+</style>
+</helmet>
+<div class="app">
+<div aria-hidden="true" style="padding: 52px 20px 0">
+<div style="font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Transactions</div>
+<div style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="height: 44px; border-radius: 12px; background: #1D1F20"></div>
+<div style="height: 16px; width: 60%; border-radius: 6px; background: #1D1F20"></div>
+<div style="height: 16px; width: 75%; border-radius: 6px; background: #1D1F20"></div>
+<div style="height: 16px; width: 50%; border-radius: 6px; background: #1D1F20"></div>
+</div>
+</div>
+<div style="position: absolute; inset: 0; background: rgba(0,0,0,.55)"></div>
+
+<section role="dialog" aria-modal="true" aria-labelledby="pd-title" style="position: absolute; left: 0; right: 0; bottom: 0; top: 268px; background: #17181A; border-top: 1px solid #2B2E30; border-radius: 22px 22px 0 0; padding: 8px 16px 34px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: center"><span style="width: 38px; height: 5px; border-radius: 3px; background: #3A3D40"></span></div>
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 4px">
+<div>
+<h2 id="pd-title" style="margin: 0; font-size: 20px; font-weight: 500">Northside Pharmacy</h2>
+<div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #8F9498"><span class="acct rev">REV</span>Pending since Wed 14 Oct</div>
+</div>
+<div style="font-size: 28px; font-weight: 200; font-style: italic; color: #C9CCCF">£8.49</div>
+</div>
+
+<div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: #1D1F20; border: 1px solid #2B2E30">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C9CCCF" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex: none; margin-top: 1px"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+<div style="font-size: 13px; line-height: 1.45; color: #C9CCCF">Pending transactions can’t be edited. It already counts towards October’s spend. Once Revolut posts it, usually in 1 to 3 days, it shows up in To sort.</div>
+</div>
+
+<div class="group" aria-label="Details, read-only">
+<div class="row">Category<span class="rv">Uncategorised</span></div>
+<div class="row">Counts towards spend<span class="rv">Yes, as Misc for now</span></div>
+<div class="row">Amount<span class="rv">£8.49</span></div>
+<div class="row">Date<span class="rv">Wed 14 Oct</span></div>
+</div>
+
+<a href="Transactions.dc.html" style="margin-top: auto; height: 52px; border-radius: 14px; background: #242628; border: 1px solid #2F3234; color: #E6E7E9; font-size: 15.5px; font-weight: 500; display: flex; align-items: center; justify-content: center; text-decoration: none">Close</a>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Categories</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;min-height:1200px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;padding-bottom:40px}
+button,input{font:inherit;color:inherit}
+.muted{color:#8F9498}
+.seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));background:#1D1F20;border:1px solid #26292B;border-radius:12px;padding:3px;gap:3px}
+.segbtn{min-height:38px;border-radius:9px;color:#8F9498;font-size:13.5px;font-weight:500;display:grid;place-items:center;text-decoration:none}
+.segbtn:hover{color:#E6E7E9}
+.sh{padding:22px 20px 8px}
+.st{font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#8F9498}
+.sd{font-size:12.5px;color:#8F9498;margin-top:2px}
+.group{margin:0 16px;background:#1D1F20;border:1px solid #26292B;border-radius:16px;overflow:hidden}
+.row{display:flex;align-items:center;gap:10px;min-height:50px;padding:6px 8px 6px 14px;border-bottom:1px solid #26292B;font-size:14.5px}
+.row:last-child{border-bottom:0}
+.sub{font-size:12px;color:#8F9498;margin-left:auto}
+.more{width:40px;height:40px;border:0;background:transparent;border-radius:10px;color:#8F9498;cursor:pointer;display:grid;place-items:center;flex:none}
+.more:hover{background:#242628;color:#E6E7E9}
+.in{height:42px;border:1px solid #8FA89A;border-radius:11px;background:#242628;padding:0 11px;font-size:15px;width:100%;outline:none}
+.kind{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;background:#141516;border:1px solid #2B2E30;border-radius:11px;padding:3px}
+.kbtn{min-height:38px;border:0;border-radius:8px;background:transparent;color:#8F9498;font-size:13px;font-weight:500;cursor:pointer}
+.kbtn.on{background:#2B2E30;color:#E6E7E9}
+.btn{min-height:44px;border-radius:12px;border:0;font-size:14.5px;font-weight:500;cursor:pointer;padding:0 16px}
+</style>
+</helmet>
+<div class="app">
+<div style="padding: 52px 12px 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="Budget.dc.html" style="min-height: 44px; display: inline-flex; align-items: center; gap: 2px; padding: 0 8px; font-size: 15px; text-decoration: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>Budget</a>
+<button type="button" style="min-height: 44px; border: 0; background: transparent; color: #A9C0B3; font-size: 15px; font-weight: 500; cursor: pointer; padding: 0 8px">+ New</button>
+</div>
+<h1 style="margin: 4px 20px 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Categories</h1>
+<div class="seg" style="margin: 12px 16px 0">
+<a class="segbtn" href="Categories.dc.html" aria-current="page" style="background: #2B2E30; color: #E6E7E9">Categories</a>
+<a class="segbtn" href="Rules.dc.html">Merchant rules</a>
+</div>
+
+<div class="sh"><div class="st">Budgeted · 5</div><div class="sd">Counts against your monthly budget</div></div>
+<div class="group">
+<div class="row">Bills<span class="sub">£650 allocated</span><button class="more" type="button" aria-label="Edit Bills"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div class="row">Groceries<span class="sub">£300 allocated</span><button class="more" type="button" aria-label="Edit Groceries"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div class="row">Eating out<span class="sub">£200 allocated</span><button class="more" type="button" aria-label="Edit Eating out"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div style="padding: 12px 14px 14px; border-bottom: 1px solid #26292B; background: #202224; display: flex; flex-direction: column; gap: 10px">
+<label for="rn" style="font-size: 12px; color: #8F9498">Rename “Transport”</label>
+<input id="rn" class="in" value="Transport &amp; travel">
+<div style="font-size: 12px; color: #8F9498">Kind</div>
+<div class="kind" role="radiogroup" aria-label="Kind">
+<button class="kbtn on" type="button" role="radio" aria-checked="true">Budgeted</button>
+<button class="kbtn" type="button" role="radio" aria-checked="false">Tracked</button>
+<button class="kbtn" type="button" role="radio" aria-checked="false">Excluded</button>
+</div>
+<div style="display: flex; gap: 8px; align-items: center">
+<button class="btn" type="button" style="background: transparent; color: #D6968E; padding: 0 4px">Archive</button>
+<span style="flex: 1"></span>
+<button class="btn" type="button" style="background: #242628; border: 1px solid #2F3234">Cancel</button>
+<button class="btn" type="button" style="background: #8FA89A; color: #121513">Save</button>
+</div>
+</div>
+<div class="row">Misc<span class="sub">unallocated · built in</span><span style="width: 40px"></span></div>
+</div>
+
+<div class="sh"><div class="st">Tracked · 3</div><div class="sd">Shown in spending, never counts against the budget</div></div>
+<div class="group">
+<div class="row">Clothes<span class="sub">£85 this month</span><button class="more" type="button" aria-label="Edit Clothes"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div class="row">One-offs<span class="sub">£18.99 this month</span><button class="more" type="button" aria-label="Edit One-offs"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div role="alertdialog" aria-labelledby="del-t" style="padding: 12px 14px 14px; background: #241D1C; display: flex; flex-direction: column; gap: 10px">
+<div id="del-t" style="font-size: 14.5px; font-weight: 500">Archive “Gifts”?</div>
+<div style="font-size: 12.5px; color: #C9B5B2; line-height: 1.45">It disappears from category pickers and budget settings. Its 4 transactions and 1 merchant rule keep pointing at it, so nothing moves. You can unarchive it any time.</div>
+<div style="display: flex; gap: 8px; justify-content: flex-end">
+<button class="btn" type="button" style="background: #242628; border: 1px solid #2F3234">Keep</button>
+<button class="btn" type="button" style="background: #C7837B; color: #1A1110">Archive category</button>
+</div>
+</div>
+</div>
+
+<div class="sh"><div class="st">Excluded · 4</div><div class="sd">Not spending at all: hidden from totals</div></div>
+<div class="group">
+<div class="row">Savings<button class="more" type="button" aria-label="Edit Savings" style="margin-left: auto"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div class="row">Investments<button class="more" type="button" aria-label="Edit Investments" style="margin-left: auto"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div class="row">Card repayments<button class="more" type="button" aria-label="Edit Card repayments" style="margin-left: auto"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+<div class="row">Income<button class="more" type="button" aria-label="Edit Income" style="margin-left: auto"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button></div>
+</div>
+
+<button type="button" style="margin: 12px 20px 0; min-height: 44px; border: 0; background: transparent; color: #8F9498; font-size: 14px; cursor: pointer; padding: 0">Show archived (2)</button>
+<div style="margin: 8px 20px 0; display: flex; gap: 14px">
+<a href="Accounts.dc.html" style="font-size: 14px; text-decoration: none">Accounts status</a>
+<a href="Review.dc.html" style="font-size: 14px; text-decoration: none">Monthly review</a>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

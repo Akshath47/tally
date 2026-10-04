@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: style</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="width: 1376px; height: 540px; background: #0E0F10; color: #E6E7E9; font-family: 'Manrope', system-ui, sans-serif; font-weight: 300; font-variant-numeric: tabular-nums; padding: 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px">
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div>
+<div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #8F9498; font-weight: 500">Chosen: A · Charcoal + Sage</div>
+<h1 style="margin: 6px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Colour tokens</h1>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+<sc-for list="{{tokens}}" as="t" hint-placeholder-count="12">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="height: 52px; border-radius: 12px; background: {{t.hex}}; border: 1px solid #2B2E30"></div>
+<div style="font-size: 13px; font-weight: 400">{{t.name}}</div>
+<div style="font-size: 11.5px; color: #8F9498">{{t.hex}} · {{t.use}}</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div>
+<div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #8F9498; font-weight: 500">Typeface</div>
+<h2 style="margin: 6px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Manrope, light-led</h2>
+</div>
+<div style="background: #1D1F20; border: 1px solid #26292B; border-radius: 18px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: baseline; gap: 16px"><span style="font-size: 46px; font-weight: 200; letter-spacing: -0.035em">£1,254</span><span style="font-size: 12px; color: #8F9498">Headline amount · 200 · 46px</span></div>
+<div style="display: flex; align-items: baseline; gap: 16px"><span style="font-size: 30px; font-weight: 300; letter-spacing: -0.02em">October</span><span style="font-size: 12px; color: #8F9498">Screen title · 300 · 30px</span></div>
+<div style="display: flex; align-items: baseline; gap: 16px"><span style="font-size: 16px; font-weight: 500">Harlow's Market</span><span style="font-size: 12px; color: #8F9498">Emphasis · 500 · 16px</span></div>
+<div style="display: flex; align-items: baseline; gap: 16px"><span style="font-size: 14.5px; font-weight: 400">Groceries · £214 / £300</span><span style="font-size: 12px; color: #8F9498">Body · 400 · 14.5px</span></div>
+<div style="display: flex; align-items: baseline; gap: 16px"><span style="font-size: 12.5px; font-weight: 400; color: #8F9498">Updated 3h ago</span><span style="font-size: 12px; color: #8F9498">Meta · 400 · 12.5px, muted</span></div>
+</div>
+<p style="margin: 0; font-size: 13px; color: #8F9498; line-height: 1.5">Big numbers go thin, small text stays at 400 so it holds up on a dark background. Numbers use tabular figures so columns of amounts line up.</p>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1376,"height":540}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      tokens: [
+        { name: 'Background', hex: '#141516', use: 'screens' },
+        { name: 'Surface', hex: '#1D1F20', use: 'cards' },
+        { name: 'Raised', hex: '#242628', use: 'inputs, sheets' },
+        { name: 'Line', hex: '#2B2E30', use: 'tracks, borders' },
+        { name: 'Text', hex: '#E6E7E9', use: 'primary' },
+        { name: 'Muted', hex: '#8F9498', use: 'secondary' },
+        { name: 'Sage', hex: '#8FA89A', use: 'accent, on track' },
+        { name: 'Sage tint', hex: '#222A26', use: 'selected, suggested' },
+        { name: 'Amber', hex: '#C9A26A', use: 'near limit, stale' },
+        { name: 'Brick', hex: '#C7837B', use: 'over, errors' },
+        { name: 'Revolut tag', hex: '#2E3133', use: 'account badge' },
+        { name: 'Amex tag', hex: '#24303A', use: 'account badge' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Edit transaction</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;height:844px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+.muted{color:#8F9498}
+.acct{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:10px;font-weight:600;letter-spacing:.05em}
+.rev{background:#2E3133;color:#D5D7DA}
+.amex{background:#24303A;color:#A8BACB}
+.group{background:#1D1F20;border:1px solid #26292B;border-radius:16px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;min-height:54px;padding:8px 14px;border-bottom:1px solid #26292B}
+.row:last-child{border-bottom:0}
+.rl{font-size:14.5px;font-weight:400;flex:none;width:118px}
+.orig{font-size:11.5px;color:#8F9498}
+.in{height:40px;border:1px solid #2F3234;border-radius:10px;background:#242628;padding:0 10px;font-size:15px;width:100%;color-scheme:dark}
+.in:focus{outline:2px solid #8FA89A;outline-offset:1px;border-color:#8FA89A}
+.reset{border:0;background:transparent;color:#A9C0B3;font-size:13px;font-weight:500;padding:0 4px;min-height:32px;cursor:pointer}
+.reset:hover{color:#D0E0D6}
+.switch{width:51px;height:31px;border-radius:16px;border:0;padding:2px;cursor:pointer;display:flex;flex:none}
+.knob{width:27px;height:27px;border-radius:50%;background:#E6E7E9;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.flag{font-size:11px;font-weight:500;padding:2px 7px;border-radius:6px;display:inline-flex;align-items:center;gap:4px}
+.hdr{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;font-size:15.5px;text-decoration:none}
+</style>
+</helmet>
+<div class="app">
+
+<div aria-hidden="true" style="padding: 52px 20px 0">
+<div style="font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Transactions</div>
+<div style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="height: 44px; border-radius: 12px; background: #1D1F20"></div>
+<div style="height: 16px; width: 60%; border-radius: 6px; background: #1D1F20"></div>
+<div style="height: 16px; width: 75%; border-radius: 6px; background: #1D1F20"></div>
+</div>
+</div>
+<div style="position: absolute; inset: 0; background: rgba(0,0,0,.55)"></div>
+
+<section role="dialog" aria-modal="true" aria-labelledby="ed-title" style="position: absolute; left: 0; right: 0; bottom: 0; top: 64px; background: #17181A; border-top: 1px solid #2B2E30; border-radius: 22px 22px 0 0; display: flex; flex-direction: column; overflow: hidden">
+<div style="display: flex; justify-content: center; padding-top: 8px"><span style="width: 38px; height: 5px; border-radius: 3px; background: #3A3D40"></span></div>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 2px 8px 0">
+<a class="hdr" href="Transactions.dc.html">Cancel</a>
+<h2 id="ed-title" style="margin: 0; font-size: 15.5px; font-weight: 500">Edit transaction</h2>
+<a class="hdr" href="Transactions.dc.html" style="font-weight: 600">Save</a>
+</div>
+
+<div style="flex: 1; overflow-y: auto; padding: 8px 16px 34px; display: flex; flex-direction: column; gap: 14px">
+
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 4px 4px 0">
+<div>
+<div style="font-size: 20px; font-weight: 500; letter-spacing: -0.01em">Via Roma Kitchen</div>
+<div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #8F9498"><span class="acct amex">AMEX</span>Posted<span class="flag" style="background: #222A26; color: #B9CEC2"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>Edited</span></div>
+</div>
+<div style="text-align: right">
+<div style="font-size: 28px; font-weight: 200; letter-spacing: -0.02em">£32.00</div>
+<div class="orig">counted</div>
+</div>
+</div>
+
+<div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: #1D2220; border: 1px solid #2E3732">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#A9C0B3" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg>
+<div style="flex: 1; font-size: 13px; line-height: 1.45; color: #C9D3CD">From the bank: <span style="font-weight: 600">£64.00</span> on <span style="font-weight: 600">Thu 1 Oct</span>. Your amount and date are used instead.</div>
+<button class="reset" type="button">Reset</button>
+</div>
+
+<div class="group">
+<a class="row" href="Categories.dc.html" style="color: #E6E7E9; text-decoration: none">
+<span class="rl">Category</span>
+<span style="flex: 1; text-align: right; font-size: 15px">Eating out</span>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7E8388" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+</a>
+<div class="row">
+<div style="flex: 1">
+<div id="inc-l" style="font-size: 14.5px">Count in budget</div>
+<div class="orig">{{includeHint}}</div>
+</div>
+<button class="switch" type="button" role="switch" aria-checked="{{includeAria}}" aria-labelledby="inc-l" onClick="{{toggleInclude}}" style="background: {{switchBg}}; justify-content: {{switchJustify}}"><span class="knob"></span></button>
+</div>
+<div class="row">
+<label class="rl" for="amt">Counted amount</label>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 3px">
+<div style="position: relative"><span style="position: absolute; left: 10px; top: 10px; font-size: 15px; color: #8F9498">£</span><input id="amt" class="in" value="32.00" inputmode="decimal" style="padding-left: 22px; text-align: right"></div>
+<span class="orig" style="text-align: right">Bank: £64.00</span>
+</div>
+</div>
+<div class="row">
+<label class="rl" for="dt">Counted date</label>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 3px">
+<input id="dt" class="in" type="date" value="2026-09-30" style="text-align: right">
+<span class="orig" style="text-align: right">Bank: Thu 1 Oct · now counts in September</span>
+</div>
+</div>
+<div class="row" style="align-items: flex-start; padding-top: 12px; padding-bottom: 12px">
+<label class="rl" for="note" style="padding-top: 9px">Note</label>
+<textarea id="note" class="in" rows="2" style="height: 64px; padding: 9px 10px; resize: none; line-height: 1.4">Dinner on 30 Sep, split with Sam</textarea>
+</div>
+</div>
+
+<label style="display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px; background: #1D1F20; border: 1px solid {{ruleBorder}}; border-radius: 16px; cursor: pointer">
+<input type="checkbox" checked="{{rule}}" onChange="{{toggleRule}}" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #8FA89A; flex: none">
+<span>
+<span style="display: block; font-size: 15px; font-weight: 500">Use for all Via Roma Kitchen</span>
+<span style="display: block; font-size: 12.5px; color: #8F9498; margin-top: 3px; line-height: 1.45">{{ruleHint}}</span>
+</span>
+</label>
+
+<button type="button" style="height: 48px; border-radius: 14px; background: transparent; border: 1px solid #2F3234; color: #D6968E; font-size: 14.5px; font-weight: 500; cursor: pointer">Reset all changes to bank values</button>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  state = { include: true, rule: false };
+  renderVals() {
+    const s = this.state;
+    return {
+      includeAria: s.include ? 'true' : 'false',
+      includeHint: s.include ? 'Counts against Eating out' : 'Shown in spending, not in the budget',
+      switchBg: s.include ? '#8FA89A' : '#3A3D40',
+      switchJustify: s.include ? 'flex-end' : 'flex-start',
+      toggleInclude: () => this.setState({ include: !s.include }),
+      rule: s.rule,
+      ruleBorder: s.rule ? '#3D4A43' : '#26292B',
+      toggleRule: () => this.setState({ rule: !s.rule }),
+      ruleHint: s.rule
+        ? 'All Via Roma Kitchen transactions go to Eating out: the 5 earlier ones you haven’t edited, and every new one. Ones you’ve edited by hand keep their category.'
+        : 'Off: only this transaction changes. The 5 other Via Roma Kitchen transactions stay as they are.'
+    };
+  }
+}
+</script>
+</body>
+</html>

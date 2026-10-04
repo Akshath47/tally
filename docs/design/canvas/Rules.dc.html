@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Merchant rules</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;height:844px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+.seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));background:#1D1F20;border:1px solid #26292B;border-radius:12px;padding:3px;gap:3px}
+.segbtn{min-height:38px;border-radius:9px;color:#8F9498;font-size:13.5px;font-weight:500;display:grid;place-items:center;text-decoration:none}
+.segbtn:hover{color:#E6E7E9}
+.group{margin:0 16px;background:#1D1F20;border:1px solid #26292B;border-radius:16px;overflow:hidden}
+.rule{display:flex;align-items:center;gap:10px;min-height:60px;padding:8px 14px;border-bottom:1px solid #26292B;color:#E6E7E9;text-decoration:none}
+.rule:hover{background:#202224;color:#E6E7E9}
+.rule:last-child{border-bottom:0}
+.arrow{color:#8F9498;font-size:13px}
+.cat{font-size:12.5px;font-weight:500;color:#B9CEC2;background:#222A26;border-radius:7px;padding:3px 8px}
+.in{height:42px;border:1px solid #2F3234;border-radius:11px;background:#242628;padding:0 11px;font-size:15px;width:100%;color-scheme:dark}
+.btn{min-height:44px;border-radius:12px;border:0;font-size:14.5px;font-weight:500;cursor:pointer;padding:0 16px}
+</style>
+</helmet>
+<div class="app">
+<div style="position: absolute; inset: 0; overflow-y: auto; padding-bottom: 30px">
+<div style="padding: 52px 12px 0 8px; display: flex; align-items: center; justify-content: space-between">
+<a href="Budget.dc.html" style="min-height: 44px; display: inline-flex; align-items: center; gap: 2px; padding: 0 8px; font-size: 15px; text-decoration: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>Budget</a>
+<button type="button" style="min-height: 44px; border: 0; background: transparent; color: #A9C0B3; font-size: 15px; font-weight: 500; cursor: pointer; padding: 0 8px">+ Rule</button>
+</div>
+<h1 style="margin: 4px 20px 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">Categories</h1>
+<div class="seg" style="margin: 12px 16px 0">
+<a class="segbtn" href="Categories.dc.html">Categories</a>
+<a class="segbtn" href="Rules.dc.html" aria-current="page" style="background: #2B2E30; color: #E6E7E9">Merchant rules</a>
+</div>
+<p style="margin: 14px 20px 12px; font-size: 12.5px; line-height: 1.5; color: #8F9498">A rule sets the category for every transaction from that merchant, past and future. Transactions you’ve edited by hand keep their own category.</p>
+
+<div class="group">
+<div style="padding: 14px; background: #202224; border-bottom: 1px solid #26292B; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 12px; color: #8F9498">Editing rule</div>
+<div style="display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #C9CCCF">
+<span id="mt-l">Match</span>
+<div role="radiogroup" aria-labelledby="mt-l" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; background: #141516; border: 1px solid #2B2E30; border-radius: 11px; padding: 3px">
+<button type="button" role="radio" aria-checked="false" style="min-height: 38px; border: 0; border-radius: 8px; background: transparent; color: #8F9498; font-size: 13px; font-weight: 500; cursor: pointer">Exact name</button>
+<button type="button" role="radio" aria-checked="true" style="min-height: 38px; border: 0; border-radius: 8px; background: #2B2E30; color: #E6E7E9; font-size: 13px; font-weight: 500; cursor: pointer">Name contains</button>
+</div>
+<span style="font-size: 11.5px; color: #8F9498; line-height: 1.4">Contains catches variations like “CITY CABS LTD” or “City Cabs 0412”. Exact matches the merchant name only.</span>
+</div>
+<label style="display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #C9CCCF">Text to match<input class="in" value="city cabs"></label>
+<label style="display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #C9CCCF">Category<select class="in"><option>Transport</option><option>Misc</option><option>Eating out</option></select></label>
+<div style="font-size: 12.5px; line-height: 1.45; color: #B9CEC2; background: #1D2220; border: 1px solid #2E3732; border-radius: 10px; padding: 9px 11px">Applies to 14 City Cabs transactions: 3 waiting in To sort, 11 already sorted. 1 you edited by hand stays as it is.</div>
+<div style="display: flex; gap: 8px; align-items: center">
+<button class="btn" type="button" style="background: transparent; color: #D6968E; padding: 0 4px">Delete rule</button>
+<span style="flex: 1"></span>
+<button class="btn" type="button" style="background: #242628; border: 1px solid #2F3234">Cancel</button>
+<button class="btn" type="button" style="background: #8FA89A; color: #121513">Save</button>
+</div>
+</div>
+<a class="rule" href="Rules.dc.html"><div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Harlow's Market</div><div style="font-size: 11.5px; color: #8F9498">Exact · 27 transactions · from To sort</div></div><span class="arrow">→</span><span class="cat">Groceries</span></a>
+<a class="rule" href="Rules.dc.html"><div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Via Roma Kitchen</div><div style="font-size: 11.5px; color: #8F9498">Exact · 6 transactions · from editor</div></div><span class="arrow">→</span><span class="cat">Eating out</span></a>
+<a class="rule" href="Rules.dc.html"><div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Harbour Energy</div><div style="font-size: 11.5px; color: #8F9498">Contains · 8 transactions</div></div><span class="arrow">→</span><span class="cat">Bills</span></a>
+<a class="rule" href="Rules.dc.html"><div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Amex payment</div><div style="font-size: 11.5px; color: #8F9498">Contains · 9 transactions · both accounts</div></div><span class="arrow">→</span><span class="cat" style="color: #C9CCCF; background: #2B2E30">Card repayments</span></a>
+<a class="rule" href="Rules.dc.html"><div style="flex: 1; min-width: 0"><div style="font-size: 14.5px">Oakfield Lettings</div><div style="font-size: 11.5px; color: #8F9498">Exact · 7 transactions</div></div><span class="arrow">→</span><span class="cat">Bills</span></a>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Error</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;height:844px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:84px;padding:0 8px 30px;background:rgba(20,21,22,.94);border-top:1px solid #26292B;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;font-weight:500;color:#7E8388;text-decoration:none}
+.tab.on{color:#A9C0B3}
+</style>
+</helmet>
+<div class="app">
+<div style="padding: 52px 20px 0">
+<h1 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">October</h1>
+<div style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #8F9498; min-height: 30px"><span style="width: 6px; height: 6px; border-radius: 50%; background: #C7837B"></span>Couldn’t refresh · last loaded 16 Oct, 06:10</div>
+</div>
+
+<div role="alert" style="margin: 110px 24px 0; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px">
+<span style="width: 64px; height: 64px; border-radius: 50%; border: 1px solid #4A3330; background: #241D1C; display: grid; place-items: center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#D6968E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"></path><path d="M18.5 2.5v3.3h-3.3M5.5 21.5v-3.3h3.3"></path></svg></span>
+<h2 style="margin: 8px 0 0; font-size: 22px; font-weight: 300">Tally couldn’t load your budget</h2>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #8F9498">The server didn’t respond. Your data is safe and nothing was changed. Check your connection and try again.</p>
+<button type="button" style="margin-top: 10px; min-height: 50px; padding: 0 28px; border: 0; border-radius: 14px; background: #8FA89A; color: #121513; font-size: 15px; font-weight: 500; cursor: pointer">Try again</button>
+<a href="Accounts.dc.html" style="font-size: 13.5px; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center">Check account status</a>
+<div style="font-size: 11.5px; color: #6E7378">Error 503 · 16 Oct, 09:41</div>
+</div>
+
+<nav class="tabbar" aria-label="Main">
+<a class="tab on" href="Main.dc.html" aria-current="page"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8" opacity=".35"></circle><path d="M12 4a8 8 0 0 1 7.6 10.5"></path></svg>Home</a>
+<a class="tab" href="Transactions.dc.html"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01"></path></svg>Transactions</a>
+<a class="tab" href="Budget.dc.html"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg>Budget</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

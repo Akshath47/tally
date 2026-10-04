@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Tally: Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E0F10}
+a{color:#A9C0B3}a:hover{color:#C9DACF}
+*{box-sizing:border-box}
+.app{width:390px;height:844px;background:#141516;color:#E6E7E9;font-family:'Manrope',system-ui,sans-serif;font-weight:400;font-variant-numeric:tabular-nums;position:relative;overflow:hidden;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+.muted{color:#8F9498}
+.fresh{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#8F9498;text-decoration:none;min-height:30px}
+.fresh:hover{color:#E6E7E9}
+.dot{width:6px;height:6px;border-radius:50%;background:#8FA89A;flex:none}
+.card{background:#1D1F20;border:1px solid #26292B;border-radius:18px}
+.iconbtn{width:44px;height:44px;border:0;border-radius:12px;background:transparent;display:inline-grid;place-items:center;color:#C9CCCF;cursor:pointer;text-decoration:none}
+.iconbtn:hover{background:#222426;color:#E6E7E9}
+.bar{height:4px;border-radius:2px;background:#2B2E30;overflow:hidden;display:flex;gap:1px}
+.fill{height:100%;background:#8FA89A}
+.fill.warn{background:#C9A26A}
+.fill.over{background:#C7837B}
+.hatch{background:repeating-linear-gradient(135deg,#8FA89A 0 2px,#3A4540 2px 5px)}
+.hatch.warn{background:repeating-linear-gradient(135deg,#C9A26A 0 2px,#4A3F2E 2px 5px)}
+.flag{font-size:11px;font-weight:500;padding:2px 7px;border-radius:6px;display:inline-flex;align-items:center;gap:4px}
+.flag.warn{background:#2C261C;color:#D8B47F}
+.flag.over{background:#2E2120;color:#D6968E}
+.cat{padding:11px 0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #26292B}
+.cat:last-child{border-bottom:0}
+.pill{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:16px;background:#1D1F20;border:1px solid #26292B;font-size:12.5px;color:#E6E7E9;text-decoration:none}
+.pill:hover{border-color:#3A3D40;color:#E6E7E9}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:84px;padding:0 8px 30px;background:rgba(20,21,22,.94);border-top:1px solid #26292B;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.tab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;font-weight:500;color:#7E8388;text-decoration:none}
+.tab:hover{color:#E6E7E9}
+.tab.on,.tab.on:hover{color:#A9C0B3}
+.pip{position:absolute;top:3px;left:calc(50% + 5px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#8FA89A;color:#121513;font-size:10.5px;font-weight:600;display:grid;place-items:center}
+</style>
+</helmet>
+<div class="app">
+
+<div style="padding: 52px 16px 0 20px; display: flex; align-items: flex-start; justify-content: space-between">
+<div>
+<h1 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em">October</h1>
+<a class="fresh" href="Accounts.dc.html"><span class="dot"></span>Updated 3h ago · both accounts</a>
+</div>
+<div style="display: flex; align-items: center; gap: 4px">
+<a href="Inbox.dc.html" style="display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 18px; background: #222A26; border: 1px solid #3D4A43; color: #B9CEC2; font-size: 13px; font-weight: 500; text-decoration: none"><span style="min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #8FA89A; color: #121513; font-size: 10.5px; font-weight: 600; display: grid; place-items: center">11</span>to sort</a>
+<a class="iconbtn" href="Categories.dc.html" aria-label="Categories and settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></a>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; padding: 6px 20px 0">
+<div style="position: relative; width: 200px; height: 200px">
+<svg width="200" height="200" viewBox="0 0 200 200" aria-hidden="true">
+<defs><pattern id="hp" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#3A4540"></rect><rect width="2" height="5" fill="#8FA89A"></rect></pattern></defs>
+<circle cx="100" cy="100" r="88" fill="none" stroke="#2B2E30" stroke-width="9"></circle>
+<circle cx="100" cy="100" r="88" fill="none" stroke="#8FA89A" stroke-width="9" stroke-dasharray="358.2 552.9" transform="rotate(-90 100 100)"></circle>
+<circle cx="100" cy="100" r="88" fill="none" stroke="url(#hp)" stroke-width="9" stroke-dasharray="27 552.9" stroke-dashoffset="-360.7" transform="rotate(-90 100 100)"></circle>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center">
+<div style="font-size: 12px; font-weight: 400; color: #8F9498">Spent in October</div>
+<div style="font-size: 46px; font-weight: 200; letter-spacing: -0.035em; line-height: 1.1">£1,254</div>
+<div style="font-size: 14px; font-weight: 400; margin-top: 2px">£546 left this month</div>
+<div style="font-size: 11.5px; color: #8F9498; margin-top: 2px">of £1,800</div>
+</div>
+</div>
+<p style="margin: 12px 0 0; font-size: 14.5px; text-align: center"><span style="font-weight: 500">£239/week</span> <span class="muted">for the remaining 2.3 weeks</span></p>
+</div>
+
+<div style="margin: 12px 20px 0; display: flex; justify-content: center; gap: 8px">
+<span class="pill"><span style="width: 9px; height: 9px; border-radius: 3px; background: #8FA89A"></span>Posted <span style="font-weight: 500">£1,166</span></span>
+<a class="pill" href="Transactions.dc.html"><span class="hatch" style="width: 9px; height: 9px; border-radius: 3px"></span>Pending <span style="font-weight: 500">£88</span><span class="muted">· 3 charges</span></a>
+</div>
+
+<div style="margin: 22px 20px 0; display: flex; justify-content: space-between; align-items: baseline">
+<h2 style="margin: 0; font-size: 16px; font-weight: 500">Categories</h2>
+<a href="Review.dc.html" style="font-size: 13.5px; font-weight: 400; text-decoration: none">September review</a>
+</div>
+
+<div class="card" style="margin: 8px 20px 0; padding: 2px 16px">
+<div class="cat">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14.5px"><span>Bills</span><span style="margin-left: auto"><span style="font-weight: 500">£650</span> <span class="muted">/ £650</span></span></div>
+<div class="bar"><div class="fill" style="width: 100%"></div></div>
+</div>
+<div class="cat">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14.5px"><span>Groceries</span><span style="margin-left: auto"><span style="font-weight: 500">£214</span> <span class="muted">/ £300</span></span></div>
+<div class="bar"><div class="fill" style="width: 53%"></div><div class="hatch" style="width: 18%"></div></div>
+</div>
+<div class="cat">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14.5px"><span>Eating out</span><span class="flag warn">£14 left</span><span style="margin-left: auto"><span style="font-weight: 500">£186</span> <span class="muted">/ £200</span></span></div>
+<div class="bar"><div class="fill warn" style="width: 76%"></div><div class="hatch warn" style="width: 17%"></div></div>
+</div>
+<div class="cat">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14.5px"><span>Transport</span><span class="flag over"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12l7-7 7 7"></path></svg>£12 over</span><span style="margin-left: auto"><span style="font-weight: 500; color: #D6968E">£132</span> <span class="muted">/ £120</span></span></div>
+<div class="bar"><div class="fill over" style="width: 100%"></div></div>
+</div>
+<div class="cat">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14.5px"><span>Misc</span><span style="font-size: 11.5px; color: #8F9498">unallocated</span><span style="margin-left: auto"><span style="font-weight: 500">£72</span> <span class="muted">/ £530</span></span></div>
+<div class="bar"><div class="fill" style="width: 14%"></div></div>
+</div>
+</div>
+
+<nav class="tabbar" aria-label="Main">
+<a class="tab on" href="Main.dc.html" aria-current="page"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8" opacity=".35"></circle><path d="M12 4a8 8 0 0 1 7.6 10.5"></path></svg>Home</a>
+<a class="tab" href="Transactions.dc.html"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01"></path></svg>Transactions</a>
+<a class="tab" href="Budget.dc.html"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg>Budget</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
