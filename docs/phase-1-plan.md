@@ -189,7 +189,7 @@ If CPU is too high, reduce the chunk size. Moving to a paid plan needs discussio
   - The importer's own JavaScript, run under Node with synthetic data, costs about 4 ms cold and 1 ms warm.
   - The remaining ~30 ms per run is fixed overhead. The most likely cause is loading and compiling the bundle on a cold isolate, which is mostly zod and drizzle. That isn't proven.
 - **Accepted rather than optimised.** The real work is already about 1 ms, and runs succeed.
-- **Watching for kills:** `node scripts/check-terminations.ts [--days n]` checks for terminated runs. It lists any cron run or HTTP request Cloudflare ended with a non-success status, plus imports left `running` or closed as `abandoned`, and exits 1 if there are any. Analytics are kept 90 days, so run it at least that often. If it ever reports a kill, revisit the options: minify the bundle, use `zod/mini` in the importer, or keep the HTTP app out of the cron path.
+- **Watching for kills:** run `node scripts/check-terminations.ts` at least every 90 days (analytics retention). If it ever reports a kill, revisit: minify the bundle, `zod/mini` in the importer, or keep the HTTP app out of the cron path.
 
 ## [ ] P1.9 Verification and assessment
 
