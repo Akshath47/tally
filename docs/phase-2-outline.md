@@ -19,7 +19,7 @@ This is an outline, not a spec. Screens and features will be decided while build
   
   The importer never touches this table, so edits survive future syncs.
 - **Editing a transaction's date or amount** (owner request, 2026-10-02): the editor lets the owner change either one. Edits go in `counted_date` / `counted_amount_minor` and never overwrite the bank values in `transactions`, which stay visible as the original.
-- If Phase 1 showed that IDs change between pending and posted, add a rule that moves an override from the pending transaction to its posted version.
+- **Pending transactions aren't editable** (owner decision, 2026-10-04). Their ids are null and the importer matches each to its posted version only heuristically (same amount, 0–7 days, `superseded_by`), so an override moved along that link could land on the wrong charge. Edits apply to posted transactions only ([phase1-assessment.md](phase1-assessment.md)).
 
 ## Budgeting rules
 
