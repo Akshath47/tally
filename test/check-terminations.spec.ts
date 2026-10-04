@@ -37,9 +37,45 @@ describe("findProblems", () => {
     expect(problems).toEqual([{ when: "2026-10-04T10:00:14Z", what: "cron run ended with status exceededResources (61.0 ms CPU)" }]);
   });
 
-  it("reports requests of any kind that didn't succeed, per day", () => {
+  it("reports HTTP requests that didn't succeed, per day", () => {
     const problems = findProblems([], [{ date: "2026-10-03", status: "exceededResources", requests: 2 }], [], NOW);
-    expect(problems).toEqual([{ when: "2026-10-03", what: "2 invocations (HTTP or cron) ended with status exceededResources" }]);
+    expect(problems).toEqual([{ when: "2026-10-03", what: "2 HTTP requests ended with status exceededResources" }]);
+  });
+
+  it("reports a stopped cron run once, though the all-invocations data counts it too", () => {
+    const problems = findProblems(
+      [{ datetime: "2026-10-04T10:00:14Z", cpuTimeUs: 61_000, status: "exceededResources" }],
+      [{ date: "2026-10-04", status: "exceededResources", requests: 1 }],
+      [],
+      NOW,
+    );
+    expect(problems).toEqual([{ when: "2026-10-04T10:00:14Z", what: "cron run ended with status exceededResources (61.0 ms CPU)" }]);
+  });
+
+  it("still reports HTTP failures on a day a cron run also failed", () => {
+    const problems = findProblems(
+      [{ datetime: "2026-10-04T10:00:14Z", cpuTimeUs: 61_000, status: "exceededResources" }],
+      [{ date: "2026-10-04", status: "exceededResources", requests: 3 }],
+      [],
+      NOW,
+    );
+    expect(problems.map((p) => p.what)).toEqual([
+      "2 HTTP requests ended with status exceededResources",
+      "cron run ended with status exceededResources (61.0 ms CPU)",
+    ]);
+  });
+
+  it("adds up a day that came back in two query windows before taking off cron runs", () => {
+    const problems = findProblems(
+      [{ datetime: "2026-10-04T10:00:14Z", cpuTimeUs: 61_000, status: "exceededResources" }],
+      [
+        { date: "2026-10-04", status: "exceededResources", requests: 1 },
+        { date: "2026-10-04", status: "exceededResources", requests: 1 },
+      ],
+      [],
+      NOW,
+    );
+    expect(problems.map((p) => p.what)).toContain("1 HTTP requests ended with status exceededResources");
   });
 
   it("reports an import run that was cut off and closed as abandoned", () => {

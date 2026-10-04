@@ -3,7 +3,7 @@
 
 import type { CronRow } from "../usage-report/report";
 
-/** `workersInvocationsAdaptive` grouped by date and status. Covers HTTP and cron together. */
+/** `workersInvocationsAdaptive` grouped by UTC date and status. Covers HTTP and cron together. */
 export type Invocation = { date: string; status: string; requests: number };
 export type ImportRun = { id: number; trigger: string; startedAt: string; status: string; errorSummary: string | null };
 export type Problem = { when: string; what: string };
@@ -28,13 +28,24 @@ export function weeklyWindows(until: Date, days: number): { since: string; until
 /** Everything that didn't finish normally, oldest first. Empty means all clear. */
 export function findProblems(cron: CronRow[], invocations: Invocation[], runs: ImportRun[], now: Date): Problem[] {
   const problems: Problem[] = [];
+  // The all-invocations data counts cron runs too, so failed cron runs are taken off it
+  // (per UTC day and status) to leave the HTTP requests.
+  const cronFailures = new Map<string, number>();
   for (const c of cron) {
-    if (!HEALTHY.has(c.status)) {
-      problems.push({ when: c.datetime, what: `cron run ended with status ${c.status} (${(c.cpuTimeUs / 1000).toFixed(1)} ms CPU)` });
-    }
+    if (HEALTHY.has(c.status)) continue;
+    problems.push({ when: c.datetime, what: `cron run ended with status ${c.status} (${(c.cpuTimeUs / 1000).toFixed(1)} ms CPU)` });
+    const key = `${c.datetime.slice(0, 10)}|${c.status}`;
+    cronFailures.set(key, (cronFailures.get(key) ?? 0) + 1);
   }
+  // A day can come back split across two query windows, so add it up first.
+  const failedByDay = new Map<string, number>();
   for (const i of invocations) {
-    if (!HEALTHY.has(i.status)) problems.push({ when: i.date, what: `${i.requests} invocations (HTTP or cron) ended with status ${i.status}` });
+    if (!HEALTHY.has(i.status)) failedByDay.set(`${i.date}|${i.status}`, (failedByDay.get(`${i.date}|${i.status}`) ?? 0) + i.requests);
+  }
+  for (const [key, requests] of failedByDay) {
+    const http = requests - (cronFailures.get(key) ?? 0);
+    const [date, status] = key.split("|");
+    if (http > 0) problems.push({ when: date!, what: `${http} HTTP requests ended with status ${status}` });
   }
   for (const r of runs) {
     if (r.errorSummary === "abandoned") {
