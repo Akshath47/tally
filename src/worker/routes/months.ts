@@ -54,7 +54,67 @@ const lineQuery = z.object({
   cursor: cursorParam.optional(),
 });
 
-export const monthRoutes = new Hono<AppEnv>()
+export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) => {
+  const now = new Date();
+  const current = londonMonth(now);
+  const month = monthParam(c, current);
+  if (month === null) return c.json({ error: "bad_request" }, 400);
+
+  const db = c.env.DB;
+  const [budget, groups, freshness] = await Promise.all([
+    readBudget(db, month),
+    db.prepare(SUMMARY_SQL).bind(month).all<Group>(),
+    db.prepare("SELECT max(last_data_change_at) AS at FROM accounts WHERE import_enabled = 1").first<{ at: string | null }>(),
+  ]);
+
+  // Every category with a counting row this month, or an allocation above 0.
+  const lines = new Map<number | null, Line>();
+  for (const g of groups.results) {
+    if (g.counting === 0) continue;
+    lines.set(g.category_id, { categoryId: g.category_id, kind: g.kind, spentMinor: g.spent, pendingSpentMinor: g.pending, allocatedMinor: 0 });
+  }
+  for (const a of budget.allocations) {
+    if (a.allocatedMinor === 0) continue;
+    const existing = lines.get(a.categoryId);
+    if (existing) existing.allocatedMinor = a.allocatedMinor;
+    else lines.set(a.categoryId, { categoryId: a.categoryId, kind: "budgeted", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: a.allocatedMinor });
+  }
+  const categories = [...lines.values()].sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity));
+
+  // Lines are budgeted, tracked or Uncategorised (COUNTS drops the rest); all but tracked are budget spend.
+  let spentMinor = 0;
+  let pendingSpentMinor = 0;
+  let trackedMinor = 0;
+  for (const l of categories) {
+    if (l.kind === "tracked") trackedMinor += l.spentMinor;
+    else {
+      spentMinor += l.spentMinor;
+      pendingSpentMinor += l.pendingSpentMinor;
+    }
+  }
+
+  const { overallMinor } = budget;
+  const allocatedMinor = sumAllocated(budget);
+  const leftMinor = overallMinor === null ? null : overallMinor - spentMinor;
+  // Pacing is for the current month only; today counts as a day remaining.
+  const daysRemaining = month === current ? daysInMonth(month) - Number(londonToday(now).slice(8)) + 1 : null;
+
+  return c.json({
+    month,
+    overallMinor,
+    allocatedMinor,
+    miscMinor: overallMinor === null ? null : overallMinor - allocatedMinor,
+    spentMinor,
+    pendingSpentMinor,
+    leftMinor,
+    daysRemaining,
+    perWeekMinor: daysRemaining === null || leftMinor === null ? null : perWeek(leftMinor, daysRemaining),
+    categories,
+    trackedMinor,
+    inboxCount: groups.results.reduce((n, g) => n + g.inbox, 0),
+    lastDataChangeAt: freshness?.at ?? null,
+  });
+})
   /**
    * The rows behind one Home line: those that count in the month (by counted date) in a
    * category, or in Misc. Newest first by bank date, keyset-paged like /api/transactions.
@@ -77,65 +137,4 @@ export const monthRoutes = new Hono<AppEnv>()
       withCategory: true,
     });
     return c.json({ transactions, nextCursor });
-  })
-  .get("/:month/summary", async (c) => {
-    const now = new Date();
-    const current = londonMonth(now);
-    const month = monthParam(c, current);
-    if (month === null) return c.json({ error: "bad_request" }, 400);
-
-    const db = c.env.DB;
-    const [budget, groups, freshness] = await Promise.all([
-      readBudget(db, month),
-      db.prepare(SUMMARY_SQL).bind(month).all<Group>(),
-      db.prepare("SELECT max(last_data_change_at) AS at FROM accounts WHERE import_enabled = 1").first<{ at: string | null }>(),
-    ]);
-
-    // Every category with a counting row this month, or an allocation above 0.
-    const lines = new Map<number | null, Line>();
-    for (const g of groups.results) {
-      if (g.counting === 0) continue;
-      lines.set(g.category_id, { categoryId: g.category_id, kind: g.kind, spentMinor: g.spent, pendingSpentMinor: g.pending, allocatedMinor: 0 });
-    }
-    for (const a of budget.allocations) {
-      if (a.allocatedMinor === 0) continue;
-      const existing = lines.get(a.categoryId);
-      if (existing) existing.allocatedMinor = a.allocatedMinor;
-      else lines.set(a.categoryId, { categoryId: a.categoryId, kind: "budgeted", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: a.allocatedMinor });
-    }
-    const categories = [...lines.values()].sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity));
-
-    // Lines are budgeted, tracked or Uncategorised (COUNTS drops the rest); all but tracked are budget spend.
-    let spentMinor = 0;
-    let pendingSpentMinor = 0;
-    let trackedMinor = 0;
-    for (const l of categories) {
-      if (l.kind === "tracked") trackedMinor += l.spentMinor;
-      else {
-        spentMinor += l.spentMinor;
-        pendingSpentMinor += l.pendingSpentMinor;
-      }
-    }
-
-    const { overallMinor } = budget;
-    const allocatedMinor = sumAllocated(budget);
-    const leftMinor = overallMinor === null ? null : overallMinor - spentMinor;
-    // Pacing is for the current month only; today counts as a day remaining.
-    const daysRemaining = month === current ? daysInMonth(month) - Number(londonToday(now).slice(8)) + 1 : null;
-
-    return c.json({
-      month,
-      overallMinor,
-      allocatedMinor,
-      miscMinor: overallMinor === null ? null : overallMinor - allocatedMinor,
-      spentMinor,
-      pendingSpentMinor,
-      leftMinor,
-      daysRemaining,
-      perWeekMinor: daysRemaining === null || leftMinor === null ? null : perWeek(leftMinor, daysRemaining),
-      categories,
-      trackedMinor,
-      inboxCount: groups.results.reduce((n, g) => n + g.inbox, 0),
-      lastDataChangeAt: freshness?.at ?? null,
-    });
   });

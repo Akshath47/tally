@@ -5,7 +5,6 @@ import type { LineCategory } from "./lines";
 
 export type Tab = "home" | "transactions" | "budget";
 
-
 export type Route =
   | { screen: Tab | "toSort" | "categories" | "rules" | "accounts" | "notFound" }
   | { screen: "newAccount"; accountId: number }
