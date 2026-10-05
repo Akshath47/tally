@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getMonthSummary } from "../api";
 import { londonToday, monthName, monthOf } from "../dates";
 import { formatTimestamp } from "../format";
+import { TabScreen } from "../components/Screen";
 import { Link } from "../router";
 
 // The header only; the ring, pills and categories come with the Home step.
@@ -34,18 +35,20 @@ export function Home() {
   const inboxCount = summary.data?.inboxCount ?? 0;
 
   return (
-    <header className="flex items-start justify-between pt-safe pr-4 pl-5">
-      <div>
-        <h1 className="text-title">{monthName(month)}</h1>
+    <TabScreen
+      title={monthName(month)}
+      titleExtra={
         <Link href="/accounts" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted hover:text-fg">
           <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
           {summary.isPending ? "Loading your budget…" : summary.isError ? "Couldn't refresh" : `Updated ${formatTimestamp(summary.data.lastDataChangeAt)}`}
         </Link>
-      </div>
-      <div className="flex items-center gap-1">
-        {inboxCount > 0 && <ToSortChip count={inboxCount} />}
-        <SettingsLink />
-      </div>
-    </header>
+      }
+      action={
+        <div className="flex items-center gap-1">
+          {inboxCount > 0 && <ToSortChip count={inboxCount} />}
+          <SettingsLink />
+        </div>
+      }
+    />
   );
 }

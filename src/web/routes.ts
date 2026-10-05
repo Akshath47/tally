@@ -12,7 +12,9 @@ export const TABS: { tab: Tab; href: string; label: string }[] = [
   { tab: "budget", href: "/budget", label: "Budget" },
 ];
 
-const STATIC: Record<string, Route["screen"]> = {
+export type Back = { href: string; label: string };
+
+const STATIC: Record<string, Exclude<Route["screen"], "newAccount">> = {
   "/": "home",
   "/transactions": "transactions",
   "/budget": "budget",
@@ -25,7 +27,7 @@ const STATIC: Record<string, Route["screen"]> = {
 export function parseRoute(pathname: string): Route {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   const screen = STATIC[path];
-  if (screen && screen !== "newAccount") return { screen };
+  if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
   return review ? { screen: "newAccount", accountId: Number(review[1]) } : { screen: "notFound" };
 }
@@ -33,12 +35,10 @@ export function parseRoute(pathname: string): Route {
 export const newAccountHref = (accountId: number) => `/accounts/${accountId}/review`;
 
 /** The tab a route belongs to, or null for a pushed screen (no tab bar). */
-export function tabOf(route: Route): Tab | null {
-  return route.screen === "home" || route.screen === "transactions" || route.screen === "budget" ? route.screen : null;
-}
+export const tabOf = (route: Route): Tab | null => TABS.find((t) => t.tab === route.screen)?.tab ?? null;
 
 /** Where each pushed screen's back link goes (docs/ui-design.md, Navigation). */
-export function backOf(route: Route): { href: string; label: string } {
+export function backOf(route: Route): Back {
   switch (route.screen) {
     case "categories":
     case "rules":

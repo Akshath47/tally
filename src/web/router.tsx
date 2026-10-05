@@ -1,4 +1,5 @@
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
+import type { Back } from "./routes";
 
 // A tiny History API router: real URLs, so the browser's and iOS's back gestures work, and the
 // Worker's SPA fallback serves index.html for any of them. Each entry remembers the path it
@@ -55,7 +56,7 @@ export function Link({ href, onClick, ...rest }: AnchorHTMLAttributes<HTMLAnchor
   );
 }
 
-export function BackLink({ href, label }: { href: string; label: string }) {
+export function BackLink({ href, label }: Back) {
   return (
     <a
       href={href}

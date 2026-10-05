@@ -1,15 +1,12 @@
-import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, getAccounts, getRuns, startImport, type Account, type ImportRun, type RunStatus } from "../api";
-import { PushedScreen } from "../components/Screen";
+import { ApiError, getAccounts, startImport, type Account, type ImportRun, type RunStatus } from "../api";
+import { lastFinishedRun, useImportRuns } from "../components/ImportWatcher";
+import { PushedScreen, QueryStatus } from "../components/Screen";
+import type { Back } from "../routes";
 import { formatTimestamp } from "../format";
 
 // Phase 1's status page, kept working under the new shell until the Accounts design lands.
 
-const RUN_LIMIT = 10;
-const POLL_MS = 2_000;
-// Statuses after which the run may have changed accounts and transactions.
-const FINISHED = new Set<RunStatus>(["success", "partial", "failed"]);
 const RUN_STATUS_COLOUR: Partial<Record<RunStatus, string>> = { success: "text-accent-fg", failed: "text-over-fg" };
 
 function importMessage(error: unknown): string {
@@ -85,13 +82,6 @@ function AccountCard({ account }: { account: Account }) {
   );
 }
 
-/** The loading / error / empty line shown above a list. */
-function QueryStatus({ query, what, empty }: { query: { isPending: boolean; isError: boolean }; what: string; empty: string | false }) {
-  if (query.isPending) return <p className="mt-2 text-meta text-muted">Loading…</p>;
-  if (query.isError) return <p className="mt-2 text-meta text-over-fg">Couldn't load {what}.</p>;
-  return empty ? <p className="mt-2 text-meta text-muted">{empty}</p> : null;
-}
-
 function RunRow({ run }: { run: ImportRun }) {
   const inserted = run.accounts.reduce((n, a) => n + a.inserted, 0);
   const updated = run.accounts.reduce((n, a) => n + a.updated, 0);
@@ -111,28 +101,13 @@ function RunRow({ run }: { run: ImportRun }) {
   );
 }
 
-export function Accounts({ back }: { back: { href: string; label: string } }) {
+export function Accounts({ back }: { back: Back }) {
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: getAccounts });
-
-  const runs = useQuery({
-    queryKey: ["import-runs"],
-    queryFn: () => getRuns(RUN_LIMIT),
-    refetchInterval: (q) => (q.state.data?.importing ? POLL_MS : false),
-  });
+  // The shell's import watcher refreshes everything when a run finishes; this only reads the runs.
+  const runs = useImportRuns();
   const importing = runs.data?.importing ?? false;
-
-  // When a run (manual or cron) finishes, everything derived from transactions may be stale.
-  const lastFinished = runs.data?.runs.find((r) => FINISHED.has(r.status));
-  const finishedKey = lastFinished ? `${lastFinished.id}:${lastFinished.status}` : null;
-  const seenKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (finishedKey === null) return;
-    if (seenKey.current !== null && seenKey.current !== finishedKey) {
-      void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "import-runs" });
-    }
-    seenKey.current = finishedKey;
-  }, [finishedKey, queryClient]);
+  const lastFinished = lastFinishedRun(runs.data);
 
   const refreshRuns = () => void queryClient.invalidateQueries({ queryKey: ["import-runs"] });
 

@@ -4,6 +4,7 @@
 
 import type { Account, Budget, Category, CategoryKind, ImportRun, InboxMerchant, MatchType, MonthSummary, OverrideInput, Rule, SummaryCategory, Transaction } from "../api";
 import { addDays, daysRemaining, londonToday, monthOf } from "../dates";
+import { normalizePattern as normalize } from "../../worker/budget/resolve";
 import { SEED_ACCOUNTS, SEED_BUDGET, SEED_CATEGORIES, SEED_NEW_ACCOUNT, SEED_RULES, SEED_TRANSACTIONS } from "./data";
 
 // Only reachable through api.ts's `import.meta.env.DEV` branch. If a production build ever
@@ -22,36 +23,35 @@ const HOUR_MS = 3_600_000;
 const today = londonToday();
 const hoursAgo = (h: number) => new Date(Date.now() - h * HOUR_MS).toISOString();
 
+const ACCOUNT_DEFAULTS = {
+  providerStatus: "ACTIVE",
+  currency: "GBP",
+  balanceMinor: null,
+  balanceFetchedAt: null,
+  lastImportError: null,
+  consecutiveFailures: 0,
+} satisfies Partial<Account>;
+
 const accounts: Account[] = [
   ...SEED_ACCOUNTS.map((a) => ({
+    ...ACCOUNT_DEFAULTS,
     id: a.id,
     name: a.name,
     institutionName: a.institutionName,
-    providerStatus: "ACTIVE",
-    currency: "GBP",
-    balanceMinor: null,
-    balanceFetchedAt: null,
     importEnabled: true,
     lastImportAttemptAt: hoursAgo(a.hoursSinceChange),
     lastImportSuccessAt: hoursAgo(a.hoursSinceChange),
-    lastImportError: null,
-    consecutiveFailures: 0,
     lastDataChangeAt: hoursAgo(a.hoursSinceChange),
     newestTxnDate: today,
     backfillComplete: true,
     needsReview: false,
   })),
   {
+    ...ACCOUNT_DEFAULTS,
     ...SEED_NEW_ACCOUNT,
-    providerStatus: "ACTIVE",
-    currency: "GBP",
-    balanceMinor: null,
-    balanceFetchedAt: null,
     importEnabled: false,
     lastImportAttemptAt: null,
     lastImportSuccessAt: null,
-    lastImportError: null,
-    consecutiveFailures: 0,
     lastDataChangeAt: null,
     newestTxnDate: null,
     backfillComplete: false,
@@ -82,7 +82,6 @@ const budget = { overallMinor: SEED_BUDGET.overallMinor as number | null, alloca
 
 // --- Rules (docs/phase-2-spec.md, Rules) -------------------------------------------------------
 
-const normalize = (s: string) => s.trim().toLowerCase();
 
 function matchRule(txn: BankTxn): RuleRow | undefined {
   const merchant = normalize(txn.merchant);
@@ -148,15 +147,14 @@ function summary(month: string): MonthSummary {
     if (c.kind === "budgeted" && !c.archived && allocation) entry(c.id).allocatedMinor = allocation;
   }
 
-  const overall = budget.overallMinor;
+  const { overallMinor: overall, allocatedMinor, miscMinor } = getBudget();
   const left = overall === null ? null : overall - spent;
-  const current = month === monthOf(today);
-  const days = current ? daysRemaining(today) : null;
+  const days = month === monthOf(today) ? daysRemaining(today) : null;
   return {
     month,
     overallMinor: overall,
-    allocatedMinor: allocated(),
-    miscMinor: overall === null ? null : overall - allocated(),
+    allocatedMinor,
+    miscMinor,
     spentMinor: spent,
     pendingSpentMinor: pending,
     leftMinor: left,
@@ -171,13 +169,18 @@ function summary(month: string): MonthSummary {
 
 function getBudget(): Budget {
   const overall = budget.overallMinor;
+  const allocatedMinor = allocated();
+  const misc = overall === null ? null : overall - allocatedMinor;
   return {
     month: monthOf(today),
     overallMinor: overall,
-    allocatedMinor: allocated(),
-    miscMinor: overall === null ? null : overall - allocated(),
-    maxAllocatableMinor: overall === null ? null : overall - allocated(),
-    categories: categories.filter((c) => c.kind === "budgeted" && !c.archived && budget.allocations.get(c.id)).map((c) => ({ categoryId: c.id, allocatedMinor: budget.allocations.get(c.id)! })),
+    allocatedMinor,
+    miscMinor: misc,
+    maxAllocatableMinor: misc,
+    categories: categories.flatMap((c) => {
+      const allocation = budget.allocations.get(c.id);
+      return c.kind === "budgeted" && !c.archived && allocation ? [{ categoryId: c.id, allocatedMinor: allocation }] : [];
+    }),
   };
 }
 
@@ -202,6 +205,16 @@ function page<T extends { txnDate: string; id: number }>(rows: T[], url: URL) {
 }
 
 const findCategory = (id: unknown) => categories.find((c) => c.id === id);
+
+const NO_OVERRIDE: Override = { categoryId: null, excluded: false, countedAmountMinor: null, countedDate: null, note: null };
+
+/** The transaction an override write may change, or the error reply. */
+function editableTxn(id: number): BankTxn | Reply {
+  const txn = transactions.find((t) => t.id === id);
+  if (!txn) return fail(404, "not_found");
+  if (txn.isPending || txn.vanishedAt !== null) return fail(409, "not_editable");
+  return txn;
+}
 
 function upsertMerchantRule(merchant: string, categoryId: number) {
   const pattern = normalize(merchant);
@@ -299,28 +312,25 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     return ok(page(rows, url));
   }],
   ["PUT", /^\/api\/transactions\/(\d+)\/override$/, true, (m, _u, body) => {
-    const txn = transactions.find((t) => t.id === Number(m[1]));
-    if (!txn) return fail(404, "not_found");
-    if (txn.isPending || txn.vanishedAt !== null) return fail(409, "not_editable");
+    const txn = editableTxn(Number(m[1]));
+    if ("status" in txn) return txn;
     if ((body.countedAmountMinor != null && !isAmount(body.countedAmountMinor)) || (body.categoryId != null && !findCategory(body.categoryId))) return fail(400, "bad_request");
-    const current = overrides.get(txn.id) ?? { categoryId: null, excluded: false, countedAmountMinor: null, countedDate: null, note: null };
-    const next: Override = { ...current };
-    for (const key of ["categoryId", "excluded", "countedAmountMinor", "countedDate", "note"] as const) {
+    const next: Override = { ...(overrides.get(txn.id) ?? NO_OVERRIDE) };
+    for (const key of Object.keys(NO_OVERRIDE) as (keyof Override)[]) {
       if (body[key] !== undefined) (next as Body)[key] = body[key];
     }
+    if (next.note === "") next.note = null;
     if (body.applyToMerchant === true && next.categoryId !== null) {
       upsertMerchantRule(txn.merchant, next.categoryId);
       next.categoryId = null;
     }
-    const isDefault = next.categoryId === null && !next.excluded && next.countedAmountMinor === null && next.countedDate === null && !next.note;
-    if (isDefault) overrides.delete(txn.id);
+    if ((Object.keys(NO_OVERRIDE) as (keyof Override)[]).every((k) => next[k] === NO_OVERRIDE[k])) overrides.delete(txn.id);
     else overrides.set(txn.id, next);
     return ok({ transaction: resolve(txn) });
   }],
   ["DELETE", /^\/api\/transactions\/(\d+)\/override$/, true, (m) => {
-    const txn = transactions.find((t) => t.id === Number(m[1]));
-    if (!txn) return fail(404, "not_found");
-    if (txn.isPending || txn.vanishedAt !== null) return fail(409, "not_editable");
+    const txn = editableTxn(Number(m[1]));
+    if ("status" in txn) return txn;
     overrides.delete(txn.id);
     return ok({ transaction: resolve(txn) });
   }],

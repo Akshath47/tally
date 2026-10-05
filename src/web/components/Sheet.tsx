@@ -15,14 +15,6 @@ export function Sheet({ open, onDismiss, labelledBy, children }: { open: boolean
     else if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  // iOS scrolls the page behind a modal dialog unless the root stops scrolling.
-  useEffect(() => {
-    if (!open) return;
-    const root = document.documentElement;
-    root.classList.add("overflow-hidden");
-    return () => root.classList.remove("overflow-hidden");
-  }, [open]);
-
   return (
     // No display class here: it would override the UA's display:none for a closed dialog.
     <dialog

@@ -1,16 +1,15 @@
 // Dates stay YYYY-MM-DD and months YYYY-MM text. "Today" and month edges are London's, and a
 // date string is never parsed into a Date, which is how UTC shift bugs happen.
 
-const londonParts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" });
+import { addDays, londonToday as londonTodayAt } from "../worker/importer/dates";
+
+export { addDays };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Today's date in London, as YYYY-MM-DD. */
-export function londonToday(now: Date = new Date()): string {
-  const parts = Object.fromEntries(londonParts.formatToParts(now).map((p) => [p.type, p.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
+export const londonToday = (now: Date = new Date()) => londonTodayAt(now);
 
 export const monthOf = (date: string) => date.slice(0, 7);
 
@@ -50,9 +49,3 @@ export const formatDayMonth = (date: string) => `${Number(date.slice(8, 10))} ${
 
 /** "Thu 15 Oct". */
 export const formatShortDate = (date: string) => `${WEEKDAYS[weekday(date)]} ${formatDayMonth(date)}`;
-
-/** `date` moved by `n` days. UTC on both sides, so no time zone can shift the result. */
-export function addDays(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
