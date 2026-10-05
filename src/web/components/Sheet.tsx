@@ -5,7 +5,7 @@ import { useEffect, useRef, type ReactNode } from "react";
  * page behind and the top layer for free. Controlled: `open` drives it, and Escape, a tap on
  * the backdrop or a close() from inside all ask the parent via onDismiss.
  */
-export function Sheet({ open, onDismiss, labelledBy, children }: { open: boolean; onDismiss: () => void; labelledBy: string; children: ReactNode }) {
+export function Sheet({ open, onDismiss, labelledBy, full = false, children }: { open: boolean; onDismiss: () => void; labelledBy: string; full?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export function Sheet({ open, onDismiss, labelledBy, children }: { open: boolean
         if (e.target === e.currentTarget) onDismiss();
       }}
     >
-      <div className="flex max-h-[calc(100dvh-64px)] flex-col pb-safe">
+      <div className={`flex max-h-[calc(100dvh-64px)] flex-col pb-safe ${full ? "h-[calc(100dvh-64px)]" : ""}`}>
         <div className="flex shrink-0 justify-center pt-2" aria-hidden="true">
           <span className="h-[5px] w-[38px] rounded-full bg-muted/30" />
         </div>
