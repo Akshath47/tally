@@ -37,11 +37,26 @@ type Row = {
   total?: number;
 };
 
-function toTransaction(r: Row) {
-  const t = { ...r, isPending: r.isPending === 1, excluded: r.excluded === 1, editable: r.editable === 1 };
-  delete t.total;
-  return t as Omit<typeof t, "total">;
-}
+// Built field by field: the page's `total` stays off the rows, and D1's 0/1 become booleans.
+const toTransaction = (r: Row) => ({
+  id: r.id,
+  accountId: r.accountId,
+  amountMinor: r.amountMinor,
+  currency: r.currency,
+  txnDate: r.txnDate,
+  merchant: r.merchant,
+  description: r.description,
+  isPending: r.isPending === 1,
+  vanishedAt: r.vanishedAt,
+  firstSeenAt: r.firstSeenAt,
+  categoryId: r.categoryId,
+  categorySource: r.categorySource,
+  excluded: r.excluded === 1,
+  countedAmountMinor: r.countedAmountMinor,
+  countedDate: r.countedDate,
+  note: r.note,
+  editable: r.editable === 1,
+});
 
 export type Transaction = ReturnType<typeof toTransaction>;
 
@@ -55,9 +70,8 @@ const COLUMNS = `t.id, t.account_id AS accountId, t.amount_minor AS amountMinor,
   (${EDITABLE}) AS editable`;
 
 type ListOptions = {
-  /** Static SQL conditions on `t` (transactions) and `r` (resolved), with `?` placeholders in `binds` order. */
-  where: string[];
-  binds: unknown[];
+  /** `[sql, ...binds]`: a static condition on `t` (transactions) or `r` (resolved), and a value per `?`. */
+  where: [sql: string, ...binds: unknown[]][];
   limit: number;
   cursor?: Cursor;
   /** Also count every row matching `where`, regardless of the page. */
@@ -69,10 +83,11 @@ type ListOptions = {
  * count in the same statement rather than a second query, which would resolve everything again.
  */
 export async function listTransactions(db: D1Database, opts: ListOptions): Promise<{ transactions: Transaction[]; nextCursor: string | null; total: number }> {
-  const where = opts.where.length ? `WHERE ${opts.where.join(" AND ")}` : "";
+  const where = opts.where.length ? `WHERE ${opts.where.map(([sql]) => sql).join(" AND ")}` : "";
+  const binds = opts.where.flatMap(([, ...values]) => values);
   const total = opts.withTotal ? ", count(*) OVER () AS total" : "";
-  const cursor = opts.cursor ? "WHERE txnDate < ? OR (txnDate = ? AND id < ?)" : "";
-  const cursorBinds = opts.cursor ? [opts.cursor.date, opts.cursor.date, opts.cursor.id] : [];
+  const cursor = opts.cursor ? "WHERE (txnDate, id) < (?, ?)" : "";
+  const cursorBinds = opts.cursor ? [opts.cursor.date, opts.cursor.id] : [];
   // One extra row tells us whether there is a next page.
   const { results } = await db
     .prepare(
@@ -80,7 +95,7 @@ export async function listTransactions(db: D1Database, opts: ListOptions): Promi
          listed AS (SELECT ${COLUMNS}${total} FROM resolved r JOIN transactions t ON t.id = r.id ${where})
        SELECT * FROM listed ${cursor} ORDER BY txnDate DESC, id DESC LIMIT ?`,
     )
-    .bind(...opts.binds, ...cursorBinds, opts.limit + 1)
+    .bind(...binds, ...cursorBinds, opts.limit + 1)
     .all<Row>();
 
   // A later page is only empty if its rows changed since the previous one; count from the start.
@@ -97,6 +112,6 @@ export async function listTransactions(db: D1Database, opts: ListOptions): Promi
 }
 
 export async function getTransaction(db: D1Database, id: number): Promise<Transaction | null> {
-  const { transactions } = await listTransactions(db, { where: ["t.id = ?"], binds: [id], limit: 1 });
+  const { transactions } = await listTransactions(db, { where: [["t.id = ?", id]], limit: 1 });
   return transactions[0] ?? null;
 }

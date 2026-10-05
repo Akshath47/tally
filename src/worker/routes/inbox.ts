@@ -15,7 +15,7 @@ export const inboxRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const q = parseQuery(c, querySchema);
     if (!q.ok) return q.res;
-    return c.json(await listTransactions(c.env.DB, { where: [INBOX], binds: [], ...q.data, withTotal: true }));
+    return c.json(await listTransactions(c.env.DB, { where: [[INBOX]], ...q.data, withTotal: true }));
   })
   .get("/merchants", async (c) => {
     // Grouped by lower(trim(merchant)): the pattern of the exact rule that would clear the group.

@@ -5,7 +5,7 @@ import { EDITABLE, getTransaction } from "../budget/listing";
 import { isRulablePattern } from "../budget/resolve";
 import { NOTE_MAX_LENGTH } from "../db/schema";
 import { idParam, parseBody } from "./query";
-import { checkRefs } from "./rules";
+import { checkRefs } from "./refs";
 
 // The owner's edits to one transaction (docs/phase-2-spec.md, API). They live apart from the
 // bank-sourced row, so a re-sync never touches them.
@@ -33,23 +33,28 @@ const bodySchema = z
 
 type State = {
   editable: number;
-  account_id: number;
+  accountId: number;
   // What an exact rule for this merchant must equal: it's matched against lower(trim(merchant)).
   pattern: string;
-  current_category_id: number | null;
+  currentCategoryId: number | null;
 };
 
 const readState = (db: D1Database, id: number) =>
   db
     .prepare(
-      `SELECT ${EDITABLE} AS editable, t.account_id, lower(trim(t.merchant)) AS pattern, o.category_id AS current_category_id
+      `SELECT ${EDITABLE} AS editable, t.account_id AS accountId, lower(trim(t.merchant)) AS pattern,
+         o.category_id AS currentCategoryId
        FROM transactions t LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
        WHERE t.id = ?1`,
     )
     .bind(id)
     .first<State>();
 
-const notEditable = { error: "not_editable" } as const;
+/** Why this row can't be edited, or null if it can. */
+const refuseEdit = (state: State | null) =>
+  !state ? ({ error: "not_found", status: 404 } as const) : !state.editable ? ({ error: "not_editable", status: 409 } as const) : null;
+
+const deleteOverride = (db: D1Database, id: number) => db.prepare("DELETE FROM transaction_overrides WHERE transaction_id = ?1").bind(id);
 
 export const overrideRoutes = new Hono<AppEnv>()
   .put("/:id/override", async (c) => {
@@ -60,15 +65,14 @@ export const overrideRoutes = new Hono<AppEnv>()
     const { categoryId, excluded, countedAmountMinor, countedDate, note, applyToMerchant } = body.data;
     const db = c.env.DB;
 
-    const state = await readState(db, id);
-    if (!state) return c.json({ error: "not_found" }, 404);
-    if (!state.editable) return c.json(notEditable, 409);
+    const [current, refs] = await Promise.all([readState(db, id), categoryId === null ? null : checkRefs(db, categoryId, undefined)]);
+    const refused = refuseEdit(current);
+    if (refused) return c.json({ error: refused.error }, refused.status);
+    const state = current!;
     // Pickers hide archived categories, but a full-form PUT may resend the override's own one.
     // A rule can't point at an archived category at all (as POST /api/rules).
-    if (categoryId !== null && (applyToMerchant || categoryId !== state.current_category_id)) {
-      const refused = await checkRefs(db, categoryId, undefined);
-      if (refused) return c.json({ error: refused.error }, refused.status);
-    }
+    const resent = !applyToMerchant && categoryId === state.currentCategoryId;
+    if (refs && !(refs.error === "category_archived" && resent)) return c.json({ error: refs.error }, refs.status);
     // The rules editor must be able to save the rule later.
     if (applyToMerchant && !isRulablePattern(state.pattern)) return c.json({ error: "merchant_not_rulable" }, 409);
 
@@ -90,12 +94,12 @@ export const overrideRoutes = new Hono<AppEnv>()
           .bind(state.pattern, categoryId, now),
         db
           .prepare("UPDATE merchant_rules SET category_id = ?1, updated_at = ?2 WHERE match_type = 'exact' AND pattern = ?3 AND account_id = ?4")
-          .bind(categoryId, now, state.pattern, state.account_id),
+          .bind(categoryId, now, state.pattern, state.accountId),
       );
     }
     statements.push(
       isDefault
-        ? db.prepare("DELETE FROM transaction_overrides WHERE transaction_id = ?1").bind(id)
+        ? deleteOverride(db, id)
         : db
             .prepare(
               `INSERT INTO transaction_overrides (transaction_id, category_id, excluded, counted_amount_minor, counted_date, note, updated_at)
@@ -114,9 +118,8 @@ export const overrideRoutes = new Hono<AppEnv>()
     const id = idParam(c);
     if (id === null) return c.json({ error: "bad_request" }, 400);
     const db = c.env.DB;
-    const state = await readState(db, id);
-    if (!state) return c.json({ error: "not_found" }, 404);
-    if (!state.editable) return c.json(notEditable, 409);
-    await db.prepare("DELETE FROM transaction_overrides WHERE transaction_id = ?1").bind(id).run();
+    const refused = refuseEdit(await readState(db, id));
+    if (refused) return c.json({ error: refused.error }, refused.status);
+    await deleteOverride(db, id).run();
     return c.json({ transaction: await getTransaction(db, id) });
   });
