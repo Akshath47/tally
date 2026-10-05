@@ -60,8 +60,10 @@ export const categoryRoutes = new Hono<AppEnv>()
            WHERE id = ?1 RETURNING ${COLUMNS}`,
         ).bind(id, newName ?? null, newKind ?? null, archived === undefined ? null : archived ? 1 : 0, now.toISOString()),
         // A category that no longer counts towards the budget gives its allocation back from
-        // this month on (docs/phase-2-spec.md, Allocation checks). Past months keep theirs, and
-        // the batch means a refused UPDATE zeroes nothing.
+        // this month on (docs/phase-2-spec.md, Allocation checks). Past months' rows are kept,
+        // though kinds aren't dated, so past months count the category by its current kind too.
+        // Keyed on the category's state rather than the patch; in a batch, so a refused UPDATE
+        // zeroes nothing.
         c.env.DB.prepare(
           `INSERT INTO category_budgets (category_id, effective_month, amount_minor, updated_at)
            SELECT id, ?2, 0, ?3 FROM categories

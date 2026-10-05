@@ -2,23 +2,12 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readBudget } from "../src/worker/budget/effective";
 import { resetDb } from "./db";
-import { get, send } from "./http";
-import { budgetRows, insertAllocation, insertOverall } from "./budget/budget-rows";
+import { send } from "./http";
+import { SEEDED_BUDGETED as BUDGETED, budgetRows, getBudget, insertAllocation, insertOverall, type Budget } from "./budget/budget-rows";
 import { SEEDED } from "./budget/helpers";
 
 // All data is synthetic.
 
-type Budget = {
-  month: string;
-  overallMinor: number | null;
-  allocatedMinor: number;
-  miscMinor: number | null;
-  categories: { categoryId: number; allocatedMinor: number; maxAllocatableMinor: number | null }[];
-};
-
-const BUDGETED = [1, 2, 3, 4, 5, 6, 7, 8]; // the seeded budgeted categories, in id order
-
-const budget = async () => (await (await get("/api/budget")).json()) as Budget;
 const putOverall = (body: unknown) => send("PUT", "/api/budget/overall", body);
 const putAllocation = (id: number | string, body: unknown) => send("PUT", `/api/budget/categories/${id}`, body);
 const categoryRow = (b: Budget, id: number) => b.categories.find((c) => c.categoryId === id)!;
@@ -33,7 +22,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("GET /api/budget", () => {
   it("has null figures before an overall budget, with every budgeted category at 0", async () => {
-    expect(await budget()).toEqual({
+    expect(await getBudget()).toEqual({
       month: "2026-10",
       overallMinor: null,
       allocatedMinor: 0,
@@ -46,7 +35,7 @@ describe("GET /api/budget", () => {
     await insertOverall("2026-09", 200_000);
     await insertAllocation(SEEDED.groceries, "2026-09", 40_000);
     await insertAllocation(SEEDED.bills, "2026-10", 100_000);
-    const b = await budget();
+    const b = await getBudget();
     expect(b).toMatchObject({ month: "2026-10", overallMinor: 200_000, allocatedMinor: 140_000, miscMinor: 60_000 });
     expect(categoryRow(b, SEEDED.groceries)).toEqual({ categoryId: SEEDED.groceries, allocatedMinor: 40_000, maxAllocatableMinor: 100_000 });
     expect(categoryRow(b, SEEDED.bills)).toEqual({ categoryId: SEEDED.bills, allocatedMinor: 100_000, maxAllocatableMinor: 160_000 });
@@ -58,8 +47,8 @@ describe("PUT /api/budget/overall", () => {
   it("sets the figure for the current month and answers with the new budget", async () => {
     const res = await putOverall({ amountMinor: 150_000 });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(await budget());
-    expect((await budget()).overallMinor).toBe(150_000);
+    expect(await res.json()).toEqual(await getBudget());
+    expect((await getBudget()).overallMinor).toBe(150_000);
     expect((await budgetRows()).overall).toEqual([{ month: "2026-10", amount: 150_000 }]);
   });
 
@@ -70,9 +59,9 @@ describe("PUT /api/budget/overall", () => {
     const res = await putOverall({ amountMinor: 79_999 });
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: "below_allocated", minOverallMinor: 80_000 });
-    expect((await budget()).overallMinor).toBe(100_000);
+    expect((await getBudget()).overallMinor).toBe(100_000);
     expect((await putOverall({ amountMinor: 80_000 })).status).toBe(200);
-    expect(await budget()).toMatchObject({ overallMinor: 80_000, miscMinor: 0 });
+    expect(await getBudget()).toMatchObject({ overallMinor: 80_000, miscMinor: 0 });
   });
 
   it("ignores allocations on categories that no longer count", async () => {
@@ -89,7 +78,7 @@ describe("PUT /api/budget/categories/:categoryId", () => {
     const res = await putAllocation(SEEDED.groceries, { amountMinor: 30_000 });
     expect(res.status).toBe(200);
     const body = (await res.json()) as Budget;
-    expect(body).toEqual(await budget());
+    expect(body).toEqual(await getBudget());
     expect(body).toMatchObject({ allocatedMinor: 30_000, miscMinor: 20_000 });
     expect((await budgetRows()).allocations).toEqual([{ categoryId: SEEDED.groceries, month: "2026-10", amount: 30_000 }]);
   });
@@ -104,13 +93,24 @@ describe("PUT /api/budget/categories/:categoryId", () => {
     const over = await putAllocation(SEEDED.groceries, { amountMinor: 35_001 });
     expect(await over.json()).toEqual({ error: "over_allocated", maxAllocatableMinor: 35_000 });
     expect((await putAllocation(SEEDED.groceries, { amountMinor: 35_000 })).status).toBe(200);
-    expect(await budget()).toMatchObject({ allocatedMinor: 50_000, miscMinor: 0 });
+    expect(await getBudget()).toMatchObject({ allocatedMinor: 50_000, miscMinor: 0 });
+  });
+
+  it("always accepts a cut, so an over-allocated budget can be brought back under", async () => {
+    await insertAllocation(SEEDED.groceries, "2026-10", 40_000);
+    await insertAllocation(SEEDED.bills, "2026-10", 30_000); // written outside the API
+    const over = await putAllocation(SEEDED.groceries, { amountMinor: 40_001 });
+    expect(await over.json()).toEqual({ error: "over_allocated", maxAllocatableMinor: 20_000 });
+    expect((await putAllocation(SEEDED.groceries, { amountMinor: 25_000 })).status).toBe(200);
+    expect(await getBudget()).toMatchObject({ allocatedMinor: 55_000, miscMinor: -5_000 });
+    expect((await putAllocation(SEEDED.groceries, { amountMinor: 20_000 })).status).toBe(200);
+    expect(await getBudget()).toMatchObject({ allocatedMinor: 50_000, miscMinor: 0 });
   });
 
   it("accepts 0, which removes the allocation from this month on", async () => {
     await insertAllocation(SEEDED.groceries, "2026-09", 30_000);
     expect((await putAllocation(SEEDED.groceries, { amountMinor: 0 })).status).toBe(200);
-    expect(categoryRow(await budget(), SEEDED.groceries).allocatedMinor).toBe(0);
+    expect(categoryRow(await getBudget(), SEEDED.groceries).allocatedMinor).toBe(0);
   });
 
   it("refuses an allocation before an overall figure is set", async () => {
@@ -173,7 +173,7 @@ describe("budget edits over time", () => {
     at(iso);
     await putOverall({ amountMinor: 10_000 });
     await putAllocation(SEEDED.groceries, { amountMinor: 1_000 });
-    expect((await budget()).month).toBe(month);
+    expect((await getBudget()).month).toBe(month);
     expect(await budgetRows()).toEqual({
       overall: [{ month, amount: 10_000 }],
       allocations: [{ categoryId: SEEDED.groceries, month, amount: 1_000 }],
