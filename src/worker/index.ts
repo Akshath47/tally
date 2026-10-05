@@ -5,6 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
 import { runImport, type RunDeps } from "./importer";
 import { accountRoutes } from "./routes/accounts";
+import { budgetRoutes } from "./routes/budget";
 import { categoryRoutes } from "./routes/categories";
 import { ruleRoutes } from "./routes/rules";
 import { importRunRoutes } from "./routes/import-runs";
@@ -37,6 +38,7 @@ export function createApp(options: AppOptions = {}) {
 
   app.get("/health", (c) => c.json({ ok: true, email: c.get("email") }));
   app.route("/accounts", accountRoutes);
+  app.route("/budget", budgetRoutes);
   app.route("/categories", categoryRoutes);
   app.route("/rules", ruleRoutes);
   app.route("/transactions", transactionRoutes);
