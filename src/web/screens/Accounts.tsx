@@ -1,135 +1,124 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, getAccounts, startImport, type Account, type ImportRun, type RunStatus } from "../api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ApiError, startImport, type Account, type ImportRun } from "../api";
 import { lastFinishedRun, useImportRuns } from "../components/ImportWatcher";
-import { PushedScreen, QueryStatus } from "../components/Screen";
-import type { Back } from "../routes";
+import { PushedScreen } from "../components/Screen";
+import { AccountBadge, Button, ChevronRight, Skeleton } from "../components/ui";
+import { formatShortDate } from "../dates";
 import { formatTimestamp } from "../format";
+import { ageText } from "../pace";
+import { useAccounts } from "../queries";
+import { Link } from "../router";
+import { newAccountHref, type Back } from "../routes";
 
-// Phase 1's status page, kept working under the new shell until the Accounts design lands.
-
-const RUN_STATUS_COLOUR: Partial<Record<RunStatus, string>> = { success: "text-accent-fg", failed: "text-over-fg" };
+// Account status (docs/ui-design.md, Accounts). Stale-data warnings are a later backend slice.
 
 function importMessage(error: unknown): string {
-  if (error instanceof ApiError && error.status === 429) {
-    const wait = error.body?.retryAfterSeconds;
-    return `Imported less than a minute ago. Try again in ${wait ?? 60}s.`;
-  }
-  return "Import failed to start. Try again later.";
+  if (error instanceof ApiError && error.status === 429) return `Imported less than a minute ago. Try again in ${error.body?.retryAfterSeconds ?? 60}s.`;
+  return "The import didn't start. Try again later.";
 }
 
 /**
  * The import runs on the server after a 202, so the button only kicks it off. Whether one is
- * in progress, and how the last one ended, come from the runs list, which survives leaving
- * or reopening the app.
+ * in progress, and how the last one ended, come from the runs list; the shell's import watcher
+ * refreshes every screen when it finishes.
  */
-function ImportButton({ importing, lastFinished, onSettled }: { importing: boolean; lastFinished: ImportRun | undefined; onSettled: () => void }) {
+function ImportNow({ importing, lastFinished }: { importing: boolean; lastFinished: ImportRun | undefined }) {
+  const queryClient = useQueryClient();
   // Every outcome refreshes the runs: a 202 shows the new run, a 409 or 429 may reveal one in progress.
-  const mutation = useMutation({ mutationFn: startImport, onSettled });
+  const mutation = useMutation({ mutationFn: startImport, onSettled: () => void queryClient.invalidateQueries({ queryKey: ["import-runs"] }) });
   const busy = mutation.isPending || importing;
   // A 409 just means an import is already running, which the polling then shows.
   const failedToStart = mutation.isError && !(mutation.error instanceof ApiError && mutation.error.status === 409);
-
   return (
-    <div className="mt-4">
-      <button
-        type="button"
-        className="min-h-11 w-full rounded-button bg-accent px-4 font-semibold text-on-accent disabled:opacity-50"
-        disabled={busy}
-        onClick={() => mutation.mutate()}
-      >
-        {busy ? "Importing…" : "Import from Lunch Flow"}
-      </button>
-      {importing ? (
-        <p className="mt-2 text-meta text-muted">Importing in the background. You can leave the app; results show up here.</p>
-      ) : (
-        <>
-          {failedToStart && <p className="mt-2 text-meta text-warn-fg">{importMessage(mutation.error)}</p>}
-          {lastFinished && (
-            <p className="mt-2 text-meta text-muted">
-              Last import {formatTimestamp(lastFinished.startedAt)}:{" "}
-              <span className={RUN_STATUS_COLOUR[lastFinished.status] ?? "text-warn-fg"}>{lastFinished.status}</span>
-            </p>
-          )}
-        </>
-      )}
+    <div className="mx-4 mt-3">
+      <Button kind="secondary" className="w-full" disabled={busy} onClick={() => mutation.mutate()}>
+        {busy ? "Checking Lunch Flow…" : "Check for new transactions"}
+      </Button>
+      <p className="mt-1.5 px-1 text-[12.5px] text-muted" role="status">
+        {importing
+          ? "Importing in the background. You can leave this screen."
+          : failedToStart
+            ? importMessage(mutation.error)
+            : lastFinished
+              ? `Last check ${formatTimestamp(lastFinished.startedAt)}: ${lastFinished.status === "success" ? "done" : lastFinished.status === "partial" ? "some accounts failed" : "failed"}`
+              : null}
+      </p>
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-h-[44px] items-center justify-between gap-3 border-t border-divider text-[14.5px]">
+      <span className="text-muted">{label}</span>
+      <span className="text-right">{value}</span>
     </div>
   );
 }
 
 function AccountCard({ account }: { account: Account }) {
+  const failing = account.lastImportError !== null;
+  const status = !account.importEnabled ? { text: "Not imported", dot: "bg-muted", tone: "text-muted" } : failing ? { text: "Import failing", dot: "bg-over", tone: "text-over-fg" } : { text: "Up to date", dot: "bg-accent", tone: "text-accent-fg" };
+  const updated = account.lastDataChangeAt;
   return (
-    <li className="rounded-card border border-divider bg-surface p-4">
-      <p className="font-medium">{account.name}</p>
-      <p className="text-meta text-muted">
-        {account.institutionName ?? "Unknown institution"} · {account.providerStatus}
-        {account.needsReview ? " · awaiting review" : !account.importEnabled && " · not imported"}
-      </p>
-      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
-        <dt className="text-muted">Last import</dt>
-        <dd>{formatTimestamp(account.lastImportSuccessAt)}</dd>
-        <dt className="text-muted">Newest txn</dt>
-        <dd>{account.newestTxnDate ?? "none"}</dd>
-        <dt className="text-muted">Last change</dt>
-        <dd>{formatTimestamp(account.lastDataChangeAt)}</dd>
-        {account.lastImportError && (
-          <>
-            <dt className="text-muted">Last error</dt>
-            <dd className="text-over-fg">{account.lastImportError}</dd>
-          </>
-        )}
-      </dl>
-    </li>
-  );
-}
-
-function RunRow({ run }: { run: ImportRun }) {
-  const inserted = run.accounts.reduce((n, a) => n + a.inserted, 0);
-  const updated = run.accounts.reduce((n, a) => n + a.updated, 0);
-  const errorText = [run.errorSummary, ...run.accounts.filter((a) => a.error).map((a) => `#${a.accountId}: ${a.error}`)]
-    .filter(Boolean)
-    .join("; ");
-  return (
-    <li className="py-2 text-meta">
-      <span>{formatTimestamp(run.startedAt)}</span> · <span>{run.trigger}</span> ·{" "}
-      <span className={RUN_STATUS_COLOUR[run.status] ?? "text-warn-fg"}>{run.status}</span>
-      <span className="text-muted">
-        {" "}
-        · +{inserted} new, {updated} changed
-      </span>
-      {errorText && <p className="text-over-fg">{errorText}</p>}
+    <li className={`rounded-card border bg-surface px-4 pt-3.5 pb-1 ${failing ? "border-over/40" : "border-divider"}`}>
+      <div className="flex items-center gap-2.5 pb-2.5">
+        <AccountBadge account={account} />
+        <span className="min-w-0 flex-1 truncate font-medium">{account.name}</span>
+        <span className={`inline-flex items-center gap-1.5 text-[13px] ${status.tone}`}>
+          <span className={`size-1.5 rounded-full ${status.dot}`} aria-hidden="true" />
+          {status.text}
+        </span>
+      </div>
+      {failing && <p className="mb-2.5 rounded-input bg-over-tint px-3 py-2.5 text-[13px] leading-normal text-over-fg">Last import failed: {account.lastImportError}</p>}
+      <Detail label="Last updated" value={updated ? `${ageText(updated)} · ${formatTimestamp(updated)}` : "Never"} />
+      <Detail label="Newest transaction" value={account.newestTxnDate ? formatShortDate(account.newestTxnDate) : "None yet"} />
+      {!account.backfillComplete && account.importEnabled && <Detail label="History" value="Still importing" />}
     </li>
   );
 }
 
 export function Accounts({ back }: { back: Back }) {
-  const queryClient = useQueryClient();
-  const accounts = useQuery({ queryKey: ["accounts"], queryFn: getAccounts });
-  // The shell's import watcher refreshes everything when a run finishes; this only reads the runs.
+  const accounts = useAccounts();
   const runs = useImportRuns();
-  const importing = runs.data?.importing ?? false;
-  const lastFinished = lastFinishedRun(runs.data);
-
-  const refreshRuns = () => void queryClient.invalidateQueries({ queryKey: ["import-runs"] });
+  const all = accounts.data?.all ?? [];
+  const awaiting = all.filter((a) => a.needsReview);
+  const listed = all.filter((a) => !a.needsReview);
 
   return (
     <PushedScreen back={back} title="Accounts">
-      <div className="px-4 pb-8">
-        <ImportButton importing={importing} lastFinished={lastFinished} onSettled={refreshRuns} />
-
-        <section className="mt-6">
-          <h2 className="mx-1 font-medium">Accounts</h2>
-          <QueryStatus query={accounts} what="accounts" empty={accounts.data?.accounts.length === 0 && "No accounts yet. Run an import."} />
-          <ul className="mt-2 space-y-2">
-            {accounts.data?.accounts.map((a) => <AccountCard key={a.id} account={a} />)}
-          </ul>
-        </section>
-
-        <section className="mt-6">
-          <h2 className="mx-1 font-medium">Recent imports</h2>
-          <QueryStatus query={runs} what="import runs" empty={runs.data?.runs.length === 0 && "No imports yet."} />
-          <ul className="mt-2 divide-y divide-divider">{runs.data?.runs.map((r) => <RunRow key={r.id} run={r} />)}</ul>
-        </section>
-      </div>
+      <p className="mx-5 mt-1.5 text-[13.5px] leading-normal text-muted">Tally checks Lunch Flow every 3 hours. Bank data can be up to a day behind.</p>
+      <ImportNow importing={runs.data?.importing ?? false} lastFinished={lastFinishedRun(runs.data)} />
+      {awaiting.map((a) => (
+        <Link key={a.id} href={newAccountHref(a.id)} className="mx-4 mt-3 flex items-center gap-3 rounded-2xl border border-accent/35 bg-accent-tint/60 p-3.5">
+          <span className="grid size-[34px] shrink-0 place-items-center rounded-input bg-accent-tint text-xl text-accent-fg" aria-hidden="true">
+            +
+          </span>
+          <span className="flex-1">
+            <span className="block font-medium">New account found</span>
+            <span className="block text-[13px] text-accent-fg">{a.name} · review before it's imported</span>
+          </span>
+          <ChevronRight size={16} className="text-muted" />
+        </Link>
+      ))}
+      {accounts.isPending ? (
+        <div className="mx-4 mt-3 flex flex-col gap-3">
+          <Skeleton className="h-[150px] rounded-card" />
+          <Skeleton className="h-[150px] rounded-card" />
+        </div>
+      ) : accounts.isError ? (
+        <p role="alert" className="mx-5 mt-4 text-over-fg">
+          Couldn't load accounts.
+        </p>
+      ) : listed.length === 0 && awaiting.length === 0 ? (
+        <p className="mx-5 mt-4 text-muted">No accounts yet. Check for new transactions to import them from Lunch Flow.</p>
+      ) : (
+        <ul className="mx-4 mt-3 mb-6 flex flex-col gap-3">
+          {listed.map((a) => (
+            <AccountCard key={a.id} account={a} />
+          ))}
+        </ul>
+      )}
     </PushedScreen>
   );
 }

@@ -1,4 +1,5 @@
 import { useImportWatcher } from "./components/ImportWatcher";
+import { PushedScreen } from "./components/Screen";
 import { TabBar } from "./components/TabBar";
 import { usePathname } from "./router";
 import { backOf, parseRoute, tabOf, type Route } from "./routes";
@@ -6,15 +7,9 @@ import { Accounts } from "./screens/Accounts";
 import { Budget } from "./screens/Budget";
 import { Categories, Rules } from "./screens/Categories";
 import { Home } from "./screens/Home";
-import { Placeholder } from "./screens/Placeholder";
+import { NewAccount } from "./screens/NewAccount";
 import { ToSort } from "./screens/ToSort";
 import { Transactions } from "./screens/Transactions";
-
-// Screens whose design isn't built yet.
-const PLACEHOLDER_TITLES: Partial<Record<Route["screen"], string>> = {
-  newAccount: "New account found",
-  notFound: "Page not found",
-};
 
 function Screen({ route }: { route: Route }) {
   switch (route.screen) {
@@ -30,10 +25,16 @@ function Screen({ route }: { route: Route }) {
       return <Categories back={backOf(route)} />;
     case "rules":
       return <Rules back={backOf(route)} />;
+    case "newAccount":
+      return <NewAccount back={backOf(route)} accountId={route.accountId} />;
     case "accounts":
       return <Accounts back={backOf(route)} />;
-    default:
-      return <Placeholder back={backOf(route)} title={PLACEHOLDER_TITLES[route.screen]!} />;
+    case "notFound":
+      return (
+        <PushedScreen back={backOf(route)} title="Page not found">
+          <p className="mx-5 mt-2 text-muted">There's nothing at this address.</p>
+        </PushedScreen>
+      );
   }
 }
 
