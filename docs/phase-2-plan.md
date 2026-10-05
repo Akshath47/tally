@@ -544,6 +544,12 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 - `security-review` is clean
 - `npm run check` passes
 
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 450 tests.
+- The Accept when tests: `over_allocated` returns overall − the other allocations (and a category's own allocation doesn't count against it), `below_allocated` returns the current `allocated`, September's rows and figures survive October's edits, and writes at `2026-03-31T23:30Z` and `2026-10-31T23:30Z` land in `2026-04` and `2026-10`.
+- `code-review`, `simplify` and `security-review` ran on the branch. `security-review` found nothing.
+- No migration, so nothing to apply remotely. The Worker deploy waits for the owner's merge.
+
 This step needs no migration: `monthly_budgets` and `category_budgets` exist since P2.2. It runs in parallel with P2.4 and doesn't touch P2.4's files (`routes/transactions.ts`, the inbox routes, `transaction_overrides` writes).
 
 **Decisions:**
