@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { readBudget } from "../budget/effective";
 import { INBOX, RESOLVED_CTE } from "../budget/resolve";
-import { daysInMonth, londonMonth, londonToday } from "../importer/dates";
+import { daysInMonth, londonToday } from "../importer/dates";
 
 // Everything the home screen needs for one month (docs/phase-2-spec.md, "What a transaction
 // counts as" and "Budget figures for a month"). Spend is positive = money out, so a refund is
@@ -11,15 +11,19 @@ import { daysInMonth, londonMonth, londonToday } from "../importer/dates";
 
 const monthParam = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
-// One row per category_id among the counted rows (vanished_at IS NULL). A row counts when its
-// month (of counted_date ?? txn_date) is ?1, it isn't excluded, and it's budgeted or tracked,
-// or uncategorised money out. The inbox count spans every month, as the inbox does.
+// On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's
+// budgeted or tracked, or uncategorised money out. Uncategorised money in waits in the inbox.
+// Always 0 or 1: a bare `c.kind IN (...)` is NULL for an uncategorised row.
+const COUNTS = `(r.excluded = 0 AND (COALESCE(c.kind IN ('budgeted', 'tracked'), 0)
+  OR (r.category_id IS NULL AND COALESCE(r.counted_amount_minor, r.amount_minor) < 0)))`;
+
+// One row per category_id among the counted rows (vanished_at IS NULL) that count in month ?1
+// (of counted_date ?? txn_date) or are in the inbox. The inbox spans every month.
 const SUMMARY_SQL = `WITH ${RESOLVED_CTE},
 counted AS (
   SELECT r.category_id, c.kind, r.is_pending, (${INBOX}) AS in_inbox,
     -COALESCE(r.counted_amount_minor, r.amount_minor) AS spend,
-    substr(COALESCE(r.counted_date, r.txn_date), 1, 7) = ?1 AND r.excluded = 0
-      AND (c.kind IN ('budgeted', 'tracked') OR (r.category_id IS NULL AND COALESCE(r.counted_amount_minor, r.amount_minor) < 0)) AS counts
+    (substr(COALESCE(r.counted_date, r.txn_date), 1, 7) = ?1 AND ${COUNTS}) AS counts
   FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
   WHERE r.vanished_at IS NULL
 )
@@ -38,9 +42,9 @@ const perWeek = (leftMinor: number, daysRemaining: number) =>
   leftMinor > 0 ? Number((BigInt(leftMinor) * 7n) / BigInt(daysRemaining)) : 0;
 
 export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) => {
-  const now = new Date();
+  const today = londonToday(new Date());
+  const current = today.slice(0, 7);
   const parsed = monthParam.safeParse(c.req.param("month"));
-  const current = londonMonth(now);
   // YYYY-MM strings compare in calendar order.
   if (!parsed.success || parsed.data > current) return c.json({ error: "bad_request" }, 400);
   const month = parsed.data;
@@ -76,7 +80,7 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
   const allocatedMinor = budget.allocations.reduce((n, a) => n + a.allocatedMinor, 0);
   const leftMinor = overallMinor === null ? null : overallMinor - spentMinor;
   // Pacing is for the current month only; today counts as a day remaining.
-  const daysRemaining = month === current ? daysInMonth(month) - Number(londonToday(now).slice(8)) + 1 : null;
+  const daysRemaining = month === current ? daysInMonth(month) - Number(today.slice(8)) + 1 : null;
 
   return c.json({
     month,

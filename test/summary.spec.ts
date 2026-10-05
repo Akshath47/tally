@@ -76,6 +76,12 @@ describe("GET /api/months/:month/summary: what counts", () => {
     expect(s.categories).toEqual([{ categoryId: null, kind: null, spentMinor: 700, pendingSpentMinor: 0, allocatedMinor: 0 }]);
   });
 
+  it("lists no Uncategorised line when the month's only uncategorised rows are money in", async () => {
+    await txn(accounts[0], { merchant: "Unknown sender", amountMinor: 2_000 });
+    await txn(accounts[0], { merchant: "Unknown sender", amountMinor: 0 });
+    expect(await summary()).toMatchObject({ spentMinor: 0, inboxCount: 2, categories: [] });
+  });
+
   it("lets a refund reduce its category's spend", async () => {
     await grocer(-3_000);
     await grocer(1_000);
