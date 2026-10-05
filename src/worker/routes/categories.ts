@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
+import { effectiveAllocationSql } from "../budget/effective";
 import { CATEGORY_KINDS } from "../db/schema";
+import { londonMonth } from "../importer/dates";
 import { idParam, isUniqueViolation, parseBody } from "./query";
 
 // Categories are never deleted: archiving hides one from pickers while rules, overrides and
@@ -47,16 +49,29 @@ export const categoryRoutes = new Hono<AppEnv>()
     );
     if (!body.ok) return body.res;
     const { name: newName, kind: newKind, archived } = body.data;
+    const now = new Date();
     try {
-      // Archiving an archived category keeps its original archive time.
-      const row = await c.env.DB.prepare(
-        `UPDATE categories SET name = COALESCE(?2, name), kind = COALESCE(?3, kind),
-           archived_at = CASE WHEN ?4 IS NULL THEN archived_at WHEN ?4 = 1 THEN COALESCE(archived_at, ?5) ELSE NULL END,
-           updated_at = ?5
-         WHERE id = ?1 RETURNING ${COLUMNS}`,
-      )
-        .bind(id, newName ?? null, newKind ?? null, archived === undefined ? null : archived ? 1 : 0, new Date().toISOString())
-        .first<Row>();
+      const [updated] = await c.env.DB.batch<Row>([
+        // Archiving an archived category keeps its original archive time.
+        c.env.DB.prepare(
+          `UPDATE categories SET name = COALESCE(?2, name), kind = COALESCE(?3, kind),
+             archived_at = CASE WHEN ?4 IS NULL THEN archived_at WHEN ?4 = 1 THEN COALESCE(archived_at, ?5) ELSE NULL END,
+             updated_at = ?5
+           WHERE id = ?1 RETURNING ${COLUMNS}`,
+        ).bind(id, newName ?? null, newKind ?? null, archived === undefined ? null : archived ? 1 : 0, now.toISOString()),
+        // A category that no longer counts towards the budget gives its allocation back from
+        // this month on (docs/phase-2-spec.md, Allocation checks). Past months' rows are kept,
+        // though kinds aren't dated, so past months count the category by its current kind too.
+        // Keyed on the category's state rather than the patch; in a batch, so a refused UPDATE
+        // zeroes nothing.
+        c.env.DB.prepare(
+          `INSERT INTO category_budgets (category_id, effective_month, amount_minor, updated_at)
+           SELECT id, ?2, 0, ?3 FROM categories
+           WHERE id = ?1 AND (kind <> 'budgeted' OR archived_at IS NOT NULL) AND ${effectiveAllocationSql("?1", "?2")} > 0
+           ON CONFLICT (category_id, effective_month) DO UPDATE SET amount_minor = 0, updated_at = excluded.updated_at`,
+        ).bind(id, londonMonth(now), now.toISOString()),
+      ]);
+      const row = updated!.results[0];
       return row ? c.json({ category: toCategory(row) }) : c.json({ error: "not_found" }, 404);
     } catch (e) {
       if (isUniqueViolation(e)) return c.json({ error: "name_taken" }, 409);

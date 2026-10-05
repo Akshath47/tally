@@ -5,9 +5,12 @@ import { secureHeaders } from "hono/secure-headers";
 import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
 import { runImport, type RunDeps } from "./importer";
 import { accountRoutes } from "./routes/accounts";
+import { budgetRoutes } from "./routes/budget";
 import { categoryRoutes } from "./routes/categories";
+import { inboxRoutes } from "./routes/inbox";
 import { ruleRoutes } from "./routes/rules";
 import { importRunRoutes } from "./routes/import-runs";
+import { monthRoutes } from "./routes/months";
 import { transactionRoutes } from "./routes/transactions";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -37,9 +40,12 @@ export function createApp(options: AppOptions = {}) {
 
   app.get("/health", (c) => c.json({ ok: true, email: c.get("email") }));
   app.route("/accounts", accountRoutes);
+  app.route("/budget", budgetRoutes);
   app.route("/categories", categoryRoutes);
   app.route("/rules", ruleRoutes);
   app.route("/transactions", transactionRoutes);
+  app.route("/inbox", inboxRoutes);
+  app.route("/months", monthRoutes);
   app.route("/import-runs", importRunRoutes(options.importDeps ?? {}));
 
   // Unknown /api paths must not fall through to the SPA's index.html.

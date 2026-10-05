@@ -388,7 +388,7 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 - [ ] Add the five tables to [schema-and-api.md](schema-and-api.md), marked (P2.2), and extend its CHECKs paragraph.
 - [ ] Mark P2.2's checkbox only once its **Accept when** has run, then commit: `docs: record the phase 2 tables and category seed`.
 
-## [ ] P2.3 Categories and rules
+## [x] P2.3 Categories and rules
 
 **Deliverable:**
 - A `src/worker/budget/resolve.ts` SQL fragment that gives each counted transaction its `category_id` and `category_source`, following the spec's precedence.
@@ -401,7 +401,14 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 - `security-review` is clean
 - `npm run check` passes
 
-This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merges. Allocation zeroing on a kind change or archive belongs to P2.5, which hooks into this step's `PATCH /api/categories/:id`.
+**Done (2026-10-05):** merged as #25 after #24.
+- The precedence and re-sort tests pass.
+- `security-review` found nothing.
+- `npm run check` passes on `main` at `d44a43a` (402 tests).
+- Deployed with P2.2 as version `a7c3074e`. Logged-out `/api/categories` and `/api/rules` redirect to the Access login.
+- Signed-in routes haven't been tried in production yet. That isn't part of this step's Accept when.
+
+This step was built stacked on P2.2's branch. Allocation zeroing on a kind change or archive belongs to P2.5, which hooks into this step's `PATCH /api/categories/:id`.
 
 **Decisions:**
 - **Merchant text is normalised the way SQLite does it.** Matching runs in SQL against `lower(trim(merchant))`, and SQLite's `lower()` only folds ASCII and its `trim()` only strips spaces. So patterns are normalised by `normalizePattern()`, which does exactly the same: spaces only, A–Z only. A pattern normalised by JavaScript's own `toLowerCase()` or `trim()` would never match a merchant like `CAFÉ` exactly.
@@ -512,7 +519,7 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 
 - [ ] Add the category and rule endpoints to [schema-and-api.md](schema-and-api.md), then commit: `docs: record the category and rule endpoints`.
 
-## [ ] P2.4 Overrides, inbox and transaction fields
+## [x] P2.4 Overrides, inbox and transaction fields
 
 **Deliverable:**
 - `PUT` and `DELETE /api/transactions/:id/override`, including `applyToMerchant`.
@@ -529,7 +536,164 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 - `security-review` is clean
 - `npm run check` passes
 
-## [ ] P2.5 Budgets
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 451 tests. Typecheck and lint are clean. The new specs are `transactions`, `overrides` and `inbox`, and each of their tests was seen to fail first.
+- The tests cover every Accept when item:
+  - `409 not_editable` on pending and vanished rows
+  - an all-default `PUT` (and `{}`) deleting the row
+  - `applyToMerchant` writing a rule with no category override
+  - uncategorised money in and out both in the inbox
+  - merchant groups summing their rows' counted amounts
+- `security-review`: no findings.
+- `code-review` (9 findings):
+  - Fixed 5.
+  - The owner settled a sixth: the `applyToMerchant` rule scope.
+  - A seventh, `toTransaction`'s delete-and-cast, was fixed during `simplify`.
+  - Didn't act on the other 2:
+    - a resent rule category: `categoryId` is the override's own category
+    - single-row reads costing a full resolution: that needs a change to P2.3's shared query, so it's noted below
+- `simplify`:
+  - The listing takes `[sql, ...binds]` tuples and its cursor is a row value.
+  - The override routes share their guard, and `checkRefs` moved to `routes/refs.ts`.
+- **Cost to watch:** every transaction list, inbox page and override response evaluates `RESOLVED_CTE` once, so one category resolution over all merchants. P2.3 pinned that under 20k rows read at 600 transactions, against D1's 5M a day. Measure rows read after the owner's first big sort of the inbox.
+- No deploy is needed before P2.5's PR (#30) lands. Whichever of the two merges second needs a small rebase for `src/worker/index.ts` and `docs/schema-and-api.md`.
+
+This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn't touch the budget tables, `routes/categories.ts` or the London-month helper, which belong to P2.5. It adds no migration.
+
+**Decisions:**
+- **`PUT /override` replaces the whole override.** A field left out of the body takes its default (`categoryId: null`, `excluded: false`, the counted fields and `note` null). The editor sends its full form, so a `PUT` with every default, `{}` included, deletes the row, as the spec requires. An empty note counts as no note.
+- **`applyToMerchant` writes the any-account exact rule, and also this account's own one** (the owner's decision, 2026-10-05).
+  - The pattern is `lower(trim(merchant))`, computed in SQL, so it equals what the rule is matched against.
+  - The spec's any-account `exact` rule is created, or updated if it exists, so every account follows the new category.
+  - If this transaction's account also has its own `exact` rule for the merchant, that rule is updated too. It outranks the any-account rule, so without the update this row wouldn't follow the rule. Other accounts' own rules are left alone.
+  - `categoryId` is required (`400` without it).
+  - A merchant that can't be a rule's pattern returns `409 merchant_not_rulable`: blank, longer than 100 characters, or edged with whitespace. This uses the same `isRulablePattern` check as `POST`/`PATCH /api/rules`, so the rules editor can always save the rule later. Merchant groups carry a `rulable` flag from the same check.
+  - The rule writes and the override write happen in one batch, and the override stores no category.
+- **Category references work as they do for rules** (`checkRefs`, now in `routes/refs.ts`).
+  - An unknown `categoryId` returns `404 not_found`.
+  - An archived one returns `409 category_archived`, unless it's already this override's category, so a full-form `PUT` that resends it isn't refused.
+  - `categoryId` is the override's own category. For a row a rule decides, the editor sends `null` to keep following the rule.
+- **The editable check happens when the row is read.** `PUT` and `DELETE` refuse a missing row with `404` and a pending or vanished one with `409 not_editable`, before anything is written. A posted row never becomes pending or vanished, so the write isn't guarded a second time. A second guard could have split the rule writes from the override write.
+- **The inbox is counted, uncategorised and not excluded:** `vanished_at IS NULL AND category_id IS NULL AND excluded = 0`.
+  - Money in and money out both appear, and pending rows are included with `editable: false`.
+  - An excluded transaction has been dealt with, so it leaves the inbox.
+- **Merchant groups are keyed by `lower(trim(merchant))`.** That's the pattern of the any-account `exact` rule that would clear the group. Each group has the raw `merchant` text of its latest row, `count`, `totalMinor` (counted amounts, bank sign) and `latestDate`. Groups are ordered by count, then latest date, so the biggest wins of the first sort come first.
+- **One listing query.** `GET /api/transactions`, `GET /api/inbox` and the override responses share a single `SELECT` over P2.3's `RESOLVED_CTE`, with Phase 1's keyset paging. `PUT` and `DELETE` return the updated `{transaction}` in the list shape, so the UI can update it in place.
+
+### Review focus for P2.4
+
+1. **A full-form `PUT` that resends a category archived since it was set.** It's accepted, because the category hasn't changed (Task 2).
+2. **`applyToMerchant` on an account that already has an account-scoped `exact` rule for the merchant.** That rule is updated along with the any-account one, and the row follows it (Task 2).
+3. **`applyToMerchant` on a row that has a category override.** The override's category is cleared and its other fields are kept, so the row follows the rule (Task 2).
+4. **Amounts and dates that only look valid:** `countedAmountMinor` `12.5`, `"100"` or `2 ** 53`, and `countedDate` `2026-02-30`. They all return `400` and write nothing (Task 2).
+5. **A pending or vanished row:** `PUT` and `DELETE` return `409 not_editable` and write nothing, while the row still appears in the inbox (Tasks 2 and 3).
+
+### Task 1: Listing with categories and override fields
+
+**Files:**
+- Create: `src/worker/budget/listing.ts` (the shared listing query, cursor and row mapping)
+- Modify: `src/worker/routes/transactions.ts` (`GET /` uses it)
+- Test: `test/transactions.spec.ts` (new; Phase 1's listing tests in `test/api.spec.ts` stay and must still pass)
+
+**Interfaces:**
+- Consumes: `RESOLVED_CTE` (P2.3).
+- Produces:
+  - `cursorParam`, a zod schema moved from `routes/transactions.ts` unchanged.
+  - `listTransactions(db: D1Database, opts: { where: [sql: string, ...binds: unknown[]][]; limit: number; cursor?: Cursor; withTotal?: boolean }): Promise<{ transactions: Transaction[]; nextCursor: string | null; total: number }>`.
+    - Each `where` entry is a static SQL condition on `t` (transactions) or `r` (resolved), with one value per `?`.
+    - `withTotal` adds a window count in the same statement.
+    - `EDITABLE` is the shared SQL condition for "posted and not vanished".
+  - `getTransaction(db, id): Promise<Transaction | null>`.
+  - `Transaction` keeps the Phase 1 fields (`id, accountId, amountMinor, currency, txnDate, merchant, description, isPending, vanishedAt, firstSeenAt`) and adds:
+    - `categoryId: number | null`
+    - `categorySource: "override" | "rule" | null`
+    - `excluded: boolean`
+    - `countedAmountMinor: number | null`
+    - `countedDate: string | null`
+    - `note: string | null`
+    - `editable: boolean`
+
+- [ ] **Step 1: write the failing tests** (synthetic `ledger()` rows):
+  - a row decided by a rule has `categorySource: "rule"`
+  - an overridden one has `"override"` along with its override fields
+  - an uncategorised one has nulls and `excluded: false`
+  - `editable` is false for pending and for vanished rows, and true for posted ones
+  - booleans come back as booleans
+- [ ] **Step 2:** run `npx vitest run test/transactions.spec.ts test/api.spec.ts`. The new tests should fail, and the Phase 1 ones should pass.
+- [ ] **Step 3:** implement `listing.ts`, and switch `GET /api/transactions` to it. The account and date filters become `where` entries.
+- [ ] **Step 4:** run both specs again. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): list transactions with their category and override fields`, with the trailer `Phase: P2.4`.
+
+### Task 2: Override routes
+
+**Files:**
+- Create: `src/worker/routes/overrides.ts` (`PUT` and `DELETE /:id/override`, mounted inside `transactionRoutes`)
+- Test: `test/overrides.spec.ts`
+
+**Interfaces:**
+- Consumes: `getTransaction` (Task 1), and `NOTE_MAX_LENGTH` (P2.2).
+- `PUT /api/transactions/:id/override` takes `{categoryId?, excluded?, countedAmountMinor?, countedDate?, note?, applyToMerchant?}`. It returns:
+  - `200 {transaction}`
+  - `400 bad_request`
+  - `404 not_found` (unknown transaction or category)
+  - `409 not_editable`, `409 category_archived` or `409 merchant_not_rulable`
+- `DELETE /api/transactions/:id/override` returns `200 {transaction}`, `404` or `409 not_editable`. It succeeds even when there is no override.
+
+- [ ] **Step 1: write the failing tests:**
+  - setting each field and reading it back
+  - the row moves category
+  - `{}` removes an existing override, and so does a body of all defaults
+  - `DELETE` restores the bank values and the rule's category
+  - `409 not_editable` for pending and vanished rows, with no row written
+  - `404` for an unknown id or category
+  - `409 category_archived`, unless it's the unchanged current category
+  - `400` for each bad value in Review focus 4, for a 501-character note, and for `applyToMerchant` without `categoryId`
+  - `applyToMerchant`:
+    - creates an any-account `exact` rule from `lower(trim(merchant))` and stores no category override
+    - other rows with that merchant follow it
+    - on a second call it updates that rule rather than adding one
+    - also updates the row's account's own `exact` rule when it has one, and leaves another account's alone
+    - clears an existing category override
+    - returns `409 merchant_not_rulable` for a blank, over-long or whitespace-edged merchant
+  - a wrong `Origin` gets `403`
+- [ ] **Step 2:** run `npx vitest run test/overrides.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** commit: `feat(worker): add transaction override routes`, with the trailer `Phase: P2.4`.
+
+### Task 3: Inbox routes
+
+**Files:**
+- Create: `src/worker/routes/inbox.ts`
+- Modify: `src/worker/index.ts` (mount it at `/inbox`)
+- Test: `test/inbox.spec.ts`
+
+**Interfaces:**
+- Consumes: `listTransactions` and `cursorParam` (Task 1).
+- `GET /api/inbox?limit&cursor` returns `{transactions, nextCursor, total}`.
+- `GET /api/inbox/merchants` returns `{merchants: {pattern, merchant, count, totalMinor, latestDate}[]}`.
+
+- [ ] **Step 1: write the failing tests:**
+  - uncategorised money in and money out are both listed, newest first, with `total`
+  - rows that are categorised (by a rule or an override), excluded or vanished are left out
+  - a pending row is listed with `editable: false`
+  - paging returns every row exactly once, and `total` doesn't depend on the page
+  - merchant groups fold case and edge spaces
+  - each group's count and total equal the sum of its rows, using the counted amount
+  - the latest raw merchant text and date are shown
+  - groups are ordered by count
+  - one rule created with a group's `pattern` empties that group
+- [ ] **Step 2:** run `npx vitest run test/inbox.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review` on the branch, then commit: `feat(worker): add the inbox and its merchant groups`, with the trailer `Phase: P2.4`.
+
+### Task 4: Docs
+
+- [ ] Add the override and inbox endpoints, and the new transaction fields, to [schema-and-api.md](schema-and-api.md).
+- [ ] Mark P2.4's checkbox once its **Accept when** has run, then commit: `docs: record the override and inbox endpoints`.
+
+## [x] P2.5 Budgets
 
 **Deliverable:**
 - The effective-month lookup.
@@ -544,7 +708,137 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 - `security-review` is clean
 - `npm run check` passes
 
-## [ ] P2.6 Month summary
+**Done (2026-10-05):**
+- On the branch, `npm run check` passed with 450 tests.
+- The Accept when tests: `over_allocated` returns overall − the other allocations (and a category's own allocation doesn't count against it), `below_allocated` returns the current `allocated`, September's rows and figures survive October's edits, and writes at `2026-03-31T23:30Z` and `2026-10-31T23:30Z` land in `2026-04` and `2026-10`.
+- `code-review`, `simplify` and `security-review` ran on the branch. `security-review` found nothing.
+- Merged as #30, together with P2.4 (#32). On `main` after both merges (4103683), `npm run check` passed with 499 tests and `db:check` was clean.
+- No migration: production had none pending. Version `00e24f48` was deployed.
+- Logged-out `/api/budget` still redirects to the Access login.
+
+This step needs no migration: `monthly_budgets` and `category_budgets` exist since P2.2. It runs in parallel with P2.4 and doesn't touch P2.4's files (`routes/transactions.ts`, the inbox routes, `transaction_overrides` writes).
+
+**Decisions:**
+- **"Now" is the system clock.** The routes call `new Date()` like the other routes do, and tests move the clock with `vi.useFakeTimers({ toFake: ["Date"] })` and `vi.setSystemTime`. D1 calls still work under it, so `createApp` needs no clock option.
+- **`londonMonth(now)` lives next to `londonToday` in `importer/dates.ts`**, as `londonToday(now).slice(0, 7)`. P2.6 reuses it.
+- **The effective-month lookup is SQL text**, like `RESOLVED_CTE`. `effectiveOverallSql(month)` and `effectiveAllocationSql(categoryId, month)` take the placeholder or column to use and return a scalar subquery: the row with the greatest `effective_month` ≤ the month, by `ORDER BY effective_month DESC LIMIT 1`. For allocations that's a seek on the `(category_id, effective_month)` primary key, one per category. P2.6 composes the same fragments into its summary query.
+- **`maxAllocatableMinor` is given per category** in `GET /api/budget`: overall − every other allocation, so it's the most that category can be set to. For a category with no allocation it equals `miscMinor`. The spec lists one `maxAllocatableMinor` without saying what it's for; per category is the figure the `422 over_allocated` response carries, so the UI can show the same limit before and after a refused write.
+- **Both `PUT`s answer with the new budget**, the same body as `GET /api/budget`, so the UI doesn't need a second request.
+- **Only budgeted, unarchived categories count towards `allocated`**, using their current kind (the spec: kinds aren't dated). Their rows in `GET /api/budget` are listed by id, with `allocatedMinor: 0` when they have no allocation.
+- **Allocating to a category that isn't budgeted, or is archived, is `409 category_not_budgeted` or `409 category_archived`.** The spec requires both checks but names no codes; `category_archived` matches the rules route. The order is: `400` (bad id or body), `404` (unknown category), `409 category_archived`, `409 category_not_budgeted`, `409 overall_budget_not_set`, then `422 over_allocated`.
+- **Zeroing follows the category's state, not the patch.** In the same `D1.batch` as the `UPDATE`, one upsert writes a 0 row for the current month when the category is now not budgeted or archived **and** its current effective allocation is above 0. A failed `UPDATE` (`name_taken`) rolls the batch back, so nothing is zeroed. A category with no allocation gets no row.
+- **There is no lock between the validation read and the write** (the spec: one user). The write is a plain upsert on the current month's row.
+- **Lowering a category's allocation is always allowed**, even when the budget is over-allocated (which the API never causes, but SQL written by hand could). Otherwise the owner couldn't get back under through the API.
+- **Past months keep their rows, not their kinds.** Zeroing never touches an earlier month's row, but kinds aren't dated, so `readBudget` for a past month counts categories by their current kind, as the spec accepts.
+- **A `0` allocation is accepted and stored**, since it's how an allocation is removed from a month on. The overall figure must be > 0, as its CHECK requires. Both must be safe integers.
+
+### Review focus for P2.5
+
+1. **Late evening in London around month ends.** At `2026-03-31T23:30Z` (BST) it's already April, so a write goes to `2026-04`. At `2026-10-31T23:30Z` (GMT) it's still October (Task 1, Task 3).
+2. **An edit in a later month than the last row.** It inserts a new row for the current month and leaves the older row alone, so past months keep their figures. A second edit in the same month updates that month's row (Task 3).
+3. **Raising a category's own allocation.** The limit leaves out the category's current allocation, so with overall 500 and Groceries at 300, setting Groceries to 500 is allowed. `maxAllocatableMinor` in the `422` is overall − the others (Task 3).
+4. **A stale allocation on a category that's now tracked, excluded or archived.** It isn't part of `allocated`, so it doesn't block lowering the overall figure, and zeroing it leaves past months' rows alone (Task 2, Task 4).
+5. **A `PATCH` that fails** (for example `409 name_taken`) together with a kind change. Nothing is zeroed (Task 4).
+6. **Amounts that aren't safe integers**: `12.5`, `"1000"`, `2 ** 53`, and an overall figure of `0`. All are `400`, and nothing is written (Task 3).
+
+### Task 1: The current London month
+
+**Files:**
+- Modify: `src/worker/importer/dates.ts`
+- Test: `test/importer/dates.spec.ts`
+
+**Interfaces:**
+- Produces: `londonMonth(now: Date): string`, `YYYY-MM`.
+
+- [ ] **Step 1: write the failing tests:**
+  - `2026-03-31T23:30Z` is `2026-04` (BST)
+  - `2026-10-31T23:30Z` is `2026-10` (GMT)
+  - `2026-12-31T23:59Z` is `2026-12`, and `2027-01-01T00:00Z` is `2027-01`
+- [ ] **Step 2:** run `npx vitest run test/importer/dates.spec.ts`. The new tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): add the current london month helper`, with the trailer `Phase: P2.5`.
+
+### Task 2: Effective-month lookup
+
+**Files:**
+- Create: `src/worker/budget/effective.ts`
+- Test: `test/budget/effective.spec.ts`
+
+**Interfaces:**
+- Consumes: `monthly_budgets`, `category_budgets` and `categories` (P2.2).
+- Produces:
+  - `effectiveOverallSql(month: string): string` and `effectiveAllocationSql(categoryId: string, month: string): string`, scalar subqueries. The arguments are SQL placeholders or column names, never values.
+  - `readBudget(db: D1Database, month: string): Promise<BudgetRows>`, one statement, where `BudgetRows = { overallMinor: number | null; allocations: { categoryId: number; allocatedMinor: number }[] }` lists every budgeted, unarchived category by id.
+
+- [ ] **Step 1: write the failing tests**, inserting budget rows with SQL:
+  - with rows for `2026-08` and `2026-10`, the overall figure for `2026-07` is null, `2026-08` and `2026-09` give the August figure, and `2026-10` and `2026-12` give October's
+  - each category's allocation comes from its own latest row ≤ the month, and a later `0` row gives `0`
+  - tracked, excluded and archived categories aren't listed, even with an allocation
+  - a budgeted category with no rows is listed with `0`
+  - with no budgeted categories at all, the overall figure is still returned
+- [ ] **Step 2:** run `npx vitest run test/budget/effective.spec.ts`. It should fail because the module is missing.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): look up a month's effective budget figures`, with the trailer `Phase: P2.5`.
+
+### Task 3: Budget routes
+
+**Files:**
+- Create: `src/worker/routes/budget.ts`
+- Modify: `src/worker/index.ts` (mount it at `/budget`)
+- Test: `test/budget.spec.ts`
+
+**Interfaces:**
+- Consumes: `londonMonth` (Task 1) and `readBudget` (Task 2).
+- `GET /api/budget` → `{month, overallMinor, allocatedMinor, miscMinor, categories: {categoryId, allocatedMinor, maxAllocatableMinor}[]}`. Before the first overall figure, `overallMinor`, `miscMinor` and every `maxAllocatableMinor` are null.
+- `PUT /api/budget/overall` with body `{amountMinor}`, a safe integer > 0. Returns `200` with the `GET` body, `422 {error:"below_allocated", minOverallMinor}` or `400`.
+- `PUT /api/budget/categories/:categoryId` with body `{amountMinor}`, a safe integer ≥ 0. Returns `200` with the `GET` body, `404`, `409 category_archived`, `409 category_not_budgeted`, `409 overall_budget_not_set`, `422 {error:"over_allocated", maxAllocatableMinor}` or `400`.
+- Both writes upsert the current London month's row.
+
+- [ ] **Step 1: write the failing tests**, with the clock set by `vi.setSystemTime`:
+  - `GET` before any budget: null figures, every budgeted category listed with `0`
+  - set the overall figure, then allocate: `allocated`, `misc` and each `maxAllocatableMinor` add up
+  - `over_allocated` returns overall − the other allocations, and raising a category's own allocation up to that limit works
+  - `below_allocated` returns the current `allocated`, and lowering the overall figure exactly to `allocated` works
+  - allocating before an overall figure is `409 overall_budget_not_set`
+  - allocating to a tracked or archived category is `409`, and to an unknown one `404`
+  - with the clock in September, set figures; move it to October and edit them: the September rows are unchanged, and `readBudget(db, "2026-09")` still gives the old figures
+  - two edits in the same month leave one row for that month
+  - at `2026-03-31T23:30Z` the write lands in `2026-04`, and at `2026-10-31T23:30Z` in `2026-10`
+  - the bad bodies from Review focus 6 and a bad id are `400`, and nothing is written
+  - a cross-site request and a non-JSON body are refused, as for the other routes
+- [ ] **Step 2:** run `npx vitest run test/budget.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** commit: `feat(worker): add the budget routes`, with the trailer `Phase: P2.5`.
+
+### Task 4: Zero an allocation when its category stops counting
+
+**Files:**
+- Modify: `src/worker/routes/categories.ts` (the `PATCH` becomes a two-statement batch)
+- Test: `test/categories.spec.ts`
+
+**Interfaces:**
+- Consumes: `londonMonth` and `effectiveAllocationSql`.
+- Produces (DB contract): after a `PATCH` that leaves a category not budgeted or archived, its effective allocation for the current month is 0, and earlier months' rows are unchanged.
+
+- [ ] **Step 1: write the failing tests:**
+  - a category allocated in September; in October, changing it to tracked writes an October `0` row, and the September row is unchanged
+  - the same for excluded, and for archiving
+  - a rename, or a patch of a category with no allocation, writes no budget row
+  - a kind change that fails with `409 name_taken` writes nothing
+  - after unarchiving, the category is listed in `GET /api/budget` with `0`
+- [ ] **Step 2:** run `npx vitest run test/categories.spec.ts`. The new tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review`, then commit: `feat(worker): zero a category's allocation when it stops counting`, with the trailer `Phase: P2.5`.
+
+### Task 5: Docs
+
+- [ ] Add the three budget endpoints to [schema-and-api.md](schema-and-api.md), and the zeroing to the `PATCH /api/categories/:id` row, then commit: `docs: record the budget endpoints`.
+
+## [x] P2.6 Month summary
 
 **Deliverable:** `GET /api/months/:month/summary`, as in the spec.
 
@@ -553,5 +847,114 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 - a future month returns `400`
 - one summary call stays under 10 D1 statements
 - after deploy, one real summary from the owner's account matches a hand tally of a few categories (the owner checks this; nothing is committed)
+
+**Done (2026-10-05):**
+- `npm run check` passed with 531 tests.
+- The Accept when tests in `test/summary.spec.ts`:
+  - the spec's counting cases
+  - pacing on the last day of the month (`daysRemaining = 1`, `perWeekMinor = left × 7`)
+  - a floored per-week figure (`left = 1000` over 3 days gives 2333)
+  - `400` for a malformed or future month
+  - one call runs 3 D1 statements, counted by wrapping `env.DB`
+- `code-review`, `simplify` and `security-review` ran on the branch. Code-review found that a month whose only uncategorised rows were money in listed an empty Uncategorised line. That's fixed and has a test. `security-review` found nothing.
+- Merged as #34. On `main` after the merge (12f1d84), `npm run check` passed with 531 tests and `db:check` was clean. There were no pending migrations, and version `487795f5` was deployed. Logged-out `/api/months/2026-10/summary` redirects to the Access login.
+- **The owner's check:** after adding a few rules, the owner compared October's summary with the bank apps.
+  - The categories checked matched on posted spend.
+  - One category's pending spend was short by one Amex pending purchase. Lunch Flow never sent it, and Tally has no row for it. That's the upstream limit recorded in [lunchflow-findings.md](lunchflow-findings.md#pending), not a counting bug.
+  - Nothing from the check is committed.
+
+This step needs no migration. It builds on `RESOLVED_CTE` (P2.3), the inbox predicate (P2.4), and `readBudget` and `londonMonth` (P2.5).
+
+**Decisions:**
+- **Three D1 statements per call**, run in parallel:
+  1. `readBudget(db, month)` for the overall figure and the allocations
+  2. one aggregate over `resolved`
+  3. `max(last_data_change_at)` over the accounts with `import_enabled = 1`
+
+  `RESOLVED_CTE` is evaluated once, in statement 2. That statement groups the counted rows by `category_id` and gives each group its month's spend, its pending spend, the number of rows that count, and its inbox count. The inbox count isn't limited to the month, because the inbox isn't either.
+- **`inboxCount` uses the inbox's own predicate.** `INBOX` moves from `routes/inbox.ts` to `budget/resolve.ts`, next to the CTE it filters, and both routes import it. The badge and `GET /api/inbox` then always agree.
+- **The counting rule is one SQL expression, `COUNTS`.** A counted row (`vanished_at IS NULL`) in the month counts when `excluded = 0` and either its category is budgeted or tracked, or it's uncategorised with spend > 0. Spend is `-COALESCE(counted_amount_minor, amount_minor)`, and the month is `substr(COALESCE(counted_date, txn_date), 1, 7)`. A superseded pending row has `vanished_at` set, so it and its posted row count once between them.
+- **Kinds are current, not dated** (the spec). An archived budgeted category's spend still counts against the budget and draws on Misc, since it has no allocation.
+- **`categories[]` lists every category that has at least one counting row in the month, or an allocation above 0.** It's ordered by id, with Uncategorised (`categoryId: null`, `kind: null`) last. A category whose refunds cancel its spend still shows up, with `spentMinor: 0`. Tracked categories are listed with their kind and `allocatedMinor: 0`. Excluded ones never appear.
+- **Totals:** `spentMinor` and `pendingSpentMinor` cover budgeted categories and Uncategorised, and `trackedMinor` covers tracked categories, pending included.
+- **Before the first overall figure**, `overallMinor`, `miscMinor`, `leftMinor` and `perWeekMinor` are null. Spend is still reported, as the spec requires.
+- **Pacing (current month only).**
+  - `daysRemaining = daysInMonth(month) − today's day + 1`, with today from `londonToday(now)`.
+  - `perWeekMinor = left > 0 ? floor(left × 7 / daysRemaining) : 0`, computed with BigInt so the division is exact integer division.
+  - `daysInMonth` joins the day arithmetic in `importer/dates.ts`.
+  - For a past month both are null.
+- **The month parameter** must match `YYYY-MM` with a month from 01 to 12, and must not be after `londonMonth(now)`. Otherwise it's `400 bad_request`.
+
+### Review focus for P2.6
+
+1. **An uncategorised refund, or money in.** It never reduces `spentMinor`, and it stays in `inboxCount`. A refund in a budgeted category does reduce that category's spend (Task 2).
+2. **A transaction whose `counted_date` moves it into or out of the month**, including one moved into a future month. It counts only in the month of its counted date (Task 2).
+3. **A superseded pending row and its posted row.** They count once, and a vanished pending row counts nowhere (Task 2).
+4. **The last day of the month in London around midnight UTC.** At `2026-03-31T22:30Z` it's still 31 March (BST, so 23:30 local) and `daysRemaining = 1`. At `2026-03-31T23:30Z` it's 1 April, and March is a past month (Task 2).
+5. **A `left` that doesn't divide evenly**, or that's zero or negative. `perWeekMinor` is floored, and is 0 when nothing is left (Task 1, Task 2).
+6. **The cost.** One call runs 3 statements, which a counting D1 wrapper checks (Task 2).
+
+### Task 1: Days in a month
+
+**Files:**
+- Modify: `src/worker/importer/dates.ts`
+- Test: `test/importer/dates.spec.ts`
+
+**Interfaces:**
+- Produces: `daysInMonth(month: string): number`, for `YYYY-MM`.
+
+- [ ] **Step 1: write the failing tests:** `2026-02` → 28, `2024-02` → 29, `2026-04` → 30, `2026-10` → 31, `2026-12` → 31.
+- [ ] **Step 2:** run `npx vitest run test/importer/dates.spec.ts`. The new tests should fail.
+- [ ] **Step 3:** implement it with `Date.UTC(y, m, 0)`, like `addDays`.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): add a days-in-month helper`, with the trailer `Phase: P2.6`.
+
+### Task 2: Month summary route
+
+**Files:**
+- Modify: `src/worker/budget/resolve.ts` (export `INBOX`) and `src/worker/routes/inbox.ts` (import it)
+- Create: `src/worker/routes/months.ts`
+- Modify: `src/worker/index.ts` (mount it at `/months`)
+- Test: `test/summary.spec.ts`
+
+**Interfaces:**
+- Consumes: `RESOLVED_CTE`, `INBOX`, `readBudget`, `londonMonth`, `londonToday` and `daysInMonth`.
+- `GET /api/months/:month/summary` → `{month, overallMinor, allocatedMinor, miscMinor, spentMinor, pendingSpentMinor, leftMinor, daysRemaining, perWeekMinor, categories: {categoryId, kind, spentMinor, pendingSpentMinor, allocatedMinor}[], trackedMinor, inboxCount, lastDataChangeAt}`. A bad or future month gets `400 bad_request`.
+
+- [ ] **Step 1: write the failing tests**, using `ledger()` from `test/budget/helpers.ts` and a fixed clock:
+  - counting:
+    - an excluded override and an excluded category count 0
+    - tracked spend is in `trackedMinor` and not in `spentMinor`
+    - uncategorised money out counts, and money in doesn't (but is in `inboxCount`)
+    - a refund reduces its category's spend
+    - `counted_amount_minor` replaces the bank amount
+    - a vanished row doesn't count
+    - a superseded pending row and its posted row count once between them
+    - pending spend is reported both on its own and inside the total, overall and per category
+  - months:
+    - `counted_date` moves a transaction into another month
+    - a row in another month doesn't count
+  - budget figures:
+    - `allocated`, `misc` and `left` come from the effective rows
+    - a budgeted category with an allocation and no spend is listed
+    - an archived budgeted category's spend counts
+    - before any budget, the figures are null and spend is still shown
+  - pacing:
+    - on the last day of the month, `daysRemaining = 1` and `perWeekMinor = left × 7`
+    - mid-month, `perWeekMinor` is floored (for example `left = 1000` with 3 days left gives 2333)
+    - `perWeekMinor` is 0 when `left ≤ 0`
+    - a past month has null pacing
+    - at `2026-03-31T22:30Z` it's March with 1 day remaining, and at `23:30Z` March is past
+  - `lastDataChangeAt` is the latest across enabled accounts, ignoring disabled ones, and null when there are none
+  - `400` for `2026-13`, `2026-1`, `202610`, `2026-10-01` and next month
+  - one call runs 3 statements (counted by wrapping `env.DB`)
+- [ ] **Step 2:** run `npx vitest run test/summary.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it. Run the inbox specs too, since `INBOX` moved.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review`, then commit: `feat(worker): add the month summary route`, with the trailer `Phase: P2.6`.
+
+### Task 3: Docs
+
+- [ ] Add the summary endpoint to [schema-and-api.md](schema-and-api.md), then commit: `docs: record the month summary endpoint`.
 
 **The first usable cut is done when P2.1–P2.6 are merged and deployed.** Bills, insights, stale-data warnings and the digest each get a short design before they're added here.

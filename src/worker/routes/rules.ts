@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { RESOLVED_CTE, normalizePattern } from "../budget/resolve";
+import { RESOLVED_CTE, isRulablePattern, normalizePattern } from "../budget/resolve";
 import { MATCH_TYPES } from "../db/schema";
 import { idParam, isUniqueViolation, parseBody } from "./query";
+import { checkRefs } from "./refs";
 
 // Merchant rules set a merchant's default category. Rules are resolved when data is read, so
 // every change here re-sorts past transactions that have no category override at once.
@@ -11,30 +12,14 @@ import { idParam, isUniqueViolation, parseBody } from "./query";
 const COLUMNS = "id, match_type AS matchType, pattern, account_id AS accountId, category_id AS categoryId";
 type Rule = { id: number; matchType: string; pattern: string; accountId: number | null; categoryId: number };
 
-// Normalised as SQLite matches it; the stored pattern is what the response shows. SQLite's
-// trim() leaves tabs and newlines, so a pattern still edged with whitespace is refused: an
-// exact one could never match, and a lone tab would catch every merchant containing one.
-const pattern = z
-  .string()
-  .transform(normalizePattern)
-  .pipe(z.string().min(1).max(100).refine((p) => !/^\s|\s$/.test(p)));
+// Normalised as SQLite matches it; the stored pattern is what the response shows.
+const pattern = z.string().transform(normalizePattern).refine(isRulablePattern);
 const fields = {
   matchType: z.enum(MATCH_TYPES),
   pattern,
   accountId: z.number().int().positive().nullable(),
   categoryId: z.number().int().positive(),
 };
-
-/** Why a rule can't point at these, or null if it can. A merged account is hidden from the UI, so it counts as unknown. */
-async function checkRefs(db: D1Database, categoryId: number | undefined, accountId: number | null | undefined) {
-  const [category, account] = await Promise.all([
-    categoryId === undefined ? null : db.prepare("SELECT archived_at FROM categories WHERE id = ?1").bind(categoryId).first<{ archived_at: string | null }>(),
-    accountId == null ? null : db.prepare("SELECT 1 FROM accounts WHERE id = ?1 AND merged_into_account_id IS NULL").bind(accountId).first(),
-  ]);
-  if ((categoryId !== undefined && !category) || (accountId != null && !account)) return { error: "not_found", status: 404 } as const;
-  if (category?.archived_at) return { error: "category_archived", status: 409 } as const;
-  return null;
-}
 
 export const ruleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
