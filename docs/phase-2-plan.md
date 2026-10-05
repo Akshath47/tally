@@ -388,7 +388,7 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 - [ ] Add the five tables to [schema-and-api.md](schema-and-api.md), marked (P2.2), and extend its CHECKs paragraph.
 - [ ] Mark P2.2's checkbox only once its **Accept when** has run, then commit: `docs: record the phase 2 tables and category seed`.
 
-## [ ] P2.3 Categories and rules
+## [x] P2.3 Categories and rules
 
 **Deliverable:**
 - A `src/worker/budget/resolve.ts` SQL fragment that gives each counted transaction its `category_id` and `category_source`, following the spec's precedence.
@@ -401,7 +401,14 @@ This step adds tables only. Nothing reads or writes them until P2.3, so it chang
 - `security-review` is clean
 - `npm run check` passes
 
-This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merges. Allocation zeroing on a kind change or archive belongs to P2.5, which hooks into this step's `PATCH /api/categories/:id`.
+**Done (2026-10-05):** merged as #25 after #24.
+- The precedence and re-sort tests pass.
+- `security-review` found nothing.
+- `npm run check` passes on `main` at `d44a43a` (402 tests).
+- Deployed with P2.2 as version `a7c3074e`. Logged-out `/api/categories` and `/api/rules` redirect to the Access login.
+- Signed-in routes haven't been tried in production yet. That isn't part of this step's Accept when.
+
+This step was built stacked on P2.2's branch. Allocation zeroing on a kind change or archive belongs to P2.5, which hooks into this step's `PATCH /api/categories/:id`.
 
 **Decisions:**
 - **Merchant text is normalised the way SQLite does it.** Matching runs in SQL against `lower(trim(merchant))`, and SQLite's `lower()` only folds ASCII and its `trim()` only strips spaces. So patterns are normalised by `normalizePattern()`, which does exactly the same: spaces only, A–Z only. A pattern normalised by JavaScript's own `toLowerCase()` or `trim()` would never match a merchant like `CAFÉ` exactly.
