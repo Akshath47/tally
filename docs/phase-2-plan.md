@@ -556,6 +556,8 @@ This step needs no migration: `monthly_budgets` and `category_budgets` exist sin
 - **Allocating to a category that isn't budgeted, or is archived, is `409 category_not_budgeted` or `409 category_archived`.** The spec requires both checks but names no codes; `category_archived` matches the rules route. The order is: `400` (bad id or body), `404` (unknown category), `409 category_archived`, `409 category_not_budgeted`, `409 overall_budget_not_set`, then `422 over_allocated`.
 - **Zeroing follows the category's state, not the patch.** In the same `D1.batch` as the `UPDATE`, one upsert writes a 0 row for the current month when the category is now not budgeted or archived **and** its current effective allocation is above 0. A failed `UPDATE` (`name_taken`) rolls the batch back, so nothing is zeroed. A category with no allocation gets no row.
 - **There is no lock between the validation read and the write** (the spec: one user). The write is a plain upsert on the current month's row.
+- **Lowering a category's allocation is always allowed**, even when the budget is over-allocated (which the API never causes, but SQL written by hand could). Otherwise the owner couldn't get back under through the API.
+- **Past months keep their rows, not their kinds.** Zeroing never touches an earlier month's row, but kinds aren't dated, so `readBudget` for a past month counts categories by their current kind, as the spec accepts.
 - **A `0` allocation is accepted and stored**, since it's how an allocation is removed from a month on. The overall figure must be > 0, as its CHECK requires. Both must be safe integers.
 
 ### Review focus for P2.5
