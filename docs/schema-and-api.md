@@ -143,14 +143,17 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | GET | `/api/import-runs?limit=20` | `{runs, importing}`: recent runs with per-account results (`limit ≤ 50`), and whether a run currently holds the import lease |
 | GET | `/api/categories` | `{categories: {id, name, kind, archived}[]}`, archived ones included, ordered by id (P2.3) |
 | POST | `/api/categories` | `{name, kind}`, with the name trimmed to 1–50 characters → `201 {category}`. `409 name_taken` if the name exists ignoring ASCII case (`COLLATE NOCASE` doesn't fold accented letters, so `Café` and `CAFÉ` can coexist) |
-| PATCH | `/api/categories/:id` | `{name?, kind?, archived?}` (at least one) → `{category}`. `404` / `409 name_taken`. Categories are archived, never deleted |
+| PATCH | `/api/categories/:id` | `{name?, kind?, archived?}` (at least one) → `{category}`. `404` / `409 name_taken`. Categories are archived, never deleted. A category left not budgeted or archived has its allocation set to 0 from the current month, in the same batch (P2.5) |
 | GET | `/api/rules` | `{rules: {id, matchType, pattern, accountId, categoryId, transactionCount}[]}`. `transactionCount` = counted rows the rule decides, with no category override (P2.3) |
 | POST | `/api/rules` | `{matchType, pattern, accountId?, categoryId}` → `201 {rule}`. The pattern is stored as SQLite's `lower(trim())` would compute it (ASCII and spaces only), 1–100 characters. `409 rule_exists` / `409 category_archived` / `404` (unknown or merged account, unknown category) |
 | PATCH | `/api/rules/:id` | Any of the create fields. `accountId: null` makes the rule apply to any account. Same errors as create |
 | DELETE | `/api/rules/:id` | `{ok: true}` or `404`. Its transactions fall back to the next matching rule, or to uncategorised |
+| GET | `/api/budget` | The current London month's `{month, overallMinor, allocatedMinor, miscMinor, categories: {categoryId, allocatedMinor, maxAllocatableMinor}[]}`, listing every budgeted, unarchived category by id. `allocatedMinor` sums those categories' allocations, `miscMinor` = overall − allocated, and `maxAllocatableMinor` = overall − every other allocation. Before the first overall figure, `overallMinor`, `miscMinor` and every `maxAllocatableMinor` are null (P2.5) |
+| PUT | `/api/budget/overall` | `{amountMinor}`, a safe integer > 0, effective from the current London month → the `GET` body. `422 {error:"below_allocated", minOverallMinor}` |
+| PUT | `/api/budget/categories/:categoryId` | `{amountMinor}`, a safe integer ≥ 0 (0 removes the allocation from this month on), effective from the current London month → the `GET` body. `404` / `409 category_archived` / `409 category_not_budgeted` / `409 overall_budget_not_set` / `422 {error:"over_allocated", maxAllocatableMinor}` |
 
 Responses use camelCase fields. Provider account and connection ids are not exposed.
 
-`POST`, `PATCH` and `DELETE` requests must send `Content-Type: application/json` (otherwise `415`). Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
+`POST`, `PUT`, `PATCH` and `DELETE` requests must send `Content-Type: application/json` (otherwise `415`). Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
 
 Errors are JSON: `400 {error:"bad_request"}` (invalid query parameter), `401 {error:"unauthenticated"}` (no or invalid Access JWT), `403 {error:"forbidden"}` (valid JWT, wrong email), `404 {error:"not_found"}`, `500 {error:"internal"}` (no details leaked).
