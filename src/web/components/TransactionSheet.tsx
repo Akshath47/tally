@@ -226,7 +226,8 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
           <div className="flex items-start gap-2.5 rounded-button border border-accent/20 bg-accent-tint/70 px-3.5 py-3">
             <Info size={17} className="mt-px shrink-0 text-accent-fg" />
             <p className="flex-1 text-[13px] leading-normal text-fg/85">
-              From the bank: <span className="font-semibold">{bankAmount}</span> on <span className="font-semibold">{formatShortDate(t.txnDate)}</span>. Your amount and date are used instead.
+              From the bank: <span className="font-semibold">{bankAmount}</span> on <span className="font-semibold">{formatShortDate(t.txnDate)}</span>. Your{" "}
+              {built.body.countedAmountMinor !== null && built.body.countedDate !== null ? "amount and date are" : built.body.countedAmountMinor !== null ? "amount is" : "date is"} used instead.
             </p>
             <button type="button" className="min-h-8 px-1 text-[13px] font-medium text-accent-fg" onClick={() => set({ amountText: minorToInput(t.amountMinor), date: t.txnDate })}>
               Reset
