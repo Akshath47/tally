@@ -62,7 +62,8 @@ export const budgetRoutes = new Hono<AppEnv>()
     const now = new Date();
     const month = londonMonth(now);
     const rows = await readBudget(c.env.DB, month);
-    const current = rows.allocations.find((a) => a.categoryId === categoryId);
+    const budget = toBudget(month, rows);
+    const current = budget.categories.find((a) => a.categoryId === categoryId);
     // Only budgeted, unarchived categories are listed; anything else says why it can't be allocated.
     if (!current) {
       const category = await c.env.DB.prepare("SELECT kind, archived_at FROM categories WHERE id = ?1")
@@ -73,8 +74,9 @@ export const budgetRoutes = new Hono<AppEnv>()
     }
     const { overallMinor } = rows;
     if (overallMinor === null) return c.json({ error: "overall_budget_not_set" }, 409);
-    // A cut is always allowed, so an over-allocated budget can be brought back under.
-    const maxAllocatableMinor = overallMinor - sumAllocated(rows) + current.allocatedMinor;
+    // Non-null once there's an overall figure. A cut is always allowed, so an over-allocated
+    // budget can be brought back under.
+    const maxAllocatableMinor = current.maxAllocatableMinor!;
     if (amountMinor > current.allocatedMinor && amountMinor > maxAllocatableMinor) {
       return c.json({ error: "over_allocated", maxAllocatableMinor }, 422);
     }
