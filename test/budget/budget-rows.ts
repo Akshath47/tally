@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { NOW } from "../db";
+import { get } from "../http";
 
 // Raw-SQL budget rows for the P2.5 specs. All values are synthetic.
 
@@ -21,3 +22,16 @@ export async function budgetRows() {
   ]);
   return { overall: overall.results, allocations: allocations.results };
 }
+
+/** The seeded budgeted categories (0005_seed_categories.sql), in id order. */
+export const SEEDED_BUDGETED = [1, 2, 3, 4, 5, 6, 7, 8];
+
+export type Budget = {
+  month: string;
+  overallMinor: number | null;
+  allocatedMinor: number;
+  miscMinor: number | null;
+  categories: { categoryId: number; allocatedMinor: number; maxAllocatableMinor: number | null }[];
+};
+
+export const getBudget = async () => (await (await get("/api/budget")).json()) as Budget;

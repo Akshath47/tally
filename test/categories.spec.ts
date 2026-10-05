@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb } from "./db";
 import { get, send } from "./http";
-import { budgetRows, insertAllocation, insertOverall } from "./budget/budget-rows";
+import { budgetRows, getBudget, insertAllocation, insertOverall } from "./budget/budget-rows";
 import { SEEDED } from "./budget/helpers";
 
 // All data is synthetic.
@@ -142,7 +142,6 @@ describe("PATCH /api/categories/:id and budget allocations", () => {
   it("lists an unarchived category in the budget again, at 0", async () => {
     await patch(SEEDED.shopping, { archived: true });
     await patch(SEEDED.shopping, { archived: false });
-    const budget = (await (await get("/api/budget")).json()) as { categories: { categoryId: number; allocatedMinor: number }[] };
-    expect(budget.categories.find((c) => c.categoryId === SEEDED.shopping)).toMatchObject({ allocatedMinor: 0 });
+    expect((await getBudget()).categories.find((c) => c.categoryId === SEEDED.shopping)).toMatchObject({ allocatedMinor: 0 });
   });
 });

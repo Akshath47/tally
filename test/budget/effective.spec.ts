@@ -2,12 +2,10 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { readBudget } from "../../src/worker/budget/effective";
 import { resetDb } from "../db";
-import { insertAllocation, insertOverall } from "./budget-rows";
+import { SEEDED_BUDGETED as BUDGETED, insertAllocation, insertOverall } from "./budget-rows";
 import { SEEDED } from "./helpers";
 
 // All data is synthetic.
-
-const BUDGETED = [1, 2, 3, 4, 5, 6, 7, 8]; // the seeded budgeted categories, in id order
 
 beforeEach(resetDb);
 
