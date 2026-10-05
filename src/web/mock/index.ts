@@ -160,9 +160,10 @@ function summary(month: string): MonthSummary {
     leftMinor: left,
     daysRemaining: days,
     perWeekMinor: days === null || left === null ? null : left > 0 ? Math.floor((left * 7) / days) : 0,
-    categories: [...byCategory.values()],
+    // By id, with Uncategorised last.
+    categories: [...byCategory.values()].sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity)),
     trackedMinor: tracked,
-    inboxCount: resolved.filter((t) => isInbox(t) && !t.isPending).length,
+    inboxCount: resolved.filter(isInbox).length,
     lastDataChangeAt: accounts.filter((a) => a.importEnabled).reduce<string | null>((max, a) => (a.lastDataChangeAt && (!max || a.lastDataChangeAt > max) ? a.lastDataChangeAt : max), null),
   };
 }
@@ -176,11 +177,12 @@ function getBudget(): Budget {
     overallMinor: overall,
     allocatedMinor,
     miscMinor: misc,
-    maxAllocatableMinor: misc,
-    categories: categories.flatMap((c) => {
-      const allocation = budget.allocations.get(c.id);
-      return c.kind === "budgeted" && !c.archived && allocation ? [{ categoryId: c.id, allocatedMinor: allocation }] : [];
-    }),
+    categories: categories
+      .filter((c) => c.kind === "budgeted" && !c.archived)
+      .map((c) => {
+        const allocatedMinor = budget.allocations.get(c.id) ?? 0;
+        return { categoryId: c.id, allocatedMinor, maxAllocatableMinor: misc === null ? null : misc + allocatedMinor };
+      }),
   };
 }
 
@@ -223,17 +225,17 @@ function upsertMerchantRule(merchant: string, categoryId: number) {
   else rules.push({ id: nextRuleId++, matchType: "exact", pattern, accountId: null, categoryId });
 }
 
-/** [method, path pattern, served in "missing" mode, handler]. */
-const ROUTES: [string, RegExp, boolean, Handler][] = [
-  ["GET", /^\/api\/accounts$/, false, () => ok({ accounts: accounts.filter((a) => a.importEnabled || a.needsReview) })],
-  ["POST", /^\/api\/accounts\/(\d+)\/enable$/, false, (m) => {
+/** [method, path pattern, handler]. */
+const ROUTES: [string, RegExp, Handler][] = [
+  ["GET", /^\/api\/accounts$/, () => ok({ accounts: accounts.filter((a) => a.importEnabled || a.needsReview) })],
+  ["POST", /^\/api\/accounts\/(\d+)\/enable$/, (m) => {
     const a = accounts.find((x) => x.id === Number(m[1]));
     if (!a) return fail(404, "not_found");
     if (!a.needsReview) return fail(409, "not_awaiting_review");
     Object.assign(a, { needsReview: false, importEnabled: true });
     return ok({ ok: true });
   }],
-  ["POST", /^\/api\/accounts\/(\d+)\/link$/, false, (m, _u, body) => {
+  ["POST", /^\/api\/accounts\/(\d+)\/link$/, (m, _u, body) => {
     const held = accounts.find((x) => x.id === Number(m[1]));
     const target = accounts.find((x) => x.id === body.intoAccountId);
     if (!held || !target) return fail(404, "not_found");
@@ -242,14 +244,14 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     accounts.splice(accounts.indexOf(held), 1);
     return ok({ ok: true });
   }],
-  ["GET", /^\/api\/import-runs$/, false, () => {
+  ["GET", /^\/api\/import-runs$/, () => {
     const runs: ImportRun[] = [{ id: 1, trigger: "cron", startedAt: hoursAgo(3), status: "success", errorSummary: null, accounts: SEED_ACCOUNTS.map((a) => ({ accountId: a.id, status: "success", inserted: 2, updated: 0, error: null })) }];
     return ok({ runs, importing: false });
   }],
-  ["POST", /^\/api\/import-runs$/, false, () => fail(429, "rate_limited", { retryAfterSeconds: 60 })],
+  ["POST", /^\/api\/import-runs$/, () => fail(429, "rate_limited", { retryAfterSeconds: 60 })],
 
-  ["GET", /^\/api\/categories$/, false, () => ok({ categories })],
-  ["POST", /^\/api\/categories$/, false, (_m, _u, body) => {
+  ["GET", /^\/api\/categories$/, () => ok({ categories })],
+  ["POST", /^\/api\/categories$/, (_m, _u, body) => {
     const name = String(body.name ?? "").trim();
     if (!name) return fail(400, "bad_request");
     if (categories.some((c) => normalize(c.name) === normalize(name))) return fail(409, "name_taken");
@@ -257,7 +259,7 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     categories.push(category);
     return ok({ category }, 201);
   }],
-  ["PATCH", /^\/api\/categories\/(\d+)$/, false, (m, _u, body) => {
+  ["PATCH", /^\/api\/categories\/(\d+)$/, (m, _u, body) => {
     const c = findCategory(Number(m[1]));
     if (!c) return fail(404, "not_found");
     if (typeof body.name === "string" && categories.some((x) => x !== c && normalize(x.name) === normalize(body.name as string))) return fail(409, "name_taken");
@@ -268,7 +270,7 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     return ok({ category: c });
   }],
 
-  ["GET", /^\/api\/rules$/, false, () => {
+  ["GET", /^\/api\/rules$/, () => {
     const counts = new Map<number, number>();
     for (const t of transactions) {
       const rule = t.vanishedAt === null && overrides.get(t.id)?.categoryId == null ? matchRule(t) : undefined;
@@ -276,7 +278,7 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     }
     return ok({ rules: rules.map((r) => ({ ...r, transactionCount: counts.get(r.id) ?? 0 })) });
   }],
-  ["POST", /^\/api\/rules$/, false, (_m, _u, body) => {
+  ["POST", /^\/api\/rules$/, (_m, _u, body) => {
     const pattern = normalize(String(body.pattern ?? ""));
     const accountId = (body.accountId as number | null | undefined) ?? null;
     if (!pattern || !findCategory(body.categoryId)) return fail(400, "bad_request");
@@ -285,7 +287,7 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     rules.push(rule);
     return ok({ rule }, 201);
   }],
-  ["PATCH", /^\/api\/rules\/(\d+)$/, false, (m, _u, body) => {
+  ["PATCH", /^\/api\/rules\/(\d+)$/, (m, _u, body) => {
     const rule = rules.find((r) => r.id === Number(m[1]));
     if (!rule) return fail(404, "not_found");
     if (body.matchType) rule.matchType = body.matchType as MatchType;
@@ -294,15 +296,14 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     if (body.categoryId !== undefined) rule.categoryId = body.categoryId as number;
     return ok({ rule });
   }],
-  ["DELETE", /^\/api\/rules\/(\d+)$/, false, (m) => {
+  ["DELETE", /^\/api\/rules\/(\d+)$/, (m) => {
     const i = rules.findIndex((r) => r.id === Number(m[1]));
     if (i < 0) return fail(404, "not_found");
     rules.splice(i, 1);
     return ok({ ok: true });
   }],
 
-  // P2.4: the list is real on main but lacks the category and override fields until then.
-  ["GET", /^\/api\/transactions$/, true, (_m, url) => {
+  ["GET", /^\/api\/transactions$/, (_m, url) => {
     const accountId = url.searchParams.get("account_id");
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
@@ -311,16 +312,18 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
       .map(resolve);
     return ok(page(rows, url));
   }],
-  ["PUT", /^\/api\/transactions\/(\d+)\/override$/, true, (m, _u, body) => {
+  ["PUT", /^\/api\/transactions\/(\d+)\/override$/, (m, _u, body) => {
     const txn = editableTxn(Number(m[1]));
     if ("status" in txn) return txn;
     if ((body.countedAmountMinor != null && !isAmount(body.countedAmountMinor)) || (body.categoryId != null && !findCategory(body.categoryId))) return fail(400, "bad_request");
-    const next: Override = { ...(overrides.get(txn.id) ?? NO_OVERRIDE) };
+    // Replaces the whole override, as the Worker does.
+    const next: Override = { ...NO_OVERRIDE };
     for (const key of Object.keys(NO_OVERRIDE) as (keyof Override)[]) {
       if (body[key] !== undefined) (next as Body)[key] = body[key];
     }
     if (next.note === "") next.note = null;
-    if (body.applyToMerchant === true && next.categoryId !== null) {
+    if (body.applyToMerchant === true) {
+      if (next.categoryId === null) return fail(400, "bad_request");
       upsertMerchantRule(txn.merchant, next.categoryId);
       next.categoryId = null;
     }
@@ -328,68 +331,92 @@ const ROUTES: [string, RegExp, boolean, Handler][] = [
     else overrides.set(txn.id, next);
     return ok({ transaction: resolve(txn) });
   }],
-  ["DELETE", /^\/api\/transactions\/(\d+)\/override$/, true, (m) => {
+  ["DELETE", /^\/api\/transactions\/(\d+)\/override$/, (m) => {
     const txn = editableTxn(Number(m[1]));
     if ("status" in txn) return txn;
     overrides.delete(txn.id);
     return ok({ transaction: resolve(txn) });
   }],
-  ["GET", /^\/api\/inbox$/, true, (_m, url) => {
+  ["GET", /^\/api\/inbox$/, (_m, url) => {
     const rows = transactions.map(resolve).filter(isInbox);
     return ok({ ...page(rows, url), total: rows.length });
   }],
-  ["GET", /^\/api\/inbox\/merchants$/, true, () => {
+  ["GET", /^\/api\/inbox\/merchants$/, () => {
     const groups = new Map<string, InboxMerchant>();
     for (const t of transactions.map(resolve)) {
-      if (!isInbox(t) || t.isPending) continue;
-      const key = normalize(t.merchant);
-      const g = groups.get(key) ?? { merchant: t.merchant, count: 0, totalMinor: 0, latestDate: t.txnDate };
+      if (!isInbox(t)) continue;
+      const pattern = normalize(t.merchant);
+      const g = groups.get(pattern) ?? { pattern, merchant: t.merchant, count: 0, totalMinor: 0, latestDate: t.txnDate, rulable: pattern.length > 0 && pattern.length <= 100 };
       g.count += 1;
-      g.totalMinor += t.amountMinor;
-      if (t.txnDate > g.latestDate) g.latestDate = t.txnDate;
-      groups.set(key, g);
+      g.totalMinor += t.countedAmountMinor ?? t.amountMinor;
+      if (t.txnDate > g.latestDate) Object.assign(g, { latestDate: t.txnDate, merchant: t.merchant });
+      groups.set(pattern, g);
     }
     return ok({ merchants: [...groups.values()].sort((a, b) => b.count - a.count || b.latestDate.localeCompare(a.latestDate)) });
   }],
 
-  ["GET", /^\/api\/budget$/, true, () => ok(getBudget())],
-  ["PUT", /^\/api\/budget\/overall$/, true, (_m, _u, body) => {
+  ["GET", /^\/api\/budget$/, () => ok(getBudget())],
+  ["PUT", /^\/api\/budget\/overall$/, (_m, _u, body) => {
     if (!isAmount(body.amountMinor) || body.amountMinor <= 0) return fail(400, "bad_request");
     if (body.amountMinor < allocated()) return fail(422, "below_allocated", { minOverallMinor: allocated() });
     budget.overallMinor = body.amountMinor;
     return ok(getBudget());
   }],
-  ["PUT", /^\/api\/budget\/categories\/(\d+)$/, true, (m, _u, body) => {
+  ["PUT", /^\/api\/budget\/categories\/(\d+)$/, (m, _u, body) => {
     const c = findCategory(Number(m[1]));
     if (!isAmount(body.amountMinor) || body.amountMinor < 0) return fail(400, "bad_request");
     if (!c) return fail(404, "not_found");
     if (budget.overallMinor === null) return fail(409, "overall_budget_not_set");
-    if (c.kind !== "budgeted" || c.archived) return fail(409, "not_budgeted");
+    if (c.archived) return fail(409, "category_archived");
+    if (c.kind !== "budgeted") return fail(409, "category_not_budgeted");
     const others = allocated() - (budget.allocations.get(c.id) ?? 0);
-    if (others + body.amountMinor > budget.overallMinor) return fail(422, "over_allocated", { maxAllocatableMinor: budget.overallMinor - others });
+    const current = budget.allocations.get(c.id) ?? 0;
+    // A cut is always allowed, so an over-allocated budget can be brought back under.
+    if (body.amountMinor > current && others + body.amountMinor > budget.overallMinor) return fail(422, "over_allocated", { maxAllocatableMinor: budget.overallMinor - others });
     if (body.amountMinor === 0) budget.allocations.delete(c.id);
     else budget.allocations.set(c.id, body.amountMinor);
     return ok(getBudget());
   }],
 
-  ["GET", /^\/api\/months\/(\d{4}-(?:0[1-9]|1[0-2]))\/summary$/, true, (m) => (m[1]! > monthOf(today) ? fail(400, "bad_request") : ok(summary(m[1]!)))],
+  ["GET", /^\/api\/months\/(\d{4}-(?:0[1-9]|1[0-2]))\/summary$/, (m) => (m[1]! > monthOf(today) ? fail(400, "bad_request") : ok(summary(m[1]!)))],
 ];
 
 /**
- * The mock's reply for this request, or null to send it to the real Worker. In "missing" mode
- * only the endpoints the backend doesn't serve yet are answered here.
+ * Screen states to review, picked with `?mock=<scenario>` on any URL and kept for the tab:
+ * "firstrun" (no budget yet), "over" (spent past the budget), "error" (the summary fails),
+ * "slow" (5 s latency, to see loading states).
  */
-export function handle(path: string, init: RequestInit | undefined, mode: string | undefined): Promise<Response> | null {
+const scenario = (() => {
+  const fromUrl = new URLSearchParams(window.location.search).get("mock");
+  try {
+    if (fromUrl !== null) sessionStorage.setItem("tally-mock", fromUrl);
+    return sessionStorage.getItem("tally-mock") ?? "";
+  } catch {
+    return fromUrl ?? "";
+  }
+})();
+if (scenario === "firstrun") {
+  budget.overallMinor = null;
+  budget.allocations.clear();
+}
+if (scenario === "over") {
+  budget.overallMinor = 20_000;
+  budget.allocations = new Map([[4, 5_000], [1, 6_000], [2, 3_000], [3, 4_000]]);
+}
+
+/** The mock's reply for any /api request. */
+export function handle(path: string, init: RequestInit | undefined): Promise<Response> {
   const url = new URL(path, window.location.origin);
   const method = init?.method ?? "GET";
-  for (const [routeMethod, pattern, missing, handler] of ROUTES) {
+  let reply: Reply = fail(404, "not_found");
+  for (const [routeMethod, pattern, handler] of ROUTES) {
     const match = routeMethod === method ? pattern.exec(url.pathname) : null;
-    if (!match || (mode !== "all" && !missing)) continue;
+    if (!match) continue;
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Body) : {};
-    const reply = handler(match, url, body);
-    // Serialised, so the screens never hold references into the mock's state.
-    const response = new Response(JSON.stringify(reply.body), { status: reply.status, headers: { "Content-Type": "application/json" } });
-    return new Promise((r) => setTimeout(() => r(response), LATENCY_MS));
+    reply = scenario === "error" && url.pathname.endsWith("/summary") ? fail(500, "internal") : handler(match, url, body);
+    break;
   }
-  return mode === "all" && url.pathname.startsWith("/api/") ? Promise.resolve(Response.json({ error: "not_found" }, { status: 404 })) : null;
+  // Serialised, so the screens never hold references into the mock's state.
+  const response = new Response(JSON.stringify(reply.body), { status: reply.status, headers: { "Content-Type": "application/json" } });
+  return new Promise((r) => setTimeout(() => r(response), scenario === "slow" ? 5_000 : LATENCY_MS));
 }

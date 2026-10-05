@@ -1,12 +1,9 @@
 import type { CATEGORY_KINDS, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
 
-// Request and response shapes from docs/phase-2-spec.md (API) and src/worker/routes. Money is
+// Request and response shapes from docs/schema-and-api.md and src/worker/routes. Money is
 // integer minor units. Budget and spend figures are positive = spend; transaction amounts keep
 // the bank sign. Months are YYYY-MM, dates YYYY-MM-DD. Bank text (merchant, description, note)
 // is untrusted and only ever rendered as text.
-//
-// Fields marked "inferred" aren't named by the spec; they're this client's guess until the
-// backend slice that serves them lands.
 
 export type RunStatus = (typeof IMPORT_RUN_STATUSES)[number];
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
@@ -68,7 +65,7 @@ export type Transaction = {
   categorySource: "override" | "rule" | null;
   /** False for pending or vanished rows. */
   editable: boolean;
-  // The override fields (names inferred from the PUT body); null = bank value / no override.
+  // The override fields; null = the bank value, or no override category (follow the rules).
   excluded: boolean;
   countedAmountMinor: number | null;
   countedDate: string | null;
@@ -77,29 +74,47 @@ export type Transaction = {
 
 export type Page<T> = { transactions: T[]; nextCursor: string | null };
 
-/** PUT /api/transactions/:id/override. null clears a field back to the bank value or the rules. */
+/**
+ * PUT /api/transactions/:id/override **replaces** the override: a field left out goes back to
+ * its default, and all defaults remove it. `categoryId` is the override's own category; null
+ * follows the rules.
+ */
 export type OverrideInput = {
   categoryId?: number | null;
   excluded?: boolean;
   countedAmountMinor?: number | null;
   countedDate?: string | null;
   note?: string | null;
-  /** Create or update an any-account exact rule for this merchant instead of a category override. */
+  /** Puts `categoryId` on this merchant's exact rules instead of on this row. */
   applyToMerchant?: boolean;
 };
 
-/** One group from GET /api/inbox/merchants (field names inferred). `totalMinor` keeps the bank sign. */
-export type InboxMerchant = { merchant: string; count: number; totalMinor: number; latestDate: string };
+/** One group from GET /api/inbox/merchants. `totalMinor` sums counted amounts in the bank's sign. */
+export type InboxMerchant = {
+  /** lower(trim(merchant)): the pattern of the exact rule that would clear the group. */
+  pattern: string;
+  /** The latest row's text. */
+  merchant: string;
+  count: number;
+  totalMinor: number;
+  latestDate: string;
+  /** False when no rule can have this pattern; its rows are filed one by one. */
+  rulable: boolean;
+};
 
-/** GET /api/budget (field names inferred, apart from maxAllocatableMinor). */
+/** GET /api/budget, and the body of both budget PUTs. Null figures until an overall figure is set. */
 export type Budget = {
   month: string;
   overallMinor: number | null;
   allocatedMinor: number;
   miscMinor: number | null;
-  /** overall − allocated: the most any one new allocation can add. */
-  maxAllocatableMinor: number | null;
-  categories: { categoryId: number; allocatedMinor: number }[];
+  /** Every budgeted, unarchived category, by id. */
+  categories: {
+    categoryId: number;
+    allocatedMinor: number;
+    /** Overall − every other allocation: the most this category can be set to. */
+    maxAllocatableMinor: number | null;
+  }[];
 };
 
 export type SummaryCategory = {
@@ -154,7 +169,7 @@ export class ApiError extends Error {
 const mock = import.meta.env.DEV && import.meta.env.VITE_MOCK_API ? import("./mock") : null;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await ((mock && (await mock).handle(path, init, import.meta.env.VITE_MOCK_API)) ?? fetch(path, init));
+  const res = await (mock ? (await mock).handle(path, init) : fetch(path, init));
   const body = (await res.json().catch(() => null)) as T | null;
   // A 2xx without JSON is usually the Access login page after the session expired.
   if (!res.ok || body === null) throw new ApiError(res.status, body as ApiErrorBody | null);
@@ -203,10 +218,10 @@ export const getTransactions = (params: { limit: number; accountId?: number | nu
   request<Page<Transaction>>(
     `/api/transactions${query({ limit: params.limit, account_id: params.accountId, from: params.from, to: params.to, cursor: params.cursor })}`,
   );
-export const putOverride = (id: number, input: OverrideInput) => send<unknown>("PUT", `/api/transactions/${id}/override`, input);
-export const deleteOverride = (id: number) => send<unknown>("DELETE", `/api/transactions/${id}/override`);
+export const putOverride = (id: number, input: OverrideInput) => send<{ transaction: Transaction }>("PUT", `/api/transactions/${id}/override`, input);
+export const deleteOverride = (id: number) => send<{ transaction: Transaction }>("DELETE", `/api/transactions/${id}/override`);
 
-/** `total` (name inferred) counts every inbox row, not just this page. */
+/** Counted, uncategorised, not-excluded rows, money in and out, pending included. `total` counts every page. */
 export const getInbox = (params: { limit: number; cursor?: string | null }) =>
   request<Page<Transaction> & { total: number }>(`/api/inbox${query(params)}`);
 export const getInboxMerchants = () => request<{ merchants: InboxMerchant[] }>("/api/inbox/merchants");
@@ -215,9 +230,9 @@ export const getInboxMerchants = () => request<{ merchants: InboxMerchant[] }>("
 
 export const getBudget = () => request<Budget>("/api/budget");
 /** 422 below_allocated carries minOverallMinor. */
-export const putOverallBudget = (amountMinor: number) => send<unknown>("PUT", "/api/budget/overall", { amountMinor });
+export const putOverallBudget = (amountMinor: number) => send<Budget>("PUT", "/api/budget/overall", { amountMinor });
 /** 409 overall_budget_not_set; 422 over_allocated carries maxAllocatableMinor. */
 export const putCategoryBudget = (categoryId: number, amountMinor: number) =>
-  send<unknown>("PUT", `/api/budget/categories/${categoryId}`, { amountMinor });
+  send<Budget>("PUT", `/api/budget/categories/${categoryId}`, { amountMinor });
 
 export const getMonthSummary = (month: string) => request<MonthSummary>(`/api/months/${month}/summary`);
