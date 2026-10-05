@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { cursorParam, listTransactions } from "../budget/listing";
+import { overrideRoutes } from "./overrides";
 import { limitParam, parseQuery } from "./query";
 
 const querySchema = z.object({
@@ -13,7 +14,7 @@ const querySchema = z.object({
 });
 
 /** Newest first. An account filter can use the (account_id, txn_date) index. */
-export const transactionRoutes = new Hono<AppEnv>().get("/", async (c) => {
+export const transactionRoutes = new Hono<AppEnv>().route("/", overrideRoutes).get("/", async (c) => {
   const q = parseQuery(c, querySchema);
   if (!q.ok) return q.res;
   const { account_id, from, to, limit, cursor } = q.data;
