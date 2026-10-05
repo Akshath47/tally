@@ -2,12 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { cursorParam, listTransactions } from "../budget/listing";
-import { RESOLVED_CTE, isRulablePattern } from "../budget/resolve";
+import { INBOX, RESOLVED_CTE, isRulablePattern } from "../budget/resolve";
 import { limitParam, parseQuery } from "./query";
-
-// What still needs sorting: counted transactions that no override or rule categorises and that
-// haven't been excluded. Money in and out both wait here; pending rows too, though not editable.
-const INBOX = "r.vanished_at IS NULL AND r.category_id IS NULL AND r.excluded = 0";
 
 const querySchema = z.object({ limit: limitParam(200, 50), cursor: cursorParam.optional() });
 
