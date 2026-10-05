@@ -7,7 +7,7 @@ import { SEEDED, insertOverride, insertRule, ledger } from "./budget/helpers";
 
 type Txn = { id: number; amountMinor: number; editable: boolean };
 type Page = { transactions: Txn[]; nextCursor: string | null; total: number };
-type Group = { pattern: string; merchant: string; count: number; totalMinor: number; latestDate: string };
+type Group = { pattern: string; merchant: string; count: number; totalMinor: number; latestDate: string; rulable: boolean };
 
 const inbox = async (query = "") => (await (await get(`/api/inbox${query}`)).json()) as Page;
 const groups = async () => ((await (await get("/api/inbox/merchants")).json()) as { merchants: Group[] }).merchants;
@@ -66,6 +66,15 @@ describe("GET /api/inbox", () => {
     expect(seen).toEqual([ids[4], ids[3], ids[2], ids[1], ids[0]]);
   });
 
+  it("keeps the total on a later page that emptied since the previous one", async () => {
+    await L.txn(a1, { txnDate: "2026-09-30" });
+    const older = await L.txn(a1, { txnDate: "2026-09-29" });
+    const first = await inbox("?limit=1");
+    await insertOverride(older, { category_id: SEEDED.shopping });
+    const second = await inbox(`?limit=1&cursor=${encodeURIComponent(first.nextCursor!)}`);
+    expect(second).toEqual({ transactions: [], nextCursor: null, total: 1 });
+  });
+
   it("returns an empty page and a zero total when everything is sorted", async () => {
     expect(await inbox()).toEqual({ transactions: [], nextCursor: null, total: 0 });
   });
@@ -83,9 +92,15 @@ describe("GET /api/inbox/merchants", () => {
     await insertOverride(halved, { counted_amount_minor: -500 });
     await L.txn(a1, { merchant: "Synthetic Kiosk", amountMinor: -200, txnDate: "2026-10-01" });
     expect(await groups()).toEqual([
-      { pattern: "synthetic cafe", merchant: " Synthetic Cafe ", count: 3, totalMinor: -1250, latestDate: "2026-09-30" },
-      { pattern: "synthetic kiosk", merchant: "Synthetic Kiosk", count: 1, totalMinor: -200, latestDate: "2026-10-01" },
+      { pattern: "synthetic cafe", merchant: " Synthetic Cafe ", count: 3, totalMinor: -1250, latestDate: "2026-09-30", rulable: true },
+      { pattern: "synthetic kiosk", merchant: "Synthetic Kiosk", count: 1, totalMinor: -200, latestDate: "2026-10-01", rulable: true },
     ]);
+  });
+
+  it("flags a group no rule can be made from", async () => {
+    await L.txn(a1, { merchant: "  " });
+    await L.txn(a1, { merchant: "x".repeat(101) });
+    expect((await groups()).map((g) => g.rulable)).toEqual([false, false]);
   });
 
   it("only groups what the inbox lists", async () => {

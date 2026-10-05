@@ -1,15 +1,18 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { getTransaction } from "../budget/listing";
+import { EDITABLE, getTransaction } from "../budget/listing";
+import { isRulablePattern } from "../budget/resolve";
 import { NOTE_MAX_LENGTH } from "../db/schema";
 import { idParam, parseBody } from "./query";
+import { checkRefs } from "./rules";
 
 // The owner's edits to one transaction (docs/phase-2-spec.md, API). They live apart from the
 // bank-sourced row, so a re-sync never touches them.
 
 // PUT replaces the whole override: a field left out goes back to its default, and an override
-// with every field at its default is removed. An empty note is no note.
+// with every field at its default is removed. An empty note is no note. `categoryId` is the
+// override's own category: a row that should keep following the rules sends null.
 const bodySchema = z
   .object({
     categoryId: z.int().positive().nullable().default(null),
@@ -34,20 +37,16 @@ type State = {
   // What an exact rule for this merchant must equal: it's matched against lower(trim(merchant)).
   pattern: string;
   current_category_id: number | null;
-  // Null when the requested category doesn't exist (or none was requested).
-  category_archived: number | null;
 };
 
-const readState = (db: D1Database, id: number, categoryId: number | null) =>
+const readState = (db: D1Database, id: number) =>
   db
     .prepare(
-      `SELECT t.is_pending = 0 AND t.vanished_at IS NULL AS editable, t.account_id, lower(trim(t.merchant)) AS pattern,
-         o.category_id AS current_category_id,
-         (SELECT archived_at IS NOT NULL FROM categories WHERE id = ?2) AS category_archived
+      `SELECT ${EDITABLE} AS editable, t.account_id, lower(trim(t.merchant)) AS pattern, o.category_id AS current_category_id
        FROM transactions t LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
        WHERE t.id = ?1`,
     )
-    .bind(id, categoryId)
+    .bind(id)
     .first<State>();
 
 const notEditable = { error: "not_editable" } as const;
@@ -61,18 +60,17 @@ export const overrideRoutes = new Hono<AppEnv>()
     const { categoryId, excluded, countedAmountMinor, countedDate, note, applyToMerchant } = body.data;
     const db = c.env.DB;
 
-    const state = await readState(db, id, categoryId);
+    const state = await readState(db, id);
     if (!state) return c.json({ error: "not_found" }, 404);
     if (!state.editable) return c.json(notEditable, 409);
-    if (categoryId !== null) {
-      if (state.category_archived === null) return c.json({ error: "not_found" }, 404);
-      // Pickers hide archived categories, but a full-form PUT may resend the one already set.
-      // A rule can't point at an archived category at all (as POST /api/rules).
-      if (state.category_archived === 1 && (applyToMerchant || categoryId !== state.current_category_id)) {
-        return c.json({ error: "category_archived" }, 409);
-      }
+    // Pickers hide archived categories, but a full-form PUT may resend the override's own one.
+    // A rule can't point at an archived category at all (as POST /api/rules).
+    if (categoryId !== null && (applyToMerchant || categoryId !== state.current_category_id)) {
+      const refused = await checkRefs(db, categoryId, undefined);
+      if (refused) return c.json({ error: refused.error }, refused.status);
     }
-    if (applyToMerchant && state.pattern === "") return c.json({ error: "no_merchant" }, 409);
+    // The rules editor must be able to save the rule later.
+    if (applyToMerchant && !isRulablePattern(state.pattern)) return c.json({ error: "merchant_not_rulable" }, 409);
 
     const now = new Date().toISOString();
     const overrideCategoryId = applyToMerchant ? null : categoryId;
@@ -80,20 +78,19 @@ export const overrideRoutes = new Hono<AppEnv>()
     const statements: D1PreparedStatement[] = [];
 
     if (applyToMerchant) {
-      // The exact rule that decides this row: this account's own one if it has one (it outranks
-      // an any-account rule), otherwise the any-account rule, created if missing.
+      // The any-account exact rule, so every account follows, plus this account's own exact rule
+      // if it has one: that outranks the any-account rule, and this row must follow too.
       statements.push(
-        db
-          .prepare("UPDATE merchant_rules SET category_id = ?1, updated_at = ?2 WHERE match_type = 'exact' AND pattern = ?3 AND account_id = ?4")
-          .bind(categoryId, now, state.pattern, state.account_id),
         db
           .prepare(
             `INSERT INTO merchant_rules (match_type, pattern, account_id, category_id, created_at, updated_at)
-             SELECT 'exact', ?1, NULL, ?2, ?3, ?3
-             WHERE NOT EXISTS (SELECT 1 FROM merchant_rules WHERE match_type = 'exact' AND pattern = ?1 AND account_id = ?4)
+             VALUES ('exact', ?1, NULL, ?2, ?3, ?3)
              ON CONFLICT (match_type, pattern, account_scope) DO UPDATE SET category_id = excluded.category_id, updated_at = excluded.updated_at`,
           )
-          .bind(state.pattern, categoryId, now, state.account_id),
+          .bind(state.pattern, categoryId, now),
+        db
+          .prepare("UPDATE merchant_rules SET category_id = ?1, updated_at = ?2 WHERE match_type = 'exact' AND pattern = ?3 AND account_id = ?4")
+          .bind(categoryId, now, state.pattern, state.account_id),
       );
     }
     statements.push(
@@ -101,24 +98,23 @@ export const overrideRoutes = new Hono<AppEnv>()
         ? db.prepare("DELETE FROM transaction_overrides WHERE transaction_id = ?1").bind(id)
         : db
             .prepare(
-              // Guarded again here, in case the row stopped being editable since it was read.
               `INSERT INTO transaction_overrides (transaction_id, category_id, excluded, counted_amount_minor, counted_date, note, updated_at)
-               SELECT id, ?2, ?3, ?4, ?5, ?6, ?7 FROM transactions WHERE id = ?1 AND is_pending = 0 AND vanished_at IS NULL
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                ON CONFLICT (transaction_id) DO UPDATE SET category_id = excluded.category_id, excluded = excluded.excluded,
                  counted_amount_minor = excluded.counted_amount_minor, counted_date = excluded.counted_date,
                  note = excluded.note, updated_at = excluded.updated_at`,
             )
             .bind(id, overrideCategoryId, excluded ? 1 : 0, countedAmountMinor, countedDate, note, now),
     );
-    const results = await db.batch(statements);
-    if (!isDefault && results.at(-1)!.meta.changes === 0) return c.json(notEditable, 409);
+    // One batch, so the rule and the override land together or not at all.
+    await db.batch(statements);
     return c.json({ transaction: await getTransaction(db, id) });
   })
   .delete("/:id/override", async (c) => {
     const id = idParam(c);
     if (id === null) return c.json({ error: "bad_request" }, 400);
     const db = c.env.DB;
-    const state = await readState(db, id, null);
+    const state = await readState(db, id);
     if (!state) return c.json({ error: "not_found" }, 404);
     if (!state.editable) return c.json(notEditable, 409);
     await db.prepare("DELETE FROM transaction_overrides WHERE transaction_id = ?1").bind(id).run();

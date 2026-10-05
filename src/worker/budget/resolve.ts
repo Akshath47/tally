@@ -12,6 +12,13 @@ export function normalizePattern(text: string): string {
 }
 
 /**
+ * Whether a normalised pattern can be a rule's. SQLite's trim() leaves tabs and newlines, so a
+ * pattern still edged with whitespace is refused: an exact one typed by the owner could never
+ * match, and a lone tab would catch every merchant containing one.
+ */
+export const isRulablePattern = (pattern: string) => pattern.length >= 1 && pattern.length <= 100 && !/^\s|\s$/.test(pattern);
+
+/**
  * `merchant_rule AS (...), resolved AS (...)`. `resolved` has one row per transaction,
  * vanished ones included (consumers filter). Use as `WITH ${RESOLVED_CTE} SELECT ... FROM resolved`.
  *

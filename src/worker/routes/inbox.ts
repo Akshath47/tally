@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { cursorParam, listTransactions } from "../budget/listing";
-import { RESOLVED_CTE } from "../budget/resolve";
+import { RESOLVED_CTE, isRulablePattern } from "../budget/resolve";
 import { limitParam, parseQuery } from "./query";
 
 // What still needs sorting: counted transactions that no override or rule categorises and that
@@ -26,6 +26,7 @@ export const inboxRoutes = new Hono<AppEnv>()
          sum(COALESCE(r.counted_amount_minor, r.amount_minor)) AS totalMinor, max(r.txn_date) AS latestDate
        FROM resolved r WHERE ${INBOX}
        GROUP BY pattern ORDER BY count DESC, latestDate DESC, pattern`,
-    ).all();
-    return c.json({ merchants: results });
+    ).all<{ pattern: string }>();
+    // A group that can't become a rule (a blank merchant, say) is sorted row by row instead.
+    return c.json({ merchants: results.map((g) => ({ ...g, rulable: isRulablePattern(g.pattern) })) });
   });

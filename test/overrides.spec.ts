@@ -171,12 +171,18 @@ describe("PUT /api/transactions/:id/override with applyToMerchant", () => {
     expect(await rules()).toEqual([{ match_type: "exact", pattern: "synthetic grocer", account_id: null, category_id: SEEDED.shopping }]);
   });
 
-  it("updates this account's own exact rule, which outranks an any-account one", async () => {
+  it("also updates this account's own exact rule, which outranks the any-account one", async () => {
     await insertRule("exact", "synthetic grocer", SEEDED.other, a1);
+    await insertRule("exact", "synthetic grocer", SEEDED.shopping, a2);
     const id = await L.txn(a1, { merchant: "Synthetic Grocer" });
     const res = await put(id, { categoryId: SEEDED.groceries, applyToMerchant: true });
     expect(await txnOf(res)).toMatchObject({ categoryId: SEEDED.groceries, categorySource: "rule" });
-    expect(await rules()).toEqual([{ match_type: "exact", pattern: "synthetic grocer", account_id: a1, category_id: SEEDED.groceries }]);
+    // Another account's own rule is the owner's separate choice, and stays.
+    expect(await rules()).toEqual([
+      { match_type: "exact", pattern: "synthetic grocer", account_id: a1, category_id: SEEDED.groceries },
+      { match_type: "exact", pattern: "synthetic grocer", account_id: a2, category_id: SEEDED.shopping },
+      { match_type: "exact", pattern: "synthetic grocer", account_id: null, category_id: SEEDED.groceries },
+    ]);
   });
 
   it("clears an existing category override so the row follows the rule", async () => {
@@ -186,11 +192,16 @@ describe("PUT /api/transactions/:id/override with applyToMerchant", () => {
     expect(await txnOf(res)).toMatchObject({ categoryId: SEEDED.groceries, categorySource: "rule", excluded: true });
   });
 
-  it("refuses a blank merchant, which can't be a rule's pattern", async () => {
-    const id = await L.txn(a1, { merchant: "   " });
+  // The same patterns POST and PATCH /api/rules refuse, so the rules editor can always save the rule.
+  it.each([
+    ["blank", "   "],
+    ["longer than 100 characters", "x".repeat(101)],
+    ["edged with a newline", "Synthetic Grocer\n"],
+  ])("refuses a merchant that's %s, which can't be a rule's pattern", async (_, merchant) => {
+    const id = await L.txn(a1, { merchant });
     const res = await put(id, { categoryId: SEEDED.groceries, applyToMerchant: true });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "no_merchant" });
+    expect(await res.json()).toEqual({ error: "merchant_not_rulable" });
     expect(await rules()).toEqual([]);
     expect(await overrideRow(id)).toBeNull();
   });
