@@ -6,6 +6,7 @@ import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
 import { runImport, type RunDeps } from "./importer";
 import { accountRoutes } from "./routes/accounts";
 import { categoryRoutes } from "./routes/categories";
+import { inboxRoutes } from "./routes/inbox";
 import { ruleRoutes } from "./routes/rules";
 import { importRunRoutes } from "./routes/import-runs";
 import { transactionRoutes } from "./routes/transactions";
@@ -40,6 +41,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/categories", categoryRoutes);
   app.route("/rules", ruleRoutes);
   app.route("/transactions", transactionRoutes);
+  app.route("/inbox", inboxRoutes);
   app.route("/import-runs", importRunRoutes(options.importDeps ?? {}));
 
   // Unknown /api paths must not fall through to the SPA's index.html.
