@@ -512,7 +512,7 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 
 - [ ] Add the category and rule endpoints to [schema-and-api.md](schema-and-api.md), then commit: `docs: record the category and rule endpoints`.
 
-## [ ] P2.4 Overrides, inbox and transaction fields
+## [x] P2.4 Overrides, inbox and transaction fields
 
 **Deliverable:**
 - `PUT` and `DELETE /api/transactions/:id/override`, including `applyToMerchant`.
@@ -529,18 +529,44 @@ This step is stacked on P2.2's branch (`feat/p2-2-schema-seed`) until P2.2 merge
 - `security-review` is clean
 - `npm run check` passes
 
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 451 tests. Typecheck and lint are clean. The new specs are `transactions`, `overrides` and `inbox`, and each of their tests was seen to fail first.
+- The tests cover every Accept when item:
+  - `409 not_editable` on pending and vanished rows
+  - an all-default `PUT` (and `{}`) deleting the row
+  - `applyToMerchant` writing a rule with no category override
+  - uncategorised money in and out both in the inbox
+  - merchant groups summing their rows' counted amounts
+- `security-review`: no findings.
+- `code-review` (9 findings):
+  - Fixed 5.
+  - The owner settled a sixth: the `applyToMerchant` rule scope.
+  - A seventh, `toTransaction`'s delete-and-cast, was fixed during `simplify`.
+  - Didn't act on the other 2:
+    - a resent rule category: `categoryId` is the override's own category
+    - single-row reads costing a full resolution: that needs a change to P2.3's shared query, so it's noted below
+- `simplify`:
+  - The listing takes `[sql, ...binds]` tuples and its cursor is a row value.
+  - The override routes share their guard, and `checkRefs` moved to `routes/refs.ts`.
+- **Cost to watch:** every transaction list, inbox page and override response evaluates `RESOLVED_CTE` once, so one category resolution over all merchants. P2.3 pinned that under 20k rows read at 600 transactions, against D1's 5M a day. Measure rows read after the owner's first big sort of the inbox.
+- No deploy is needed before P2.5's PR (#30) lands. Whichever of the two merges second needs a small rebase for `src/worker/index.ts` and `docs/schema-and-api.md`.
+
 This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn't touch the budget tables, `routes/categories.ts` or the London-month helper, which belong to P2.5. It adds no migration.
 
 **Decisions:**
 - **`PUT /override` replaces the whole override.** A field left out of the body takes its default (`categoryId: null`, `excluded: false`, the counted fields and `note` null). The editor sends its full form, so a `PUT` with every default, `{}` included, deletes the row, as the spec requires. An empty note counts as no note.
-- **`applyToMerchant` updates the exact rule that decides this transaction.**
+- **`applyToMerchant` writes the any-account exact rule, and also this account's own one** (the owner's decision, 2026-10-05).
   - The pattern is `lower(trim(merchant))`, computed in SQL, so it equals what the rule is matched against.
-  - Normally that's the spec's any-account `exact` rule, created, or updated if it exists.
-  - But if this transaction's account already has its own `exact` rule for the merchant, that rule outranks an any-account one. So that account-scoped rule is the one updated, or the row wouldn't follow the rule, which is what the spec intends.
-  - `categoryId` is required (`400` without it). A blank merchant returns `409 no_merchant`, since a rule's pattern can't be empty.
-  - The rule upsert and the override write happen in one batch, and the override stores no category.
-- **Category references work as they do for rules.** An unknown `categoryId` returns `404 not_found`. An archived one returns `409 category_archived`, unless it's already this override's category, so a full-form `PUT` that resends it isn't refused.
-- **The editable check is part of the write.** The override `INSERT … SELECT` only matches a row that is posted and not vanished. When nothing is written, the row is re-read to choose between `404` and `409 not_editable`. `DELETE` refuses a non-editable row the same way.
+  - The spec's any-account `exact` rule is created, or updated if it exists, so every account follows the new category.
+  - If this transaction's account also has its own `exact` rule for the merchant, that rule is updated too. It outranks the any-account rule, so without the update this row wouldn't follow the rule. Other accounts' own rules are left alone.
+  - `categoryId` is required (`400` without it).
+  - A merchant that can't be a rule's pattern returns `409 merchant_not_rulable`: blank, longer than 100 characters, or edged with whitespace. This uses the same `isRulablePattern` check as `POST`/`PATCH /api/rules`, so the rules editor can always save the rule later. Merchant groups carry a `rulable` flag from the same check.
+  - The rule writes and the override write happen in one batch, and the override stores no category.
+- **Category references work as they do for rules** (`checkRefs`, now in `routes/refs.ts`).
+  - An unknown `categoryId` returns `404 not_found`.
+  - An archived one returns `409 category_archived`, unless it's already this override's category, so a full-form `PUT` that resends it isn't refused.
+  - `categoryId` is the override's own category. For a row a rule decides, the editor sends `null` to keep following the rule.
+- **The editable check happens when the row is read.** `PUT` and `DELETE` refuse a missing row with `404` and a pending or vanished one with `409 not_editable`, before anything is written. A posted row never becomes pending or vanished, so the write isn't guarded a second time. A second guard could have split the rule writes from the override write.
 - **The inbox is counted, uncategorised and not excluded:** `vanished_at IS NULL AND category_id IS NULL AND excluded = 0`.
   - Money in and money out both appear, and pending rows are included with `editable: false`.
   - An excluded transaction has been dealt with, so it leaves the inbox.
@@ -550,7 +576,7 @@ This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn
 ### Review focus for P2.4
 
 1. **A full-form `PUT` that resends a category archived since it was set.** It's accepted, because the category hasn't changed (Task 2).
-2. **`applyToMerchant` on an account that already has an account-scoped `exact` rule for the merchant.** That rule is the one updated, and the row follows it (Task 2).
+2. **`applyToMerchant` on an account that already has an account-scoped `exact` rule for the merchant.** That rule is updated along with the any-account one, and the row follows it (Task 2).
 3. **`applyToMerchant` on a row that has a category override.** The override's category is cleared and its other fields are kept, so the row follows the rule (Task 2).
 4. **Amounts and dates that only look valid:** `countedAmountMinor` `12.5`, `"100"` or `2 ** 53`, and `countedDate` `2026-02-30`. They all return `400` and write nothing (Task 2).
 5. **A pending or vanished row:** `PUT` and `DELETE` return `409 not_editable` and write nothing, while the row still appears in the inbox (Tasks 2 and 3).
@@ -566,7 +592,10 @@ This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn
 - Consumes: `RESOLVED_CTE` (P2.3).
 - Produces:
   - `cursorParam`, a zod schema moved from `routes/transactions.ts` unchanged.
-  - `listTransactions(db: D1Database, opts: { where: string[]; binds: unknown[]; limit: number; cursor?: { date: string; id: number } }): Promise<{ transactions: Transaction[]; nextCursor: string | null }>`. Each `where` entry is a static SQL condition on `resolved`/`t`, with `?N` placeholders numbered from 1 in the order of `binds`.
+  - `listTransactions(db: D1Database, opts: { where: [sql: string, ...binds: unknown[]][]; limit: number; cursor?: Cursor; withTotal?: boolean }): Promise<{ transactions: Transaction[]; nextCursor: string | null; total: number }>`.
+    - Each `where` entry is a static SQL condition on `t` (transactions) or `r` (resolved), with one value per `?`.
+    - `withTotal` adds a window count in the same statement.
+    - `EDITABLE` is the shared SQL condition for "posted and not vanished".
   - `getTransaction(db, id): Promise<Transaction | null>`.
   - `Transaction` keeps the Phase 1 fields (`id, accountId, amountMinor, currency, txnDate, merchant, description, isPending, vanishedAt, firstSeenAt`) and adds:
     - `categoryId: number | null`
@@ -600,7 +629,7 @@ This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn
   - `200 {transaction}`
   - `400 bad_request`
   - `404 not_found` (unknown transaction or category)
-  - `409 not_editable`, `409 category_archived` or `409 no_merchant`
+  - `409 not_editable`, `409 category_archived` or `409 merchant_not_rulable`
 - `DELETE /api/transactions/:id/override` returns `200 {transaction}`, `404` or `409 not_editable`. It succeeds even when there is no override.
 
 - [ ] **Step 1: write the failing tests:**
@@ -616,9 +645,9 @@ This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn
     - creates an any-account `exact` rule from `lower(trim(merchant))` and stores no category override
     - other rows with that merchant follow it
     - on a second call it updates that rule rather than adding one
-    - updates an account-scoped `exact` rule when the row's account has one
+    - also updates the row's account's own `exact` rule when it has one, and leaves another account's alone
     - clears an existing category override
-    - returns `409 no_merchant` for a blank merchant
+    - returns `409 merchant_not_rulable` for a blank, over-long or whitespace-edged merchant
   - a wrong `Origin` gets `403`
 - [ ] **Step 2:** run `npx vitest run test/overrides.spec.ts`. The tests should fail.
 - [ ] **Step 3:** implement it.
