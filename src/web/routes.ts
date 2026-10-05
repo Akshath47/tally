@@ -1,9 +1,10 @@
+import { londonToday, monthOf } from "./dates";
+import type { LineCategory } from "./lines";
+
 // Every screen and its URL. Tab screens show the tab bar; pushed screens replace it with a back link.
 
 export type Tab = "home" | "transactions" | "budget";
 
-/** A Home line: a category id, or Misc (the unallocated pot). */
-export type LineCategory = number | "misc";
 
 export type Route =
   | { screen: Tab | "toSort" | "categories" | "rules" | "accounts" | "notFound" }
@@ -28,14 +29,15 @@ const STATIC: Record<string, Exclude<Route["screen"], "newAccount" | "line">> = 
   "/accounts": "accounts",
 };
 
-export function parseRoute(pathname: string): Route {
+/** `today` is the London date, for refusing a future month (the API would only 400). */
+export function parseRoute(pathname: string, today = londonToday()): Route {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   const screen = STATIC[path];
   if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
   if (review) return { screen: "newAccount", accountId: Number(review[1]) };
   const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/(misc|[1-9]\d{0,8})$/.exec(path);
-  if (line) return { screen: "line", month: line[1]!, category: line[2] === "misc" ? "misc" : Number(line[2]) };
+  if (line && line[1]! <= monthOf(today)) return { screen: "line", month: line[1]!, category: line[2] === "misc" ? "misc" : Number(line[2]) };
   return { screen: "notFound" };
 }
 

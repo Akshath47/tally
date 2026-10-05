@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getLineTransactions, getMonthSummary, getRules, getTransactions, type Account, type Category, type CategoryKind } from "./api";
-import type { LineCategory } from "./routes";
+import type { LineCategory } from "./lines";
 import { addMonths, daysInMonth } from "./dates";
 
 // Shared queries. Every successful write invalidates the cache (main.tsx): the app is one

@@ -9,7 +9,8 @@ import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
 import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
 import { Link } from "../router";
-import { lineHref, type LineCategory } from "../routes";
+import { budgetLines, type Line } from "../lines";
+import { lineHref } from "../routes";
 
 // The five-second glance (docs/ui-design.md, Home).
 
@@ -119,26 +120,6 @@ function Pills({ s }: { s: MonthSummary }) {
   );
 }
 
-export type Line = { category: LineCategory; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number };
-
-/** Budgeted categories with an allocation, biggest first, then Misc: the unallocated pot. */
-export function budgetLines(s: MonthSummary, byId: Map<number, Category>): Line[] {
-  const lines: Line[] = [];
-  const misc: Line = { category: "misc", name: "Misc", note: "unallocated", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: s.miscMinor ?? 0 };
-  for (const c of s.categories) {
-    if (c.kind === "tracked") continue;
-    if (c.categoryId !== null && c.allocatedMinor > 0) {
-      lines.push({ ...c, category: c.categoryId, name: byId.get(c.categoryId)?.name ?? "Category" });
-    } else {
-      misc.spentMinor += c.spentMinor;
-      misc.pendingSpentMinor += c.pendingSpentMinor;
-    }
-  }
-  lines.sort((a, b) => b.allocatedMinor - a.allocatedMinor);
-  if (misc.allocatedMinor > 0 || misc.spentMinor !== 0) lines.push(misc);
-  return lines;
-}
-
 /** Taps through to the transactions that counted towards the line. */
 function CategoryRow({ line, month }: { line: Line; month: string }) {
   const state = barState(line.spentMinor, line.allocatedMinor);
@@ -204,7 +185,7 @@ function Dashboard({ s, byId }: { s: MonthSummary & { overallMinor: number; left
           <h2 id="home-categories" className="text-base font-medium">
             Categories
           </h2>
-          <ul className="mt-2 rounded-card border border-divider bg-surface px-4 py-0.5">
+          <ul className="mt-2 overflow-hidden rounded-card border border-divider bg-surface px-4 py-0.5">
             {lines.map((l) => (
               <CategoryRow key={l.category} line={l} month={s.month} />
             ))}

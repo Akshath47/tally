@@ -1,5 +1,5 @@
 import type { CATEGORY_KINDS, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
-import type { LineCategory } from "./routes";
+import type { LineCategory } from "./lines";
 
 // Request and response shapes from docs/schema-and-api.md and src/worker/routes. Money is
 // integer minor units. Budget and spend figures are positive = spend; transaction amounts keep

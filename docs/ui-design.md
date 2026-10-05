@@ -93,7 +93,7 @@ The five-second glance.
 - Two pills: "Posted £1,166" and "Pending £88 · 3 charges" (taps to Transactions).
   - **Pending is a lower bound.** Lunch Flow doesn't send every pending charge, so a purchase can be missing until it posts ([lunchflow-findings.md](lunchflow-findings.md#pending)). The pending pill, the hatched bars and the pending sheet shouldn't present pending as complete, for example by saying "at least" or adding a short note that recent charges can appear late.
 - Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated". Each row taps through to its transactions (below).
-- **Category transactions** (pushed, back to Home, `/spending/:month/:category`): the rows that counted towards one line in that month, by counted date, grouped by bank date like Transactions. The header repeats the line's "£spent of £allocated". Misc lists uncategorised spending plus budgeted categories with no allocation. A row opens the transaction editor.
+- **Category transactions** (pushed, back to Home, `/spending/:month/:category`): the rows that counted towards one line in that month, grouped by counted date (the bank date unless edited). The header repeats the line's "£spent of £allocated". Misc lists uncategorised spending plus budgeted categories with no allocation. A row opens the transaction editor.
 
 States:
 - **Over budget overall:** ring fully brick, "£112 over this month" in `over-text`, pace line replaced with "Budget used up with 5 days to go…".
