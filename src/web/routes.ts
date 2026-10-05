@@ -2,9 +2,13 @@
 
 export type Tab = "home" | "transactions" | "budget";
 
+/** A Home line: a category id, or Misc (the unallocated pot). */
+export type LineCategory = number | "misc";
+
 export type Route =
   | { screen: Tab | "toSort" | "categories" | "rules" | "accounts" | "notFound" }
-  | { screen: "newAccount"; accountId: number };
+  | { screen: "newAccount"; accountId: number }
+  | { screen: "line"; month: string; category: LineCategory };
 
 export const TABS: { tab: Tab; href: string; label: string }[] = [
   { tab: "home", href: "/", label: "Home" },
@@ -14,7 +18,7 @@ export const TABS: { tab: Tab; href: string; label: string }[] = [
 
 export type Back = { href: string; label: string };
 
-const STATIC: Record<string, Exclude<Route["screen"], "newAccount">> = {
+const STATIC: Record<string, Exclude<Route["screen"], "newAccount" | "line">> = {
   "/": "home",
   "/transactions": "transactions",
   "/budget": "budget",
@@ -29,10 +33,15 @@ export function parseRoute(pathname: string): Route {
   const screen = STATIC[path];
   if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
-  return review ? { screen: "newAccount", accountId: Number(review[1]) } : { screen: "notFound" };
+  if (review) return { screen: "newAccount", accountId: Number(review[1]) };
+  const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/(misc|[1-9]\d{0,8})$/.exec(path);
+  if (line) return { screen: "line", month: line[1]!, category: line[2] === "misc" ? "misc" : Number(line[2]) };
+  return { screen: "notFound" };
 }
 
 export const newAccountHref = (accountId: number) => `/accounts/${accountId}/review`;
+/** A Home line's transactions in `month` (YYYY-MM). */
+export const lineHref = (month: string, category: LineCategory) => `/spending/${month}/${category}`;
 
 /** The tab a route belongs to, or null for a pushed screen (no tab bar). */
 export const tabOf = (route: Route): Tab | null => TABS.find((t) => t.tab === route.screen)?.tab ?? null;

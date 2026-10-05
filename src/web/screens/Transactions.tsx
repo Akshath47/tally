@@ -10,7 +10,7 @@ import { countsAs, isEdited } from "../overrides";
 import { useAccounts, useCategories, useMonthTransactions, useSummary } from "../queries";
 
 // The month's transactions by bank date (docs/ui-design.md, Transactions). Search and filters
-// are a later backend slice.
+// are a later backend slice. The day list is shared with a Home line's screen (Line.tsx).
 
 const counted = (t: Transaction) => t.countedAmountMinor ?? t.amountMinor;
 
@@ -55,22 +55,15 @@ const Row = memo(function Row({ t, account, category, onOpen }: { t: Transaction
   );
 });
 
-export function Transactions() {
+/** Rows grouped by bank date, newest day first, each with the day's counted total. */
+export function TransactionDays({ rows, onOpen }: { rows: Transaction[]; onOpen: (t: Transaction) => void }) {
   const today = londonToday();
-  const current = monthOf(today);
-  const [month, setMonth] = useState(current);
-  const txns = useMonthTransactions(month);
-  const summary = useSummary(month);
   const categories = useCategories();
   const accounts = useAccounts();
-  const [open, setOpen] = useState<Transaction | null>(null);
-
   const byId = categories.data?.byId;
   const categoryOf = (t: Transaction) => (t.categoryId === null ? undefined : byId?.get(t.categoryId));
-  // Replaced pending rows no longer count, and their posted versions are listed. Each day's
-  // total leaves out rows that don't count as spending at all.
-  const { rows, days } = useMemo(() => {
-    const rows = (txns.data?.pages.flatMap((p) => p.transactions) ?? []).filter((t) => t.vanishedAt === null);
+  // Each day's total leaves out rows that don't count as spending at all.
+  const days = useMemo(() => {
     const days = new Map<string, { list: Transaction[]; total: number }>();
     for (const t of rows) {
       const day = days.get(t.txnDate) ?? { list: [], total: 0 };
@@ -78,8 +71,44 @@ export function Transactions() {
       if (countsAs(t, t.categoryId === null ? undefined : byId?.get(t.categoryId)?.kind) !== "none") day.total += counted(t);
       days.set(t.txnDate, day);
     }
-    return { rows, days };
-  }, [txns.data, byId]);
+    return days;
+  }, [rows, byId]);
+
+  return [...days].map(([date, { list, total }]) => (
+    <section key={date} aria-label={formatShortDate(date)}>
+      <div className="flex items-baseline justify-between px-5 pt-5 pb-1.5 text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
+        <h2>{date === today ? `Today · ${formatShortDate(date)}` : formatShortDate(date)}</h2>
+        <span className="tracking-normal normal-case">{formatSigned(total, "GBP")}</span>
+      </div>
+      <ul>
+        {list.map((t) => (
+          <Row key={t.id} t={t} account={accounts.data?.byId.get(t.accountId)} category={categoryOf(t)} onOpen={onOpen} />
+        ))}
+      </ul>
+    </section>
+  ));
+}
+
+/** Skeleton rows while a list loads. */
+export function TransactionsLoading() {
+  return (
+    <div className="mt-4 flex flex-col gap-3 px-5" aria-busy="true">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <Skeleton key={i} className="h-12" />
+      ))}
+    </div>
+  );
+}
+
+export function Transactions() {
+  const current = monthOf(londonToday());
+  const [month, setMonth] = useState(current);
+  const txns = useMonthTransactions(month);
+  const summary = useSummary(month);
+  const [open, setOpen] = useState<Transaction | null>(null);
+
+  // Replaced pending rows no longer count, and their posted versions are listed.
+  const rows = useMemo(() => (txns.data?.pages.flatMap((p) => p.transactions) ?? []).filter((t) => t.vanishedAt === null), [txns.data]);
   const complete = txns.data !== undefined && !txns.hasNextPage;
 
   return (
@@ -103,40 +132,28 @@ export function Transactions() {
       {txns.isError ? (
         <LoadError what="transactions" onRetry={() => void txns.refetch()} />
       ) : txns.isPending ? (
-        <div className="mt-4 flex flex-col gap-3 px-5" aria-busy="true">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-12" />
-          ))}
-        </div>
+        <TransactionsLoading />
       ) : (
         <>
           <p className="mx-5 mt-2.5 text-[13px] text-muted">
             {rows.length === 0 ? "No transactions this month" : `${rows.length}${complete ? "" : "+"} ${rows.length === 1 ? "transaction" : "transactions"}`}
             {summary.data && ` · ${formatPounds(summary.data.spentMinor)} counted towards budget`}
           </p>
-          {[...days].map(([date, { list, total }]) => (
-            <section key={date} aria-label={formatShortDate(date)}>
-              <div className="flex items-baseline justify-between px-5 pt-5 pb-1.5 text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
-                <h2>{date === today ? `Today · ${formatShortDate(date)}` : formatShortDate(date)}</h2>
-                <span className="tracking-normal normal-case">{formatSigned(total, "GBP")}</span>
-              </div>
-              <ul>
-                {list.map((t) => (
-                  <Row key={t.id} t={t} account={accounts.data?.byId.get(t.accountId)} category={categoryOf(t)} onOpen={setOpen} />
-                ))}
-              </ul>
-            </section>
-          ))}
-          {txns.hasNextPage && (
-            <div className="px-5 pt-4">
-              <Button kind="secondary" className="w-full" onClick={() => void txns.fetchNextPage()} disabled={txns.isFetchingNextPage}>
-                {txns.isFetchingNextPage ? "Loading…" : "Show more"}
-              </Button>
-            </div>
-          )}
+          <TransactionDays rows={rows} onOpen={setOpen} />
+          {txns.hasNextPage && <ShowMore onClick={() => void txns.fetchNextPage()} loading={txns.isFetchingNextPage} />}
         </>
       )}
       <TransactionSheet txn={open} onClose={() => setOpen(null)} />
     </TabScreen>
+  );
+}
+
+export function ShowMore({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  return (
+    <div className="px-5 pt-4">
+      <Button kind="secondary" className="w-full" onClick={onClick} disabled={loading}>
+        {loading ? "Loading…" : "Show more"}
+      </Button>
+    </div>
   );
 }

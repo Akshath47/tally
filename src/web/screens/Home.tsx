@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
-import { AccountBadge, ArrowUp, Button, Check, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
+import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
 import { addMonths, londonToday, monthName, monthOf } from "../dates";
 import { formatTimestamp } from "../format";
 import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
 import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
 import { Link } from "../router";
+import { lineHref, type LineCategory } from "../routes";
 
 // The five-second glance (docs/ui-design.md, Home).
 
@@ -118,16 +119,16 @@ function Pills({ s }: { s: MonthSummary }) {
   );
 }
 
-type Line = { key: string; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number };
+export type Line = { category: LineCategory; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number };
 
 /** Budgeted categories with an allocation, biggest first, then Misc: the unallocated pot. */
-function budgetLines(s: MonthSummary, byId: Map<number, Category>): Line[] {
+export function budgetLines(s: MonthSummary, byId: Map<number, Category>): Line[] {
   const lines: Line[] = [];
-  const misc: Line = { key: "misc", name: "Misc", note: "unallocated", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: s.miscMinor ?? 0 };
+  const misc: Line = { category: "misc", name: "Misc", note: "unallocated", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: s.miscMinor ?? 0 };
   for (const c of s.categories) {
     if (c.kind === "tracked") continue;
     if (c.categoryId !== null && c.allocatedMinor > 0) {
-      lines.push({ key: String(c.categoryId), name: byId.get(c.categoryId)?.name ?? "Category", ...c });
+      lines.push({ ...c, category: c.categoryId, name: byId.get(c.categoryId)?.name ?? "Category" });
     } else {
       misc.spentMinor += c.spentMinor;
       misc.pendingSpentMinor += c.pendingSpentMinor;
@@ -138,13 +139,15 @@ function budgetLines(s: MonthSummary, byId: Map<number, Category>): Line[] {
   return lines;
 }
 
-function CategoryRow({ line }: { line: Line }) {
+/** Taps through to the transactions that counted towards the line. */
+function CategoryRow({ line, month }: { line: Line; month: string }) {
   const state = barState(line.spentMinor, line.allocatedMinor);
   const posted = fraction(line.spentMinor - line.pendingSpentMinor, line.allocatedMinor);
   const pending = Math.min(fraction(line.pendingSpentMinor, line.allocatedMinor), 1 - posted);
   const fill = { ok: "bg-accent", near: "bg-warn", over: "bg-over" }[state];
   return (
-    <li className="flex flex-col gap-2 border-b border-divider py-[11px] last:border-b-0">
+    <li className="border-b border-divider last:border-b-0">
+      <Link href={lineHref(month, line.category)} className="-mx-4 flex flex-col gap-2 px-4 py-[11px] hover:bg-raised/50">
       <div className="flex items-center gap-2">
         <span>{line.name}</span>
         {line.note && <span className="text-[11.5px] text-muted">{line.note}</span>}
@@ -159,6 +162,7 @@ function CategoryRow({ line }: { line: Line }) {
           <span className={`font-medium ${state === "over" ? "text-over-fg" : ""}`}>{formatPounds(line.spentMinor)}</span>{" "}
           <span className="text-muted">/ {formatPounds(line.allocatedMinor)}</span>
         </span>
+        <ChevronRight size={14} className="-mr-1 shrink-0 text-muted" />
       </div>
       <div className="flex h-1 gap-px overflow-hidden rounded-sm bg-line" aria-hidden="true">
         {state === "over" ? (
@@ -170,6 +174,7 @@ function CategoryRow({ line }: { line: Line }) {
           </>
         )}
       </div>
+      </Link>
     </li>
   );
 }
@@ -201,7 +206,7 @@ function Dashboard({ s, byId }: { s: MonthSummary & { overallMinor: number; left
           </h2>
           <ul className="mt-2 rounded-card border border-divider bg-surface px-4 py-0.5">
             {lines.map((l) => (
-              <CategoryRow key={l.key} line={l} />
+              <CategoryRow key={l.category} line={l} month={s.month} />
             ))}
           </ul>
         </section>

@@ -1,4 +1,5 @@
 import type { CATEGORY_KINDS, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
+import type { LineCategory } from "./routes";
 
 // Request and response shapes from docs/schema-and-api.md and src/worker/routes. Money is
 // integer minor units. Budget and spend figures are positive = spend; transaction amounts keep
@@ -239,6 +240,9 @@ export const getTransactions = (params: { limit: number; accountId?: number | nu
   request<Page<Transaction>>(
     `/api/transactions${query({ limit: params.limit, account_id: params.accountId, from: params.from, to: params.to, cursor: params.cursor })}`,
   );
+/** The rows behind one Home line: those counting in `month` in a category, or in Misc. */
+export const getLineTransactions = (month: string, category: LineCategory, params: { limit: number; cursor?: string | null }) =>
+  request<Page<Transaction>>(`/api/months/${month}/transactions${query({ category, limit: params.limit, cursor: params.cursor })}`);
 export const putOverride = (id: number, input: OverrideInput) => send<{ transaction: Transaction }>("PUT", `/api/transactions/${id}/override`, input);
 export const deleteOverride = (id: number) => send<{ transaction: Transaction }>("DELETE", `/api/transactions/${id}/override`);
 

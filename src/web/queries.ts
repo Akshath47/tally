@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
-import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getMonthSummary, getRules, getTransactions, type Account, type Category, type CategoryKind } from "./api";
+import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getLineTransactions, getMonthSummary, getRules, getTransactions, type Account, type Category, type CategoryKind } from "./api";
+import type { LineCategory } from "./routes";
 import { addMonths, daysInMonth } from "./dates";
 
 // Shared queries. Every successful write invalidates the cache (main.tsx): the app is one
@@ -42,6 +43,15 @@ export const useMonthTransactions = (month: string) =>
   useInfiniteQuery({
     queryKey: ["transactions", month],
     queryFn: ({ pageParam }) => getTransactions({ limit: PAGE, from: `${month}-01`, to: `${month}-${daysInMonth(month)}`, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+  });
+
+/** The rows behind one Home line, newest first by bank date. */
+export const useLineTransactions = (month: string, category: LineCategory) =>
+  useInfiniteQuery({
+    queryKey: ["transactions", month, "line", category],
+    queryFn: ({ pageParam }) => getLineTransactions(month, category, { limit: PAGE, cursor: pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });
