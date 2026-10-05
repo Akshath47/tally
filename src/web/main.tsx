@@ -12,7 +12,10 @@ import "./index.css";
 // their error state sooner.
 const queryClient: QueryClient = new QueryClient({
   mutationCache: new MutationCache({
-    onSuccess: () => queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "import-runs" }),
+    // Not returned: TanStack would wait for every refetch before the screen's own onSuccess runs.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "import-runs" });
+    },
   }),
   defaultOptions: {
     queries: { staleTime: 30_000, retry: (count, error) => count < 1 && !(error instanceof ApiError && error.status < 500) },
