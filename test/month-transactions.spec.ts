@@ -1,0 +1,137 @@
+import { env } from "cloudflare:workers";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetDb } from "./db";
+import { get } from "./http";
+import { insertAllocation, insertOverall } from "./budget/budget-rows";
+import { SEEDED, insertCategory, insertOverride, insertRule, ledger } from "./budget/helpers";
+
+// All data is synthetic.
+
+type Txn = { id: number; amountMinor: number; countedAmountMinor: number | null; categoryId: number | null };
+type Page = { transactions: Txn[]; nextCursor: string | null };
+type Summary = { categories: { categoryId: number | null; kind: string | null; spentMinor: number; allocatedMinor: number }[] };
+
+const list = async (category: string | number, month = "2026-10", extra = "") => {
+  const res = await get(`/api/months/${month}/transactions?category=${category}${extra}`);
+  expect(res.status).toBe(200);
+  return (await res.json()) as Page;
+};
+const ids = (p: Page) => p.transactions.map((t) => t.id).sort((a, b) => a - b);
+const spend = (p: Page) => p.transactions.reduce((sum, t) => sum - (t.countedAmountMinor ?? t.amountMinor), 0);
+
+let accounts: readonly [number, number];
+let txn: Awaited<ReturnType<typeof ledger>>["txn"];
+
+beforeEach(async () => {
+  await resetDb();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+  ({ accounts, txn } = await ledger());
+  await insertRule("exact", "grocer", SEEDED.groceries);
+  await insertRule("exact", "cafe", SEEDED.eatingOut);
+  await insertRule("exact", "outfitter", SEEDED.clothes);
+  await insertRule("exact", "salary", SEEDED.income);
+});
+afterEach(() => vi.useRealTimers());
+
+const grocer = (amountMinor: number, extra: Parameters<typeof txn>[1] = {}) => txn(accounts[0], { merchant: "Grocer", amountMinor, ...extra });
+
+describe("GET /api/months/:month/transactions?category=<id>", () => {
+  it("lists the category's rows that count in the month, refunds and pending included", async () => {
+    const spent = await grocer(-1_000);
+    const refund = await grocer(300);
+    const pending = await grocer(-200, { isPending: true });
+    await grocer(-900, { txnDate: "2026-09-30" });
+    await grocer(-400, { isPending: true, vanished: true });
+    await insertOverride(await grocer(-500), { excluded: 1 });
+    await txn(accounts[1], { merchant: "Cafe", amountMinor: -700 });
+    expect(ids(await list(SEEDED.groceries))).toEqual([spent, refund, pending]);
+  });
+
+  it("files a row by its counted date and its override category", async () => {
+    const movedIn = await grocer(-1_000, { txnDate: "2026-09-29" });
+    await insertOverride(movedIn, { counted_date: "2026-10-01" });
+    await insertOverride(await grocer(-500), { counted_date: "2026-09-30" });
+    const recategorised = await txn(accounts[0], { merchant: "Cafe", amountMinor: -250 });
+    await insertOverride(recategorised, { category_id: SEEDED.groceries });
+    expect(ids(await list(SEEDED.groceries))).toEqual([movedIn, recategorised]);
+  });
+
+  it("lists nothing for a category that doesn't count", async () => {
+    await txn(accounts[0], { merchant: "Salary", amountMinor: -100 });
+    expect((await list(SEEDED.income)).transactions).toEqual([]);
+  });
+
+  it("pages newest first with a cursor", async () => {
+    const older = await grocer(-100, { txnDate: "2026-10-01" });
+    const newer = await grocer(-200, { txnDate: "2026-10-02" });
+    const first = await list(SEEDED.groceries, "2026-10", "&limit=1");
+    expect(first.transactions.map((t) => t.id)).toEqual([newer]);
+    const second = await list(SEEDED.groceries, "2026-10", `&limit=1&cursor=${first.nextCursor}`);
+    expect(second).toEqual({ transactions: [expect.objectContaining({ id: older })], nextCursor: null });
+  });
+});
+
+describe("GET /api/months/:month/transactions?category=misc", () => {
+  it("lists uncategorised money out and budgeted categories with no allocation", async () => {
+    await insertOverall("2026-10", 100_000);
+    await insertAllocation(SEEDED.groceries, "2026-10", 20_000);
+    await grocer(-1_000);
+    const unallocated = await txn(accounts[0], { merchant: "Cafe", amountMinor: -700 });
+    const uncategorised = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -300 });
+    await txn(accounts[0], { merchant: "Unknown sender", amountMinor: 2_000 });
+    await txn(accounts[0], { merchant: "Outfitter", amountMinor: -5_000 });
+    expect(ids(await list("misc"))).toEqual([unallocated, uncategorised]);
+  });
+
+  it("includes an archived budgeted category, which has no allocation any more", async () => {
+    const gifts = await insertCategory("Gifts");
+    await insertAllocation(gifts, "2026-10", 5_000);
+    await env.DB.prepare("UPDATE categories SET archived_at = '2026-10-10T00:00:00Z' WHERE id = ?1").bind(gifts).run();
+    const id = await txn(accounts[0], { merchant: "Shop", amountMinor: -400 });
+    await insertOverride(id, { category_id: gifts });
+    expect(ids(await list("misc"))).toEqual([id]);
+  });
+
+  it("pages with a cursor", async () => {
+    const older = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -100, txnDate: "2026-10-01" });
+    const newer = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -200, txnDate: "2026-10-02" });
+    const first = await list("misc", "2026-10", "&limit=1");
+    expect(first.transactions.map((t) => t.id)).toEqual([newer]);
+    const second = await list("misc", "2026-10", `&limit=1&cursor=${first.nextCursor}`);
+    expect(second).toEqual({ transactions: [expect.objectContaining({ id: older })], nextCursor: null });
+  });
+});
+
+describe("GET /api/months/:month/transactions: agrees with the summary", () => {
+  it("adds up to each Home line's spend", async () => {
+    await insertOverall("2026-10", 100_000);
+    await insertAllocation(SEEDED.groceries, "2026-10", 20_000);
+    await grocer(-1_000);
+    await grocer(250);
+    await grocer(-300, { isPending: true });
+    await insertOverride(await grocer(-800, { txnDate: "2026-09-28" }), { counted_date: "2026-10-02", counted_amount_minor: -600 });
+    await txn(accounts[0], { merchant: "Cafe", amountMinor: -700 });
+    await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -300 });
+    await txn(accounts[0], { merchant: "Outfitter", amountMinor: -5_000 });
+
+    const res = await get("/api/months/2026-10/summary");
+    const s = (await res.json()) as Summary;
+    const groceries = s.categories.find((c) => c.categoryId === SEEDED.groceries)!;
+    const misc = s.categories.filter((c) => c.kind !== "tracked" && (c.categoryId === null || c.allocatedMinor === 0));
+    expect(spend(await list(SEEDED.groceries))).toBe(groceries.spentMinor);
+    expect(spend(await list("misc"))).toBe(misc.reduce((sum, c) => sum + c.spentMinor, 0));
+  });
+});
+
+describe("GET /api/months/:month/transactions: bad requests", () => {
+  it.each([
+    ["/api/months/2026-13/transactions?category=1"],
+    ["/api/months/2026-11/transactions?category=1"], // a future month
+    ["/api/months/2026-10/transactions"],
+    ["/api/months/2026-10/transactions?category=0"],
+    ["/api/months/2026-10/transactions?category=food"],
+  ])("%s → 400", async (path) => {
+    expect((await get(path)).status).toBe(400);
+  });
+});

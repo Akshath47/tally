@@ -70,7 +70,7 @@ const COLUMNS = `t.id, t.account_id AS accountId, t.amount_minor AS amountMinor,
   (${EDITABLE}) AS editable`;
 
 type ListOptions = {
-  /** `[sql, ...binds]`: a static condition on `t` (transactions) or `r` (resolved), and a value per `?`. */
+  /** `[sql, ...binds]`: a static condition on `t` (transactions), `r` (resolved) or `c` (categories), and a value per `?`. */
   where: [sql: string, ...binds: unknown[]][];
   limit: number;
   cursor?: Cursor;
@@ -92,7 +92,8 @@ export async function listTransactions(db: D1Database, opts: ListOptions): Promi
   const { results } = await db
     .prepare(
       `WITH ${RESOLVED_CTE},
-         listed AS (SELECT ${COLUMNS}${total} FROM resolved r JOIN transactions t ON t.id = r.id ${where})
+         listed AS (SELECT ${COLUMNS}${total} FROM resolved r JOIN transactions t ON t.id = r.id
+           LEFT JOIN categories c ON c.id = r.category_id ${where})
        SELECT * FROM listed ${cursor} ORDER BY txnDate DESC, id DESC LIMIT ?`,
     )
     .bind(...binds, ...cursorBinds, opts.limit + 1)

@@ -60,3 +60,12 @@ resolved AS (
  * though not editable. The inbox and the summary's `inboxCount` share it, so they always agree.
  */
 export const INBOX = "r.vanished_at IS NULL AND r.category_id IS NULL AND r.excluded = 0";
+
+/**
+ * On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's
+ * budgeted or tracked, or uncategorised money out. Uncategorised money in waits in the inbox.
+ * Always 0 or 1: a bare `c.kind IN (...)` is NULL for an uncategorised row. The month summary
+ * and the rows behind each of its lines share it, so they always agree.
+ */
+export const COUNTS = `(r.excluded = 0 AND (COALESCE(c.kind IN ('budgeted', 'tracked'), 0)
+  OR (r.category_id IS NULL AND COALESCE(r.counted_amount_minor, r.amount_minor) < 0)))`;
