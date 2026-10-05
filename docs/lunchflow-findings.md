@@ -47,6 +47,11 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
   - The match is the probe's heuristic (same amount, dates within 5 days) on a single transaction. It agrees with the owner's run 1 check, where one card purchase showed up a day later than in the Revolut app.
   - The importer needs nothing new: the 14-day re-read inserts the posted row and sets `vanished_at` on the pending one in the same run. Totals must skip rows with `vanished_at` set, so a purchase isn't counted twice.
 - **A pending transaction can have `id: null`** (seen on Amex while running the P1.5 importer, 2026-10-02; it was the account's only pending transaction). The importer keys such a row as `nullid:<account|date|amount|text>` (its fingerprint) so pending purchases still count towards the budget, and `vanished_at` retires it when the posted version arrives under a real id. Two identical pending purchases (same account, date, amount and text) would collapse into one row; the owner judged that unlikely enough to accept. A **posted** transaction with a null id is treated as an invalid response.
+- **Not every pending transaction reaches Tally** (the owner's P2.6 check, 2026-10-05).
+  - An Amex pending card purchase that the Amex app showed was never imported. Tally has no row for it, not even a vanished one. Two other Amex pending purchases from the same days were imported.
+  - Tally keeps a pending row once it has seen one, until it's superseded or 7 days have passed, so a pending transaction Lunch Flow *stops* returning isn't lost. That can't help with one Lunch Flow never returns.
+  - Importing more often wouldn't help either. The cron already runs every 3 hours, which is faster than Lunch Flow appears to refresh.
+  - **Consequence:** pending figures are a lower bound. A purchase is complete in Tally's totals once it posts.
 - Amex's pending → posted transition hasn't been observed yet. The `.probe/` snapshot now holds that pending transaction, so a later run can check it, but it isn't needed for Gate 1.
 
 ## Freshness and latency

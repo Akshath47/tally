@@ -91,6 +91,7 @@ The five-second glance.
 - Hollow donut of the month's budget. Solid sage = posted spend, hatched = pending. Centre: "Spent in October", the **spent** amount large, "£546 left this month", "of £1,800".
 - Pace line under the ring: "£239/week for the remaining 2.3 weeks".
 - Two pills: "Posted £1,166" and "Pending £88 · 3 charges" (taps to Transactions).
+  - **Pending is a lower bound.** Lunch Flow doesn't send every pending charge, so a purchase can be missing until it posts ([lunchflow-findings.md](lunchflow-findings.md#pending)). The pending pill, the hatched bars and the pending sheet shouldn't present pending as complete, for example by saying "at least" or adding a short note that recent charges can appear late.
 - Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated".
 
 States:
