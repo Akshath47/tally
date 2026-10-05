@@ -24,6 +24,13 @@ export function minorToInput(minor: number): string {
   return `${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
 
+/** A budget input's text: "1,800", or "1,800.50" when there are pence. parseMoneyInput reads both back. */
+export function poundsInput(minor: number): string {
+  const [whole, pence] = minorToInput(minor).split(".");
+  const grouped = whole!.replace(/\B(?=(\d{3})+$)/g, ",");
+  return pence === "00" ? grouped : `${grouped}.${pence}`;
+}
+
 const poundsFormat = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0, minimumFractionDigits: 0 });
 
 /** Budget figures in whole pounds, rounded half away from zero: 125_440 → "£1,254", −1_250 → "−£13". */

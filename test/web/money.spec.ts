@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPounds, formatSigned, formatUnsigned, minorToInput, parseMoneyInput } from "../../src/web/money";
+import { formatPounds, formatSigned, formatUnsigned, minorToInput, parseMoneyInput, poundsInput } from "../../src/web/money";
 
 describe("parseMoneyInput", () => {
   it.each([
@@ -41,6 +41,17 @@ describe("formatting", () => {
     [0, "0.00"],
   ])("minorToInput(%i) = %s", (minor, text) => {
     expect(minorToInput(minor)).toBe(text);
+  });
+
+  it.each([
+    [180_000, "1,800"],
+    [180_050, "1,800.50"],
+    [12_000, "120"],
+    [123_456_700, "1,234,567"],
+    [5, "0.05"],
+  ])("poundsInput(%i) = %s and reads back", (minor, text) => {
+    expect(poundsInput(minor)).toBe(text);
+    expect(parseMoneyInput(text)).toBe(minor);
   });
 
   it.each([
