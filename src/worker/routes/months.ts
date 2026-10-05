@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { readBudget } from "../budget/effective";
 import { INBOX, RESOLVED_CTE } from "../budget/resolve";
-import { daysInMonth, londonToday } from "../importer/dates";
+import { daysInMonth, londonMonth, londonToday } from "../importer/dates";
 
 // Everything the home screen needs for one month (docs/phase-2-spec.md, "What a transaction
 // counts as" and "Budget figures for a month"). Spend is positive = money out, so a refund is
@@ -42,8 +42,8 @@ const perWeek = (leftMinor: number, daysRemaining: number) =>
   leftMinor > 0 ? Number((BigInt(leftMinor) * 7n) / BigInt(daysRemaining)) : 0;
 
 export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) => {
-  const today = londonToday(new Date());
-  const current = today.slice(0, 7);
+  const now = new Date();
+  const current = londonMonth(now);
   const parsed = monthParam.safeParse(c.req.param("month"));
   // YYYY-MM strings compare in calendar order.
   if (!parsed.success || parsed.data > current) return c.json({ error: "bad_request" }, 400);
@@ -70,17 +70,23 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
   }
   const categories = [...lines.values()].sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity));
 
-  const sum = (pick: (l: Line) => number, which: (l: Line) => boolean) => categories.filter(which).reduce((n, l) => n + pick(l), 0);
-  const budgetSpend = (l: Line) => l.kind === "budgeted" || l.categoryId === null;
-  const spentMinor = sum((l) => l.spentMinor, budgetSpend);
-  const pendingSpentMinor = sum((l) => l.pendingSpentMinor, budgetSpend);
-  const trackedMinor = sum((l) => l.spentMinor, (l) => l.kind === "tracked");
+  // Lines are budgeted, tracked or Uncategorised (COUNTS drops the rest); all but tracked are budget spend.
+  let spentMinor = 0;
+  let pendingSpentMinor = 0;
+  let trackedMinor = 0;
+  for (const l of categories) {
+    if (l.kind === "tracked") trackedMinor += l.spentMinor;
+    else {
+      spentMinor += l.spentMinor;
+      pendingSpentMinor += l.pendingSpentMinor;
+    }
+  }
 
   const { overallMinor } = budget;
   const allocatedMinor = budget.allocations.reduce((n, a) => n + a.allocatedMinor, 0);
   const leftMinor = overallMinor === null ? null : overallMinor - spentMinor;
   // Pacing is for the current month only; today counts as a day remaining.
-  const daysRemaining = month === current ? daysInMonth(month) - Number(today.slice(8)) + 1 : null;
+  const daysRemaining = month === current ? daysInMonth(month) - Number(londonToday(now).slice(8)) + 1 : null;
 
   return c.json({
     month,
