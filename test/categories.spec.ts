@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb } from "./db";
 import { get, send } from "./http";
+import { budgetRows, insertAllocation, insertOverall } from "./budget/budget-rows";
 import { SEEDED } from "./budget/helpers";
 
 // All data is synthetic.
@@ -96,5 +97,52 @@ describe("PATCH /api/categories/:id", () => {
     expect((await patch(SEEDED.groceries, {})).status).toBe(400);
     expect((await patch(SEEDED.groceries, { kind: "weekly" })).status).toBe(400);
     expect((await patch(SEEDED.groceries, { archived: "yes" })).status).toBe(400);
+  });
+});
+
+describe("PATCH /api/categories/:id and budget allocations", () => {
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    await insertOverall("2026-09", 100_000);
+    await insertAllocation(SEEDED.shopping, "2026-09", 20_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const SEPTEMBER = { categoryId: SEEDED.shopping, month: "2026-09", amount: 20_000 };
+
+  it.each([{ kind: "tracked" }, { kind: "excluded" }, { archived: true }])(
+    "%j zeroes the allocation from the current month and keeps past months",
+    async (body) => {
+      expect((await patch(SEEDED.shopping, body)).status).toBe(200);
+      expect((await budgetRows()).allocations).toEqual([SEPTEMBER, { categoryId: SEEDED.shopping, month: "2026-10", amount: 0 }]);
+    },
+  );
+
+  it("zeroes it at the London month, which can be ahead of UTC", async () => {
+    vi.setSystemTime(new Date("2026-09-30T23:30:00Z")); // BST: already October in London
+    await patch(SEEDED.shopping, { archived: true });
+    expect((await budgetRows()).allocations.at(-1)).toEqual({ categoryId: SEEDED.shopping, month: "2026-10", amount: 0 });
+  });
+
+  it("writes no budget row for a rename, or for a category with no allocation", async () => {
+    await patch(SEEDED.shopping, { name: "Stuff" });
+    await patch(SEEDED.groceries, { kind: "tracked" });
+    await patch(SEEDED.transport, { archived: true });
+    expect((await budgetRows()).allocations).toEqual([SEPTEMBER]);
+  });
+
+  it("zeroes nothing when the patch fails", async () => {
+    const res = await patch(SEEDED.shopping, { name: "Groceries", kind: "tracked" });
+    expect(res.status).toBe(409);
+    expect((await list()).find((c) => c.id === SEEDED.shopping)!.kind).toBe("budgeted");
+    expect((await budgetRows()).allocations).toEqual([SEPTEMBER]);
+  });
+
+  it("lists an unarchived category in the budget again, at 0", async () => {
+    await patch(SEEDED.shopping, { archived: true });
+    await patch(SEEDED.shopping, { archived: false });
+    const budget = (await (await get("/api/budget")).json()) as { categories: { categoryId: number; allocatedMinor: number }[] };
+    expect(budget.categories.find((c) => c.categoryId === SEEDED.shopping)).toMatchObject({ allocatedMinor: 0 });
   });
 });
