@@ -6,11 +6,11 @@ import { Accounts } from "./screens/Accounts";
 import { Budget } from "./screens/Budget";
 import { Home } from "./screens/Home";
 import { Placeholder } from "./screens/Placeholder";
+import { ToSort } from "./screens/ToSort";
 import { Transactions } from "./screens/Transactions";
 
 // Screens whose design isn't built yet.
 const PLACEHOLDER_TITLES: Partial<Record<Route["screen"], string>> = {
-  toSort: "To sort",
   categories: "Categories",
   rules: "Merchant rules",
   newAccount: "New account found",
@@ -25,6 +25,8 @@ function Screen({ route }: { route: Route }) {
       return <Transactions />;
     case "budget":
       return <Budget />;
+    case "toSort":
+      return <ToSort back={backOf(route)} />;
     case "accounts":
       return <Accounts back={backOf(route)} />;
     default:

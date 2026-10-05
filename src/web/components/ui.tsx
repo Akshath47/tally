@@ -1,4 +1,4 @@
-import { useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type { Account } from "../api";
 
 // Small shared pieces: badges, flags, icons, skeletons and the toast.
@@ -75,11 +75,16 @@ export type ToastState = { text: string; actions: { label: string; run: () => vo
 
 /** A bar above the tab bar with up to two actions; it leaves after 6 s. */
 export function Toast({ toast, onDone }: { toast: ToastState; onDone: () => void }) {
+  // The timer restarts only for a new toast, not whenever the parent re-renders.
+  const done = useRef(onDone);
+  useEffect(() => {
+    done.current = onDone;
+  });
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(onDone, 6_000);
+    const timer = setTimeout(() => done.current(), 6_000);
     return () => clearTimeout(timer);
-  }, [toast, onDone]);
+  }, [toast]);
   if (!toast) return null;
   return (
     <div role="status" className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-lg px-3 pb-safe">
