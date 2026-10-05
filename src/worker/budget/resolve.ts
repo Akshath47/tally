@@ -53,3 +53,10 @@ resolved AS (
   LEFT JOIN merchant_rule mr ON mr.account_id = t.account_id AND mr.merchant = t.merchant
   LEFT JOIN merchant_rules r ON r.id = mr.rule_id
 )`;
+
+/**
+ * On `resolved r`: what still needs sorting. Counted transactions that no override or rule
+ * categorises and that haven't been excluded. Money in and out both wait here; pending rows too,
+ * though not editable. The inbox and the summary's `inboxCount` share it, so they always agree.
+ */
+export const INBOX = "r.vanished_at IS NULL AND r.category_id IS NULL AND r.excluded = 0";

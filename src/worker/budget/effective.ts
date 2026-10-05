@@ -1,6 +1,7 @@
 // A month's budget figures come from the row with the greatest effective_month ≤ that month
 // (docs/phase-2-spec.md, Data model). Writes only ever go to the current month, so past months
-// keep the figures they had.
+// keep their rows. Kinds aren't dated, though: which categories count is decided by their
+// current kind and archive state, for past months too.
 
 // The arguments are SQL placeholders or column names (`?1`, `c.id`), never values.
 
@@ -14,6 +15,9 @@ export const effectiveAllocationSql = (categoryId: string, month: string) =>
     ORDER BY effective_month DESC LIMIT 1)`;
 
 export type BudgetRows = { overallMinor: number | null; allocations: { categoryId: number; allocatedMinor: number }[] };
+
+/** The month's `allocated`: the sum of the listed categories' allocations. */
+export const sumAllocated = ({ allocations }: BudgetRows) => allocations.reduce((sum, a) => sum + a.allocatedMinor, 0);
 
 /**
  * The overall figure and every budgeted, unarchived category's allocation (0 if none) in

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, isYmd, londonMonth, londonToday } from "../../src/worker/importer/dates";
+import { addDays, daysInMonth, isYmd, londonMonth, londonToday } from "../../src/worker/importer/dates";
 
 describe("londonToday", () => {
   it("is the next calendar day at 23:30 UTC during BST", () => {
@@ -30,6 +30,24 @@ describe("londonMonth", () => {
     ["2027-01-01T00:00:00Z", "2027-01"],
   ])("%s is %s", (iso, month) => {
     expect(londonMonth(new Date(iso))).toBe(month);
+  });
+});
+
+describe("daysInMonth", () => {
+  it.each([
+    ["2026-02", 28],
+    ["2024-02", 29],
+    ["2026-04", 30],
+    ["2026-10", 31],
+    ["2026-12", 31],
+  ])("%s has %i days", (month, days) => {
+    expect(daysInMonth(month)).toBe(days);
+  });
+});
+
+describe("daysInMonth rejects", () => {
+  it.each(["2026-00", "2026-13", "2026-1", "2026-10-01"])("%s", (month) => {
+    expect(() => daysInMonth(month)).toThrow();
   });
 });
 

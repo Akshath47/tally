@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { readBudget, type BudgetRows } from "../budget/effective";
+import { readBudget, sumAllocated, type BudgetRows } from "../budget/effective";
 import { londonMonth } from "../importer/dates";
 import { idParam, parseBody } from "./query";
 
@@ -12,8 +12,6 @@ import { idParam, parseBody } from "./query";
 
 // zod's int() also refuses unsafe integers.
 const amountBody = (min: number) => z.object({ amountMinor: z.number().int().min(min) });
-
-const sumAllocated = ({ allocations }: BudgetRows) => allocations.reduce((sum, a) => sum + a.allocatedMinor, 0);
 
 function toBudget(month: string, rows: BudgetRows) {
   const { overallMinor, allocations } = rows;

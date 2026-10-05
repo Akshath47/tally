@@ -848,4 +848,109 @@ This step needs no migration: `monthly_budgets` and `category_budgets` exist sin
 - one summary call stays under 10 D1 statements
 - after deploy, one real summary from the owner's account matches a hand tally of a few categories (the owner checks this; nothing is committed)
 
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 531 tests.
+- The Accept when tests in `test/summary.spec.ts`:
+  - the spec's counting cases
+  - pacing on the last day of the month (`daysRemaining = 1`, `perWeekMinor = left × 7`)
+  - a floored per-week figure (`left = 1000` over 3 days gives 2333)
+  - `400` for a malformed or future month
+  - one call runs 3 D1 statements, counted by wrapping `env.DB`
+- `code-review`, `simplify` and `security-review` ran on the branch. Code-review found that a month whose only uncategorised rows were money in listed an empty Uncategorised line. That's fixed and has a test. `security-review` found nothing.
+- Still to do after the owner merges and deploys: the owner checks one real summary against a hand tally of a few categories. Nothing from that check is committed.
+
+This step needs no migration. It builds on `RESOLVED_CTE` (P2.3), the inbox predicate (P2.4), and `readBudget` and `londonMonth` (P2.5).
+
+**Decisions:**
+- **Three D1 statements per call**, run in parallel:
+  1. `readBudget(db, month)` for the overall figure and the allocations
+  2. one aggregate over `resolved`
+  3. `max(last_data_change_at)` over the accounts with `import_enabled = 1`
+
+  `RESOLVED_CTE` is evaluated once, in statement 2. That statement groups the counted rows by `category_id` and gives each group its month's spend, its pending spend, the number of rows that count, and its inbox count. The inbox count isn't limited to the month, because the inbox isn't either.
+- **`inboxCount` uses the inbox's own predicate.** `INBOX` moves from `routes/inbox.ts` to `budget/resolve.ts`, next to the CTE it filters, and both routes import it. The badge and `GET /api/inbox` then always agree.
+- **The counting rule is one SQL expression, `COUNTS`.** A counted row (`vanished_at IS NULL`) in the month counts when `excluded = 0` and either its category is budgeted or tracked, or it's uncategorised with spend > 0. Spend is `-COALESCE(counted_amount_minor, amount_minor)`, and the month is `substr(COALESCE(counted_date, txn_date), 1, 7)`. A superseded pending row has `vanished_at` set, so it and its posted row count once between them.
+- **Kinds are current, not dated** (the spec). An archived budgeted category's spend still counts against the budget and draws on Misc, since it has no allocation.
+- **`categories[]` lists every category that has at least one counting row in the month, or an allocation above 0.** It's ordered by id, with Uncategorised (`categoryId: null`, `kind: null`) last. A category whose refunds cancel its spend still shows up, with `spentMinor: 0`. Tracked categories are listed with their kind and `allocatedMinor: 0`. Excluded ones never appear.
+- **Totals:** `spentMinor` and `pendingSpentMinor` cover budgeted categories and Uncategorised, and `trackedMinor` covers tracked categories, pending included.
+- **Before the first overall figure**, `overallMinor`, `miscMinor`, `leftMinor` and `perWeekMinor` are null. Spend is still reported, as the spec requires.
+- **Pacing (current month only).**
+  - `daysRemaining = daysInMonth(month) − today's day + 1`, with today from `londonToday(now)`.
+  - `perWeekMinor = left > 0 ? floor(left × 7 / daysRemaining) : 0`, computed with BigInt so the division is exact integer division.
+  - `daysInMonth` joins the day arithmetic in `importer/dates.ts`.
+  - For a past month both are null.
+- **The month parameter** must match `YYYY-MM` with a month from 01 to 12, and must not be after `londonMonth(now)`. Otherwise it's `400 bad_request`.
+
+### Review focus for P2.6
+
+1. **An uncategorised refund, or money in.** It never reduces `spentMinor`, and it stays in `inboxCount`. A refund in a budgeted category does reduce that category's spend (Task 2).
+2. **A transaction whose `counted_date` moves it into or out of the month**, including one moved into a future month. It counts only in the month of its counted date (Task 2).
+3. **A superseded pending row and its posted row.** They count once, and a vanished pending row counts nowhere (Task 2).
+4. **The last day of the month in London around midnight UTC.** At `2026-03-31T22:30Z` it's still 31 March (BST, so 23:30 local) and `daysRemaining = 1`. At `2026-03-31T23:30Z` it's 1 April, and March is a past month (Task 2).
+5. **A `left` that doesn't divide evenly**, or that's zero or negative. `perWeekMinor` is floored, and is 0 when nothing is left (Task 1, Task 2).
+6. **The cost.** One call runs 3 statements, which a counting D1 wrapper checks (Task 2).
+
+### Task 1: Days in a month
+
+**Files:**
+- Modify: `src/worker/importer/dates.ts`
+- Test: `test/importer/dates.spec.ts`
+
+**Interfaces:**
+- Produces: `daysInMonth(month: string): number`, for `YYYY-MM`.
+
+- [ ] **Step 1: write the failing tests:** `2026-02` → 28, `2024-02` → 29, `2026-04` → 30, `2026-10` → 31, `2026-12` → 31.
+- [ ] **Step 2:** run `npx vitest run test/importer/dates.spec.ts`. The new tests should fail.
+- [ ] **Step 3:** implement it with `Date.UTC(y, m, 0)`, like `addDays`.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): add a days-in-month helper`, with the trailer `Phase: P2.6`.
+
+### Task 2: Month summary route
+
+**Files:**
+- Modify: `src/worker/budget/resolve.ts` (export `INBOX`) and `src/worker/routes/inbox.ts` (import it)
+- Create: `src/worker/routes/months.ts`
+- Modify: `src/worker/index.ts` (mount it at `/months`)
+- Test: `test/summary.spec.ts`
+
+**Interfaces:**
+- Consumes: `RESOLVED_CTE`, `INBOX`, `readBudget`, `londonMonth`, `londonToday` and `daysInMonth`.
+- `GET /api/months/:month/summary` → `{month, overallMinor, allocatedMinor, miscMinor, spentMinor, pendingSpentMinor, leftMinor, daysRemaining, perWeekMinor, categories: {categoryId, kind, spentMinor, pendingSpentMinor, allocatedMinor}[], trackedMinor, inboxCount, lastDataChangeAt}`. A bad or future month gets `400 bad_request`.
+
+- [ ] **Step 1: write the failing tests**, using `ledger()` from `test/budget/helpers.ts` and a fixed clock:
+  - counting:
+    - an excluded override and an excluded category count 0
+    - tracked spend is in `trackedMinor` and not in `spentMinor`
+    - uncategorised money out counts, and money in doesn't (but is in `inboxCount`)
+    - a refund reduces its category's spend
+    - `counted_amount_minor` replaces the bank amount
+    - a vanished row doesn't count
+    - a superseded pending row and its posted row count once between them
+    - pending spend is reported both on its own and inside the total, overall and per category
+  - months:
+    - `counted_date` moves a transaction into another month
+    - a row in another month doesn't count
+  - budget figures:
+    - `allocated`, `misc` and `left` come from the effective rows
+    - a budgeted category with an allocation and no spend is listed
+    - an archived budgeted category's spend counts
+    - before any budget, the figures are null and spend is still shown
+  - pacing:
+    - on the last day of the month, `daysRemaining = 1` and `perWeekMinor = left × 7`
+    - mid-month, `perWeekMinor` is floored (for example `left = 1000` with 3 days left gives 2333)
+    - `perWeekMinor` is 0 when `left ≤ 0`
+    - a past month has null pacing
+    - at `2026-03-31T22:30Z` it's March with 1 day remaining, and at `23:30Z` March is past
+  - `lastDataChangeAt` is the latest across enabled accounts, ignoring disabled ones, and null when there are none
+  - `400` for `2026-13`, `2026-1`, `202610`, `2026-10-01` and next month
+  - one call runs 3 statements (counted by wrapping `env.DB`)
+- [ ] **Step 2:** run `npx vitest run test/summary.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it. Run the inbox specs too, since `INBOX` moved.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review`, then commit: `feat(worker): add the month summary route`, with the trailer `Phase: P2.6`.
+
+### Task 3: Docs
+
+- [ ] Add the summary endpoint to [schema-and-api.md](schema-and-api.md), then commit: `docs: record the month summary endpoint`.
+
 **The first usable cut is done when P2.1–P2.6 are merged and deployed.** Bills, insights, stale-data warnings and the digest each get a short design before they're added here.
