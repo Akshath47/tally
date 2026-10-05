@@ -551,6 +551,134 @@ This step was built stacked on P2.2's branch. Allocation zeroing on a kind chang
 - `security-review` is clean
 - `npm run check` passes
 
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 450 tests.
+- The Accept when tests: `over_allocated` returns overall − the other allocations (and a category's own allocation doesn't count against it), `below_allocated` returns the current `allocated`, September's rows and figures survive October's edits, and writes at `2026-03-31T23:30Z` and `2026-10-31T23:30Z` land in `2026-04` and `2026-10`.
+- `code-review`, `simplify` and `security-review` ran on the branch. `security-review` found nothing.
+- No migration, so nothing to apply remotely. The Worker deploy waits for the owner's merge.
+
+This step needs no migration: `monthly_budgets` and `category_budgets` exist since P2.2. It runs in parallel with P2.4 and doesn't touch P2.4's files (`routes/transactions.ts`, the inbox routes, `transaction_overrides` writes).
+
+**Decisions:**
+- **"Now" is the system clock.** The routes call `new Date()` like the other routes do, and tests move the clock with `vi.useFakeTimers({ toFake: ["Date"] })` and `vi.setSystemTime`. D1 calls still work under it, so `createApp` needs no clock option.
+- **`londonMonth(now)` lives next to `londonToday` in `importer/dates.ts`**, as `londonToday(now).slice(0, 7)`. P2.6 reuses it.
+- **The effective-month lookup is SQL text**, like `RESOLVED_CTE`. `effectiveOverallSql(month)` and `effectiveAllocationSql(categoryId, month)` take the placeholder or column to use and return a scalar subquery: the row with the greatest `effective_month` ≤ the month, by `ORDER BY effective_month DESC LIMIT 1`. For allocations that's a seek on the `(category_id, effective_month)` primary key, one per category. P2.6 composes the same fragments into its summary query.
+- **`maxAllocatableMinor` is given per category** in `GET /api/budget`: overall − every other allocation, so it's the most that category can be set to. For a category with no allocation it equals `miscMinor`. The spec lists one `maxAllocatableMinor` without saying what it's for; per category is the figure the `422 over_allocated` response carries, so the UI can show the same limit before and after a refused write.
+- **Both `PUT`s answer with the new budget**, the same body as `GET /api/budget`, so the UI doesn't need a second request.
+- **Only budgeted, unarchived categories count towards `allocated`**, using their current kind (the spec: kinds aren't dated). Their rows in `GET /api/budget` are listed by id, with `allocatedMinor: 0` when they have no allocation.
+- **Allocating to a category that isn't budgeted, or is archived, is `409 category_not_budgeted` or `409 category_archived`.** The spec requires both checks but names no codes; `category_archived` matches the rules route. The order is: `400` (bad id or body), `404` (unknown category), `409 category_archived`, `409 category_not_budgeted`, `409 overall_budget_not_set`, then `422 over_allocated`.
+- **Zeroing follows the category's state, not the patch.** In the same `D1.batch` as the `UPDATE`, one upsert writes a 0 row for the current month when the category is now not budgeted or archived **and** its current effective allocation is above 0. A failed `UPDATE` (`name_taken`) rolls the batch back, so nothing is zeroed. A category with no allocation gets no row.
+- **There is no lock between the validation read and the write** (the spec: one user). The write is a plain upsert on the current month's row.
+- **Lowering a category's allocation is always allowed**, even when the budget is over-allocated (which the API never causes, but SQL written by hand could). Otherwise the owner couldn't get back under through the API.
+- **Past months keep their rows, not their kinds.** Zeroing never touches an earlier month's row, but kinds aren't dated, so `readBudget` for a past month counts categories by their current kind, as the spec accepts.
+- **A `0` allocation is accepted and stored**, since it's how an allocation is removed from a month on. The overall figure must be > 0, as its CHECK requires. Both must be safe integers.
+
+### Review focus for P2.5
+
+1. **Late evening in London around month ends.** At `2026-03-31T23:30Z` (BST) it's already April, so a write goes to `2026-04`. At `2026-10-31T23:30Z` (GMT) it's still October (Task 1, Task 3).
+2. **An edit in a later month than the last row.** It inserts a new row for the current month and leaves the older row alone, so past months keep their figures. A second edit in the same month updates that month's row (Task 3).
+3. **Raising a category's own allocation.** The limit leaves out the category's current allocation, so with overall 500 and Groceries at 300, setting Groceries to 500 is allowed. `maxAllocatableMinor` in the `422` is overall − the others (Task 3).
+4. **A stale allocation on a category that's now tracked, excluded or archived.** It isn't part of `allocated`, so it doesn't block lowering the overall figure, and zeroing it leaves past months' rows alone (Task 2, Task 4).
+5. **A `PATCH` that fails** (for example `409 name_taken`) together with a kind change. Nothing is zeroed (Task 4).
+6. **Amounts that aren't safe integers**: `12.5`, `"1000"`, `2 ** 53`, and an overall figure of `0`. All are `400`, and nothing is written (Task 3).
+
+### Task 1: The current London month
+
+**Files:**
+- Modify: `src/worker/importer/dates.ts`
+- Test: `test/importer/dates.spec.ts`
+
+**Interfaces:**
+- Produces: `londonMonth(now: Date): string`, `YYYY-MM`.
+
+- [ ] **Step 1: write the failing tests:**
+  - `2026-03-31T23:30Z` is `2026-04` (BST)
+  - `2026-10-31T23:30Z` is `2026-10` (GMT)
+  - `2026-12-31T23:59Z` is `2026-12`, and `2027-01-01T00:00Z` is `2027-01`
+- [ ] **Step 2:** run `npx vitest run test/importer/dates.spec.ts`. The new tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): add the current london month helper`, with the trailer `Phase: P2.5`.
+
+### Task 2: Effective-month lookup
+
+**Files:**
+- Create: `src/worker/budget/effective.ts`
+- Test: `test/budget/effective.spec.ts`
+
+**Interfaces:**
+- Consumes: `monthly_budgets`, `category_budgets` and `categories` (P2.2).
+- Produces:
+  - `effectiveOverallSql(month: string): string` and `effectiveAllocationSql(categoryId: string, month: string): string`, scalar subqueries. The arguments are SQL placeholders or column names, never values.
+  - `readBudget(db: D1Database, month: string): Promise<BudgetRows>`, one statement, where `BudgetRows = { overallMinor: number | null; allocations: { categoryId: number; allocatedMinor: number }[] }` lists every budgeted, unarchived category by id.
+
+- [ ] **Step 1: write the failing tests**, inserting budget rows with SQL:
+  - with rows for `2026-08` and `2026-10`, the overall figure for `2026-07` is null, `2026-08` and `2026-09` give the August figure, and `2026-10` and `2026-12` give October's
+  - each category's allocation comes from its own latest row ≤ the month, and a later `0` row gives `0`
+  - tracked, excluded and archived categories aren't listed, even with an allocation
+  - a budgeted category with no rows is listed with `0`
+  - with no budgeted categories at all, the overall figure is still returned
+- [ ] **Step 2:** run `npx vitest run test/budget/effective.spec.ts`. It should fail because the module is missing.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run the tests. They should pass.
+- [ ] **Step 5:** commit: `feat(worker): look up a month's effective budget figures`, with the trailer `Phase: P2.5`.
+
+### Task 3: Budget routes
+
+**Files:**
+- Create: `src/worker/routes/budget.ts`
+- Modify: `src/worker/index.ts` (mount it at `/budget`)
+- Test: `test/budget.spec.ts`
+
+**Interfaces:**
+- Consumes: `londonMonth` (Task 1) and `readBudget` (Task 2).
+- `GET /api/budget` → `{month, overallMinor, allocatedMinor, miscMinor, categories: {categoryId, allocatedMinor, maxAllocatableMinor}[]}`. Before the first overall figure, `overallMinor`, `miscMinor` and every `maxAllocatableMinor` are null.
+- `PUT /api/budget/overall` with body `{amountMinor}`, a safe integer > 0. Returns `200` with the `GET` body, `422 {error:"below_allocated", minOverallMinor}` or `400`.
+- `PUT /api/budget/categories/:categoryId` with body `{amountMinor}`, a safe integer ≥ 0. Returns `200` with the `GET` body, `404`, `409 category_archived`, `409 category_not_budgeted`, `409 overall_budget_not_set`, `422 {error:"over_allocated", maxAllocatableMinor}` or `400`.
+- Both writes upsert the current London month's row.
+
+- [ ] **Step 1: write the failing tests**, with the clock set by `vi.setSystemTime`:
+  - `GET` before any budget: null figures, every budgeted category listed with `0`
+  - set the overall figure, then allocate: `allocated`, `misc` and each `maxAllocatableMinor` add up
+  - `over_allocated` returns overall − the other allocations, and raising a category's own allocation up to that limit works
+  - `below_allocated` returns the current `allocated`, and lowering the overall figure exactly to `allocated` works
+  - allocating before an overall figure is `409 overall_budget_not_set`
+  - allocating to a tracked or archived category is `409`, and to an unknown one `404`
+  - with the clock in September, set figures; move it to October and edit them: the September rows are unchanged, and `readBudget(db, "2026-09")` still gives the old figures
+  - two edits in the same month leave one row for that month
+  - at `2026-03-31T23:30Z` the write lands in `2026-04`, and at `2026-10-31T23:30Z` in `2026-10`
+  - the bad bodies from Review focus 6 and a bad id are `400`, and nothing is written
+  - a cross-site request and a non-JSON body are refused, as for the other routes
+- [ ] **Step 2:** run `npx vitest run test/budget.spec.ts`. The tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** commit: `feat(worker): add the budget routes`, with the trailer `Phase: P2.5`.
+
+### Task 4: Zero an allocation when its category stops counting
+
+**Files:**
+- Modify: `src/worker/routes/categories.ts` (the `PATCH` becomes a two-statement batch)
+- Test: `test/categories.spec.ts`
+
+**Interfaces:**
+- Consumes: `londonMonth` and `effectiveAllocationSql`.
+- Produces (DB contract): after a `PATCH` that leaves a category not budgeted or archived, its effective allocation for the current month is 0, and earlier months' rows are unchanged.
+
+- [ ] **Step 1: write the failing tests:**
+  - a category allocated in September; in October, changing it to tracked writes an October `0` row, and the September row is unchanged
+  - the same for excluded, and for archiving
+  - a rename, or a patch of a category with no allocation, writes no budget row
+  - a kind change that fails with `409 name_taken` writes nothing
+  - after unarchiving, the category is listed in `GET /api/budget` with `0`
+- [ ] **Step 2:** run `npx vitest run test/categories.spec.ts`. The new tests should fail.
+- [ ] **Step 3:** implement it.
+- [ ] **Step 4:** run `npm run check`.
+- [ ] **Step 5:** run `security-review`, then commit: `feat(worker): zero a category's allocation when it stops counting`, with the trailer `Phase: P2.5`.
+
+### Task 5: Docs
+
+- [ ] Add the three budget endpoints to [schema-and-api.md](schema-and-api.md), and the zeroing to the `PATCH /api/categories/:id` row, then commit: `docs: record the budget endpoints`.
+
 ## [ ] P2.6 Month summary
 
 **Deliverable:** `GET /api/months/:month/summary`, as in the spec.
