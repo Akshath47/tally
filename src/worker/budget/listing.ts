@@ -70,12 +70,14 @@ const COLUMNS = `t.id, t.account_id AS accountId, t.amount_minor AS amountMinor,
   (${EDITABLE}) AS editable`;
 
 type ListOptions = {
-  /** `[sql, ...binds]`: a static condition on `t` (transactions), `r` (resolved) or `c` (categories), and a value per `?`. */
+  /** `[sql, ...binds]`: a static condition on `t` (transactions) or `r` (resolved), and a value per `?`. */
   where: [sql: string, ...binds: unknown[]][];
   limit: number;
   cursor?: Cursor;
   /** Also count every row matching `where`, regardless of the page. */
   withTotal?: boolean;
+  /** Join each row's category as `c`, for conditions on its kind. Off by default: it's a lookup per row. */
+  withCategory?: boolean;
 };
 
 /**
@@ -86,14 +88,14 @@ export async function listTransactions(db: D1Database, opts: ListOptions): Promi
   const where = opts.where.length ? `WHERE ${opts.where.map(([sql]) => sql).join(" AND ")}` : "";
   const binds = opts.where.flatMap(([, ...values]) => values);
   const total = opts.withTotal ? ", count(*) OVER () AS total" : "";
+  const category = opts.withCategory ? "LEFT JOIN categories c ON c.id = r.category_id" : "";
   const cursor = opts.cursor ? "WHERE (txnDate, id) < (?, ?)" : "";
   const cursorBinds = opts.cursor ? [opts.cursor.date, opts.cursor.id] : [];
   // One extra row tells us whether there is a next page.
   const { results } = await db
     .prepare(
       `WITH ${RESOLVED_CTE},
-         listed AS (SELECT ${COLUMNS}${total} FROM resolved r JOIN transactions t ON t.id = r.id
-           LEFT JOIN categories c ON c.id = r.category_id ${where})
+         listed AS (SELECT ${COLUMNS}${total} FROM resolved r JOIN transactions t ON t.id = r.id ${category} ${where})
        SELECT * FROM listed ${cursor} ORDER BY txnDate DESC, id DESC LIMIT ?`,
     )
     .bind(...binds, ...cursorBinds, opts.limit + 1)

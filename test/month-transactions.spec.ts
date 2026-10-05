@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb } from "./db";
 import { get } from "./http";
+import { budgetLines } from "../src/web/lines";
 import { insertAllocation, insertOverall } from "./budget/budget-rows";
 import { SEEDED, insertCategory, insertOverride, insertRule, ledger } from "./budget/helpers";
 
@@ -9,7 +10,7 @@ import { SEEDED, insertCategory, insertOverride, insertRule, ledger } from "./bu
 
 type Txn = { id: number; amountMinor: number; countedAmountMinor: number | null; categoryId: number | null };
 type Page = { transactions: Txn[]; nextCursor: string | null };
-type Summary = { categories: { categoryId: number | null; kind: string | null; spentMinor: number; allocatedMinor: number }[] };
+type Summary = Parameters<typeof budgetLines>[0];
 
 const list = async (category: string | number, month = "2026-10", extra = "") => {
   const res = await get(`/api/months/${month}/transactions?category=${category}${extra}`);
@@ -103,10 +104,14 @@ describe("GET /api/months/:month/transactions?category=misc", () => {
   });
 });
 
-describe("GET /api/months/:month/transactions: agrees with the summary", () => {
-  it("adds up to each Home line's spend", async () => {
+describe("GET /api/months/:month/transactions: agrees with Home", () => {
+  it("adds up to each line Home draws from the summary", async () => {
     await insertOverall("2026-10", 100_000);
     await insertAllocation(SEEDED.groceries, "2026-10", 20_000);
+    await insertAllocation(SEEDED.transport, "2026-10", 0);
+    const archived = await insertCategory("Gifts");
+    await insertAllocation(archived, "2026-10", 5_000);
+    await env.DB.prepare("UPDATE categories SET archived_at = '2026-10-10T00:00:00Z' WHERE id = ?1").bind(archived).run();
     await grocer(-1_000);
     await grocer(250);
     await grocer(-300, { isPending: true });
@@ -114,13 +119,12 @@ describe("GET /api/months/:month/transactions: agrees with the summary", () => {
     await txn(accounts[0], { merchant: "Cafe", amountMinor: -700 });
     await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -300 });
     await txn(accounts[0], { merchant: "Outfitter", amountMinor: -5_000 });
+    await insertOverride(await txn(accounts[0], { merchant: "Shop", amountMinor: -400 }), { category_id: archived });
 
-    const res = await get("/api/months/2026-10/summary");
-    const s = (await res.json()) as Summary;
-    const groceries = s.categories.find((c) => c.categoryId === SEEDED.groceries)!;
-    const misc = s.categories.filter((c) => c.kind !== "tracked" && (c.categoryId === null || c.allocatedMinor === 0));
-    expect(spend(await list(SEEDED.groceries))).toBe(groceries.spentMinor);
-    expect(spend(await list("misc"))).toBe(misc.reduce((sum, c) => sum + c.spentMinor, 0));
+    const s = (await (await get("/api/months/2026-10/summary")).json()) as Summary;
+    const lines = budgetLines(s, new Map());
+    expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc"]);
+    for (const l of lines) expect(spend(await list(l.category)), String(l.category)).toBe(l.spentMinor);
   });
 });
 

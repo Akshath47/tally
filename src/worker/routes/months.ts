@@ -35,11 +35,11 @@ type Line = { categoryId: number | null; kind: string | null; spentMinor: number
 const perWeek = (leftMinor: number, daysRemaining: number) =>
   leftMinor > 0 ? Number((BigInt(leftMinor) * 7n) / BigInt(daysRemaining)) : 0;
 
-/** The `:month` path parameter, or null unless it's a YYYY-MM no later than the current month. */
-function monthParam(c: Context, now: Date): string | null {
+/** The `:month` path parameter, or null unless it's a YYYY-MM no later than `current`. */
+function monthParam(c: Context, current: string): string | null {
   const month = c.req.param("month");
   // YYYY-MM strings compare in calendar order.
-  return month !== undefined && isYm(month) && month <= londonMonth(now) ? month : null;
+  return month !== undefined && isYm(month) && month <= current ? month : null;
 }
 
 // Misc on Home is the unallocated pot: uncategorised money out, plus budgeted categories with no
@@ -60,7 +60,7 @@ export const monthRoutes = new Hono<AppEnv>()
    * category, or in Misc. Newest first by bank date, keyset-paged like /api/transactions.
    */
   .get("/:month/transactions", async (c) => {
-    const month = monthParam(c, new Date());
+    const month = monthParam(c, londonMonth(new Date()));
     const q = parseQuery(c, lineQuery);
     if (month === null || !q.ok) return c.json({ error: "bad_request" }, 400);
     const { category, limit, cursor } = q.data;
@@ -74,13 +74,14 @@ export const monthRoutes = new Hono<AppEnv>()
       ],
       limit,
       cursor,
+      withCategory: true,
     });
     return c.json({ transactions, nextCursor });
   })
   .get("/:month/summary", async (c) => {
     const now = new Date();
     const current = londonMonth(now);
-    const month = monthParam(c, now);
+    const month = monthParam(c, current);
     if (month === null) return c.json({ error: "bad_request" }, 400);
 
     const db = c.env.DB;
