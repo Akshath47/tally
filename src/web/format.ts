@@ -27,3 +27,7 @@ export function formatMoney(amountMinor: number, currency: string): string {
 export function formatTimestamp(iso: string | null): string {
   return iso ? timestampFormat.format(new Date(iso)) : "never";
 }
+
+/** What a transaction is called on screen; bank text is untrusted and rendered as text only. */
+export const merchantLabel = (t: { merchant: string; description: string }) => t.merchant || t.description || "Unknown merchant";
+

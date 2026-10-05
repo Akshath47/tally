@@ -1,2 +1,84 @@
 @import "tailwindcss";
 @import "./theme.css";
+
+/* App shell: layout sizes, safe areas and base page styles (dark only, docs/ui-design.md). */
+
+@theme {
+  --spacing-tabbar: 54px;
+  --animate-sheet-up: sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+  }
+}
+
+/* Room for the status bar / notch above a screen title, and the home indicator below. */
+@utility pt-safe {
+  padding-top: max(52px, calc(env(safe-area-inset-top) + 8px));
+}
+
+@utility pb-safe {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+/* Clears the fixed tab bar at the end of a tab screen. */
+@utility pb-tabbar-clear {
+  padding-bottom: calc(var(--spacing-tabbar) + max(8px, env(safe-area-inset-bottom)) + 24px);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply min-h-dvh bg-canvas font-sans text-body text-fg antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* iOS scrolls the page behind a modal dialog unless the root stops scrolling. */
+  html:has(dialog:modal) {
+    overflow: hidden;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Pending spend: a diagonal hatch of the bar colour (docs/ui-design.md). */
+@utility hatch {
+  background: repeating-linear-gradient(135deg, var(--color-accent) 0 2px, color-mix(in srgb, var(--color-accent) 30%, var(--color-canvas)) 2px 5px);
+}
+
+@utility hatch-warn {
+  background: repeating-linear-gradient(135deg, var(--color-warn) 0 2px, color-mix(in srgb, var(--color-warn) 30%, var(--color-canvas)) 2px 5px);
+}
+
+/* Loading placeholders; the shimmer stops under prefers-reduced-motion. */
+@utility skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-raised) 50%, var(--color-surface) 75%) 0 0 / 200% 100%;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: shimmer 1.4s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
