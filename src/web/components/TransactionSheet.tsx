@@ -21,13 +21,13 @@ const SAVE_ERRORS: Record<string, string> = {
 
 const errorText = (e: unknown) => (e instanceof ApiError && e.body && SAVE_ERRORS[e.body.error]) || "Couldn't save. Check your connection and try again.";
 
-/** Whether and how a row counts, in the words the read-only sheet uses. */
-function countsText(t: Transaction, category: Category | undefined) {
-  if (t.vanishedAt) return "No, it was replaced";
-  if (t.excluded || category?.kind === "excluded") return "No";
-  if (category?.kind === "tracked") return "No, tracked only";
-  if (category) return `Yes, as ${category.name}`;
-  return (t.countedAmountMinor ?? t.amountMinor) < 0 ? "Yes, as Misc for now" : "No, money in waits to be sorted";
+/** Whether a row counts towards the budget, and how, in the words the read-only sheet uses. */
+function countsOf(t: Transaction, category: Category | undefined): { counts: boolean; text: string } {
+  if (t.vanishedAt) return { counts: false, text: "No, it was replaced" };
+  if (t.excluded || category?.kind === "excluded") return { counts: false, text: "No" };
+  if (category?.kind === "tracked") return { counts: false, text: "No, tracked only" };
+  if (category) return { counts: true, text: `Yes, as ${category.name}` };
+  return (t.countedAmountMinor ?? t.amountMinor) < 0 ? { counts: true, text: "Yes, as Misc for now" } : { counts: false, text: "No, money in waits to be sorted" };
 }
 
 function ReadOnlyRow({ label, value }: { label: string; value: string }) {
@@ -42,6 +42,7 @@ function ReadOnlyRow({ label, value }: { label: string; value: string }) {
 function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: Account | undefined; category: Category | undefined; onClose: () => void }) {
   const amount = formatUnsigned(t.countedAmountMinor ?? t.amountMinor, t.currency);
   const month = monthName(monthOf(t.countedDate ?? t.txnDate));
+  const counts = countsOf(t, category);
   return (
     <div className="flex flex-col gap-3.5 overflow-y-auto px-4 pt-2 pb-4">
       <div className="flex items-end justify-between gap-3 px-1">
@@ -61,12 +62,12 @@ function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: 
         <p>
           {t.vanishedAt
             ? "This pending charge was replaced when the bank posted it, so it no longer counts. The posted version is the one to edit."
-            : `Pending transactions can't be edited. It already counts towards ${month}'s spend. Once ${account?.name ?? "the bank"} posts it, usually in 1 to 3 days, ${category ? "it can be edited" : "it shows up in To sort"}.`}
+            : `Pending transactions can't be edited. ${counts.counts ? `It already counts towards ${month}'s spend.` : "It doesn't count towards your budget."} Once ${account?.name ?? "the bank"} posts it, usually in 1 to 3 days, ${category ? "it can be edited" : "it shows up in To sort"}.`}
         </p>
       </div>
       <div className="overflow-hidden rounded-2xl border border-divider bg-surface" aria-label="Details, read-only">
         <ReadOnlyRow label="Category" value={category?.name ?? "Uncategorised"} />
-        <ReadOnlyRow label="Counts towards spend" value={countsText(t, category)} />
+        <ReadOnlyRow label="Counts towards spend" value={counts.text} />
         <ReadOnlyRow label="Amount" value={amount} />
         <ReadOnlyRow label="Date" value={formatShortDate(t.txnDate)} />
       </div>

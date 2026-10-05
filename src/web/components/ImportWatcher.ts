@@ -25,12 +25,14 @@ export function useImportWatcher() {
   const runs = useImportRuns();
   const lastFinished = lastFinishedRun(runs.data);
   const finishedKey = lastFinished ? `${lastFinished.id}:${lastFinished.status}` : null;
-  const seenKey = useRef<string | null>(null);
+  // undefined until the runs first load; a finished run seen after that refreshes, the first ever included.
+  const seenKey = useRef<string | null | undefined>(undefined);
+  const loaded = runs.data !== undefined;
   useEffect(() => {
-    if (finishedKey === null) return;
-    if (seenKey.current !== null && seenKey.current !== finishedKey) {
+    if (!loaded) return;
+    if (seenKey.current !== undefined && finishedKey !== null && seenKey.current !== finishedKey) {
       void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "import-runs" });
     }
     seenKey.current = finishedKey;
-  }, [finishedKey, queryClient]);
+  }, [loaded, finishedKey, queryClient]);
 }

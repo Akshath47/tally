@@ -92,34 +92,35 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
   const unlisted = budget.categories.filter((c) => !rows.some((r) => r.categoryId === c.categoryId));
 
   // Client-side checks mirror the server's, so nothing invalid is sent.
-  const overallError =
+  // Client checks block a save; a server error is shown until the next attempt but never blocks one.
+  const overallClientError =
     overallText.trim() !== "" && overallDraft === null
       ? "Enter an amount in pounds, like 1,800."
       : overallDraft !== null && overallDraft <= 0
         ? "Set a budget above £0."
         : overallDraft !== null && overallDraft < budget.allocatedMinor
           ? `Your allocations add up to ${formatPounds(budget.allocatedMinor)}. Set at least ${formatPounds(budget.allocatedMinor)}, or lower an allocation first.`
-          : serverError?.field === "overall"
-            ? serverError.text
-            : null;
-  const rowError = (r: (typeof rows)[number]) => {
+          : null;
+  const overallError = overallClientError ?? (serverError?.field === "overall" ? serverError.text : null);
+  const rowClientError = (r: (typeof rows)[number]) => {
     const text = drafts[r.categoryId];
     if (text !== undefined && text.trim() !== "" && parseMoneyInput(text) === null) return "Enter an amount in pounds, like 120.";
     if (budget.overallMinor !== null && r.amount > r.allocatedMinor && r.maxAllocatableMinor !== null && r.amount > r.maxAllocatableMinor) {
       return overAllocatedText(r.name, r.maxAllocatableMinor, r.allocatedMinor, budget.overallMinor);
     }
-    return serverError?.field === r.categoryId ? serverError.text : null;
+    return null;
   };
+  const rowError = (r: (typeof rows)[number]) => rowClientError(r) ?? (serverError?.field === r.categoryId ? serverError.text : null);
   const anyRowError = rows.some((r) => rowError(r) !== null);
   const saving = saveOverall.isPending || saveCategory.isPending;
 
   const commitOverall = () => {
-    if (overallError || overallDraft === null || overallDraft === budget.overallMinor) return;
+    if (overallClientError || overallDraft === null || overallDraft === budget.overallMinor) return;
     saveOverall.mutate(overallDraft);
   };
   const commitRow = (r: (typeof rows)[number]) => {
     const text = drafts[r.categoryId];
-    if (text === undefined || rowError(r)) return;
+    if (text === undefined || rowClientError(r)) return;
     const amount = text.trim() === "" ? 0 : parseMoneyInput(text);
     if (amount === null) return;
     if (amount === r.allocatedMinor) setDrafts(withoutDraft(r.categoryId));

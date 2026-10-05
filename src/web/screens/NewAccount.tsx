@@ -63,6 +63,7 @@ export function NewAccount({ back, accountId }: { back: Back; accountId: number 
   const held = accounts.data?.byId.get(accountId);
   const candidates = (accounts.data?.all ?? []).filter((a) => a.id !== accountId && a.importEnabled && !a.needsReview);
   const match = held ? likelyMatch(held, candidates) : undefined;
+  const linkable = candidates.filter((c) => c.currency === held?.currency);
   const selected = choice ?? (match ? { kind: "link" as const, intoId: match.id } : null);
   const target = selected?.kind === "link" ? candidates.find((c) => c.id === selected.intoId) : undefined;
 
@@ -143,8 +144,8 @@ export function NewAccount({ back, accountId }: { back: Back; accountId: number 
               on={selected?.kind === "link"}
               title="Link to an existing account"
               body="It's a card or account you already had, reconnected. New transactions are filed under the old account, and its history isn't imported a second time."
-              disabled={candidates.length === 0}
-              onSelect={() => setChoice({ kind: "link", intoId: (match ?? candidates[0])!.id })}
+              disabled={linkable.length === 0}
+              onSelect={() => setChoice({ kind: "link", intoId: (match ?? linkable[0])!.id })}
             />
             {selected?.kind === "link" && (
               <div className="ml-8 flex flex-col gap-2" role="radiogroup" aria-label="Which account">
