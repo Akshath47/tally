@@ -55,3 +55,30 @@
     cursor: pointer;
   }
 }
+
+/* Pending spend: a diagonal hatch of the bar colour (docs/ui-design.md). */
+@utility hatch {
+  background: repeating-linear-gradient(135deg, var(--color-accent) 0 2px, color-mix(in srgb, var(--color-accent) 30%, var(--color-canvas)) 2px 5px);
+}
+
+@utility hatch-warn {
+  background: repeating-linear-gradient(135deg, var(--color-warn) 0 2px, color-mix(in srgb, var(--color-warn) 30%, var(--color-canvas)) 2px 5px);
+}
+
+/* Loading placeholders; the shimmer stops under prefers-reduced-motion. */
+@utility skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-raised) 50%, var(--color-surface) 75%) 0 0 / 200% 100%;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: shimmer 1.4s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
