@@ -16,6 +16,9 @@ export const effectiveAllocationSql = (categoryId: string, month: string) =>
 
 export type BudgetRows = { overallMinor: number | null; allocations: { categoryId: number; allocatedMinor: number }[] };
 
+/** The month's `allocated`: the sum of the listed categories' allocations. */
+export const sumAllocated = ({ allocations }: BudgetRows) => allocations.reduce((sum, a) => sum + a.allocatedMinor, 0);
+
 /**
  * The overall figure and every budgeted, unarchived category's allocation (0 if none) in
  * `month`, ordered by category id. Kinds aren't dated, so the current kind decides. One statement.

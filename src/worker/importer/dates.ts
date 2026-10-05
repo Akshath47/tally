@@ -39,9 +39,14 @@ export function addDays(ymd: string, days: number): string {
   return new Date(Date.UTC(p[0], p[1] - 1, p[2] + days)).toISOString().slice(0, 10);
 }
 
+const YM = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+/** True only for a real month in YYYY-MM form. */
+export const isYm = (value: string) => YM.test(value);
+
 /** How many days a YYYY-MM month has. */
 export function daysInMonth(month: string): number {
-  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  const m = YM.exec(month);
   if (!m) throw new Error("daysInMonth: not a YYYY-MM month");
   // Day 0 of the next month is this month's last day.
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();

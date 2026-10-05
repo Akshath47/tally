@@ -1,15 +1,12 @@
 import { Hono } from "hono";
-import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { readBudget } from "../budget/effective";
+import { readBudget, sumAllocated } from "../budget/effective";
 import { INBOX, RESOLVED_CTE } from "../budget/resolve";
-import { daysInMonth, londonMonth, londonToday } from "../importer/dates";
+import { daysInMonth, isYm, londonMonth, londonToday } from "../importer/dates";
 
 // Everything the home screen needs for one month (docs/phase-2-spec.md, "What a transaction
 // counts as" and "Budget figures for a month"). Spend is positive = money out, so a refund is
 // negative spend. Aggregation is in SQL: three statements, and one evaluation of RESOLVED_CTE.
-
-const monthParam = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 // On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's
 // budgeted or tracked, or uncategorised money out. Uncategorised money in waits in the inbox.
@@ -44,10 +41,9 @@ const perWeek = (leftMinor: number, daysRemaining: number) =>
 export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) => {
   const now = new Date();
   const current = londonMonth(now);
-  const parsed = monthParam.safeParse(c.req.param("month"));
+  const month = c.req.param("month");
   // YYYY-MM strings compare in calendar order.
-  if (!parsed.success || parsed.data > current) return c.json({ error: "bad_request" }, 400);
-  const month = parsed.data;
+  if (!isYm(month) || month > current) return c.json({ error: "bad_request" }, 400);
 
   const db = c.env.DB;
   const [budget, groups, freshness] = await Promise.all([
@@ -83,7 +79,7 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
   }
 
   const { overallMinor } = budget;
-  const allocatedMinor = budget.allocations.reduce((n, a) => n + a.allocatedMinor, 0);
+  const allocatedMinor = sumAllocated(budget);
   const leftMinor = overallMinor === null ? null : overallMinor - spentMinor;
   // Pacing is for the current month only; today counts as a day remaining.
   const daysRemaining = month === current ? daysInMonth(month) - Number(londonToday(now).slice(8)) + 1 : null;
