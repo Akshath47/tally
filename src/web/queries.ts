@@ -1,30 +1,33 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getMonthSummary, getRules, getTransactions, type Account, type Category } from "./api";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getMonthSummary, getRules, getTransactions, type Account, type Category, type CategoryKind } from "./api";
 import { addMonths, daysInMonth } from "./dates";
 
-// Shared queries. Every write invalidates everything: the app is small and one person's, and
-// a rule or override changes the summary, the inbox and the lists at once.
+// Shared queries. Every successful write invalidates the cache (main.tsx): the app is one
+// person's, and a rule or override changes the summary, the inbox and the lists at once.
 
 const PAGE = 100;
 
-export const useSummary = (month: string) => useQuery({ queryKey: ["summary", month], queryFn: () => getMonthSummary(month) });
+/** The category kinds in display order, with what each means. */
+export const KINDS: { kind: CategoryKind; label: string; about: string }[] = [
+  { kind: "budgeted", label: "Budgeted", about: "Counts against your monthly budget" },
+  { kind: "tracked", label: "Tracked", about: "Shown in spending, never counts against the budget" },
+  { kind: "excluded", label: "Excluded", about: "Not spending at all: hidden from totals" },
+];
+
+const summaryQuery = (month: string) => ({ queryKey: ["summary", month], queryFn: () => getMonthSummary(month) });
+
+// Selects live at module level so TanStack memoises their results per data change.
+const selectRules = (d: Awaited<ReturnType<typeof getRules>>) => d.rules;
+const selectMerchants = (d: Awaited<ReturnType<typeof getInboxMerchants>>) => d.merchants;
+const selectCategories = (d: { categories: Category[] }) => ({ all: d.categories, byId: new Map(d.categories.map((c) => [c.id, c])) });
+const selectAccounts = (d: { accounts: Account[] }) => ({ all: d.accounts, byId: new Map(d.accounts.map((a) => [a.id, a])) });
+
+export const useSummary = (month: string) => useQuery(summaryQuery(month));
 export const useBudget = () => useQuery({ queryKey: ["budget"], queryFn: getBudget });
-export const useRules = () => useQuery({ queryKey: ["rules"], queryFn: getRules, select: (d) => d.rules });
-export const useInboxMerchants = () => useQuery({ queryKey: ["inbox", "merchants"], queryFn: getInboxMerchants, select: (d) => d.merchants });
-
-export const useCategories = () =>
-  useQuery({
-    queryKey: ["categories"],
-    queryFn: getCategories,
-    select: (d) => ({ all: d.categories, byId: new Map(d.categories.map((c) => [c.id, c])), active: d.categories.filter((c) => !c.archived) }),
-  });
-
-export const useAccounts = () =>
-  useQuery({
-    queryKey: ["accounts"],
-    queryFn: getAccounts,
-    select: (d) => ({ all: d.accounts, byId: new Map<number, Account>(d.accounts.map((a) => [a.id, a])) }),
-  });
+export const useRules = () => useQuery({ queryKey: ["rules"], queryFn: getRules, select: selectRules });
+export const useInboxMerchants = () => useQuery({ queryKey: ["inbox", "merchants"], queryFn: getInboxMerchants, select: selectMerchants });
+export const useCategories = () => useQuery({ queryKey: ["categories"], queryFn: getCategories, select: selectCategories });
+export const useAccounts = () => useQuery({ queryKey: ["accounts"], queryFn: getAccounts, select: selectAccounts });
 
 export const useInbox = () =>
   useInfiniteQuery({
@@ -43,21 +46,11 @@ export const useMonthTransactions = (month: string) =>
     getNextPageParam: (last) => last.nextCursor,
   });
 
-/** Spent in each of the two months before `month`, for first-run reference. */
-export const usePreviousSpend = (month: string, enabled: boolean) =>
-  useQuery({
-    queryKey: ["summary", "previous", month],
-    enabled,
-    queryFn: async () => Promise.all([1, 2].map((n) => getMonthSummary(addMonths(month, -n)))),
-  });
+/** The summaries of the two months before `month`, sharing the cache with useSummary. */
+export const usePreviousSummaries = (month: string) => useQueries({ queries: [1, 2].map((n) => summaryQuery(addMonths(month, -n))) });
 
-export function useInvalidateAll() {
-  const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries();
-}
-
-/** Budgeted, unarchived categories first, as pickers list them. */
+/** Active categories in picker order: by kind, then name. */
 export function pickerOrder(categories: Category[]): Category[] {
-  const rank = { budgeted: 0, tracked: 1, excluded: 2 } as const;
-  return categories.filter((c) => !c.archived).sort((a, b) => rank[a.kind] - rank[b.kind] || a.name.localeCompare(b.name));
+  const rank = (c: Category) => KINDS.findIndex((k) => k.kind === c.kind);
+  return categories.filter((c) => !c.archived).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }

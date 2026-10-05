@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ApiError, createRule, deleteRule, putOverride, type Category, type InboxMerchant, type Transaction } from "../api";
-import { PushedScreen } from "../components/Screen";
+import { apiErrorText, createRule, deleteRule, putOverride, type Category, type InboxMerchant, type Transaction } from "../api";
+import { LoadError, PushedScreen } from "../components/Screen";
 import { Sheet } from "../components/Sheet";
 import { CategoryPicker, TransactionSheet } from "../components/TransactionSheet";
-import { AccountBadge, Button, ChevronDown, ChevronRight, Lock, Skeleton, Toast, type ToastState } from "../components/ui";
-import { formatDayMonth, formatShortDate, londonToday, monthOf } from "../dates";
+import { AccountBadge, Button, ChevronDown, ChevronRight, ErrorBanner, Lock, SectionLabel, Segmented, Skeleton, Toast, type ToastState } from "../components/ui";
+import { formatDayMonth, formatShortDate } from "../dates";
 import { merchantLabel } from "../format";
 import { formatUnsigned } from "../money";
 import { overrideOf } from "../overrides";
-import { pickerOrder, useAccounts, useBudget, useCategories, useInbox, useInboxMerchants, useInvalidateAll, useSummary } from "../queries";
+import { pickerOrder, useAccounts, useBudget, useCategories, useInbox, useInboxMerchants } from "../queries";
 import { Link } from "../router";
 import type { Back } from "../routes";
 import { normalizePattern } from "../../worker/budget/resolve";
@@ -53,8 +53,6 @@ export function ToSort({ back }: { back: Back }) {
   const accounts = useAccounts();
   const categories = useCategories();
   const budget = useBudget();
-  const summary = useSummary(monthOf(londonToday()));
-  const invalidateAll = useInvalidateAll();
   const [byDate, setByDate] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
@@ -62,16 +60,23 @@ export function ToSort({ back }: { back: Back }) {
   const [toast, setToast] = useState<ToastState>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
-  const rows = inbox.data?.pages.flatMap((p) => p.transactions) ?? [];
-  const total = inbox.data?.pages[0]?.total ?? 0;
-  const pending = rows.filter((r) => !r.editable);
-  const posted = rows.filter((r) => r.editable);
-  const rowsOf = (g: InboxMerchant) => posted.filter((r) => normalizePattern(r.merchant) === g.pattern);
+  // One pass over the loaded inbox rows: posted rows by group pattern, pending ones apart.
+  const { posted, pending, byPattern } = useMemo(() => {
+    const rows = inbox.data?.pages.flatMap((p) => p.transactions) ?? [];
+    const byPattern = new Map<string, { posted: Transaction[]; pending: number }>();
+    for (const r of rows) {
+      const pattern = normalizePattern(r.merchant);
+      const entry = byPattern.get(pattern) ?? { posted: [], pending: 0 };
+      if (r.editable) entry.posted.push(r);
+      else entry.pending += 1;
+      byPattern.set(pattern, entry);
+    }
+    return { posted: rows.filter((r) => r.editable), pending: rows.filter((r) => !r.editable), byPattern };
+  }, [inbox.data]);
+  const rowsOf = (g: InboxMerchant) => byPattern.get(g.pattern)?.posted ?? [];
   // Groups count pending rows too; those wait in the pending section until they post.
-  const groups = (merchants.data ?? [])
-    .map((g) => ({ g, count: g.count - pending.filter((r) => normalizePattern(r.merchant) === g.pattern).length }))
-    .filter(({ count }) => count > 0);
-  const postedTotal = Math.max(total - pending.length, 0);
+  const groups = (merchants.data ?? []).map((g) => ({ g, count: g.count - (byPattern.get(g.pattern)?.pending ?? 0) })).filter(({ count }) => count > 0);
+  const postedTotal = Math.max((inbox.data?.pages[0]?.total ?? 0) - pending.length, 0);
 
   // Biggest allocations first: the likeliest homes for an unsorted purchase.
   const allocation = new Map(budget.data?.categories.map((c) => [c.categoryId, c.allocatedMinor]));
@@ -80,19 +85,17 @@ export function ToSort({ back }: { back: Back }) {
     .sort((a, b) => (allocation.get(b.id) ?? 0) - (allocation.get(a.id) ?? 0))
     .slice(0, CHIPS);
 
-  const fail = (e: unknown) => setFailed(e instanceof ApiError && e.body?.error === "rule_exists" ? "A rule for this merchant already exists. Check Merchant rules." : "Couldn't file that. Check your connection and try again.");
-  const after = () => {
-    setFailed(null);
-    void invalidateAll();
-  };
+  const fail = (e: unknown) => setFailed(apiErrorText(e, {}, "Couldn't file that. Check your connection and try again."));
+  // Toast actions (Undo, Always) go through a mutation too, so they refresh the screens like any write.
+  const followUp = useMutation({ mutationFn: (run: () => Promise<unknown>) => run(), onSuccess: () => setFailed(null), onError: fail });
 
   const fileGroup = useMutation({
     mutationFn: ({ group, category }: { group: InboxMerchant; category: Category; count: number }) => createRule({ matchType: "exact", pattern: group.pattern, categoryId: category.id }),
     onSuccess: ({ rule }, { group, category, count }) => {
-      after();
+      setFailed(null);
       setToast({
         text: `Rule added: ${group.merchant} → ${category.name}. ${count === 1 ? "Filed." : `All ${count} filed.`}`,
-        actions: [{ label: "Undo", run: () => void deleteRule(rule.id).then(after, fail) }],
+        actions: [{ label: "Undo", run: () => followUp.mutate(() => deleteRule(rule.id)) }],
       });
     },
     onError: fail,
@@ -101,15 +104,14 @@ export function ToSort({ back }: { back: Back }) {
   const fileRow = useMutation({
     mutationFn: ({ row, category }: { row: Transaction; category: Category }) => putOverride(row.id, { ...overrideOf(row), categoryId: category.id }),
     onSuccess: (_, { row, category }) => {
-      after();
-      const undo = { label: "Undo", run: () => void putOverride(row.id, overrideOf(row)).then(after, fail) };
+      setFailed(null);
+      const undo = { label: "Undo", run: () => followUp.mutate(() => putOverride(row.id, overrideOf(row))) };
       const always = {
         label: "Always",
         run: () =>
-          void putOverride(row.id, { ...overrideOf(row), categoryId: category.id, applyToMerchant: true }).then(() => {
-            after();
-            setToast({ text: `All ${merchantLabel(row)} transactions now go to ${category.name}.`, actions: [] });
-          }, fail),
+          followUp.mutate(() => putOverride(row.id, { ...overrideOf(row), categoryId: category.id, applyToMerchant: true }), {
+            onSuccess: () => setToast({ text: `All ${merchantLabel(row)} transactions now go to ${category.name}.`, actions: [] }),
+          }),
       };
       setToast({ text: `${merchantLabel(row)} filed under ${category.name} (just this one)`, actions: [always, undo] });
     },
@@ -125,10 +127,10 @@ export function ToSort({ back }: { back: Back }) {
   const loading = merchants.isPending || inbox.isPending;
   const error = merchants.isError || inbox.isError;
   const accountOf = (id: number) => accounts.data?.byId.get(id);
-  const lastChange = summary.data?.lastDataChangeAt;
+  const lastChange = (accounts.data?.all ?? []).reduce<string | null>((max, a) => (a.importEnabled && a.lastDataChangeAt && (!max || a.lastDataChangeAt > max) ? a.lastDataChangeAt : max), null);
 
   return (
-    <PushedScreen back={back} title="To sort" action={null}>
+    <PushedScreen back={back} title="To sort">
       <div className="mx-5 -mt-1 flex flex-wrap items-baseline justify-between gap-x-3">
         {lastChange ? (
           <Link href="/accounts" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted hover:text-fg">
@@ -145,36 +147,24 @@ export function ToSort({ back }: { back: Back }) {
         )}
       </div>
 
-      <div className="mx-4 mt-2 grid grid-cols-2 gap-[3px] rounded-[12px] border border-divider bg-surface p-[3px]" role="group" aria-label="Group transactions">
-        {[false, true].map((date) => (
-          <button
-            key={String(date)}
-            type="button"
-            aria-pressed={byDate === date}
-            className={`min-h-[38px] rounded-[9px] text-[13.5px] font-medium ${byDate === date ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}
-            onClick={() => setByDate(date)}
-          >
-            {date ? "By date" : "By merchant"}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        className="mx-4 mt-2"
+        label="Group transactions"
+        value={byDate ? "date" : "merchant"}
+        options={[
+          { value: "merchant", label: "By merchant" },
+          { value: "date", label: "By date" },
+        ]}
+        onChange={(v) => setByDate(v === "date")}
+      />
 
-      {failed && (
-        <p role="alert" className="mx-4 mt-3 rounded-button border border-over/40 bg-over-tint px-3.5 py-3 text-[13px] text-over-fg">
-          {failed}
-        </p>
-      )}
+      {failed && <ErrorBanner className="mx-4 mt-3">{failed}</ErrorBanner>}
 
       <div className="flex flex-col gap-2.5 px-4 pt-3">
         {loading ? (
           [0, 1, 2].map((i) => <Skeleton key={i} className="h-[170px] rounded-card" />)
         ) : error ? (
-          <p role="alert" className="text-over-fg">
-            Couldn't load what's left to sort.{" "}
-            <button type="button" className="min-h-11 font-medium text-accent-fg underline" onClick={() => void Promise.all([merchants.refetch(), inbox.refetch()])}>
-              Try again
-            </button>
-          </p>
+          <LoadError what="what's left to sort" onRetry={() => void Promise.all([merchants.refetch(), inbox.refetch()])} />
         ) : postedTotal === 0 ? (
           <div className="rounded-card border border-divider bg-surface px-5 py-7 text-center">
             <div className="text-[17px]">All sorted</div>
@@ -277,9 +267,7 @@ export function ToSort({ back }: { back: Back }) {
       {pending.length > 0 && (
         <section aria-labelledby="to-sort-pending">
           <div className="flex items-center gap-2 px-5 pt-[22px] pb-2">
-            <h2 id="to-sort-pending" className="text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
-              Pending · {pending.length}
-            </h2>
+            <SectionLabel id="to-sort-pending">Pending · {pending.length}</SectionLabel>
             <span className="text-xs text-muted">Can be sorted once they post</span>
           </div>
           <ul className="mx-4 mb-6 rounded-card border border-divider bg-surface px-3.5">

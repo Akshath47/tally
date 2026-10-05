@@ -1,35 +1,33 @@
-import { useState } from "react";
-import type { Category, Transaction } from "../api";
-import { TabScreen } from "../components/Screen";
+import { memo, useMemo, useState } from "react";
+import type { Account, Category, Transaction } from "../api";
+import { LoadError, TabScreen } from "../components/Screen";
 import { TransactionSheet } from "../components/TransactionSheet";
 import { AccountBadge, Button, ChevronLeft, ChevronRight, Clock, Pencil, Skeleton } from "../components/ui";
 import { addMonths, formatShortDate, londonToday, monthName, monthOf } from "../dates";
 import { merchantLabel } from "../format";
 import { formatPounds, formatSigned, formatUnsigned } from "../money";
+import { countsAs, isEdited } from "../overrides";
 import { useAccounts, useCategories, useMonthTransactions, useSummary } from "../queries";
 
 // The month's transactions by bank date (docs/ui-design.md, Transactions). Search and filters
 // are a later backend slice.
 
-const isEdited = (t: Transaction) => t.categorySource === "override" || t.excluded || t.countedAmountMinor !== null || t.countedDate !== null || t.note !== null;
-const isExcluded = (t: Transaction, c: Category | undefined) => t.excluded || c?.kind === "excluded";
 const counted = (t: Transaction) => t.countedAmountMinor ?? t.amountMinor;
 
-function Row({ t, category, onOpen }: { t: Transaction; category: Category | undefined; onOpen: () => void }) {
-  const accounts = useAccounts();
-  const excluded = isExcluded(t, category);
+const Row = memo(function Row({ t, account, category, onOpen }: { t: Transaction; account: Account | undefined; category: Category | undefined; onOpen: (t: Transaction) => void }) {
+  const excluded = countsAs(t, category?.kind) === "none";
   const merchant = merchantLabel(t);
   const amountChanged = t.countedAmountMinor !== null && t.countedAmountMinor !== t.amountMinor;
   return (
     <li>
-      <button type="button" className="flex min-h-[62px] w-full items-center gap-3 border-b border-divider px-5 py-2.5 text-left hover:bg-surface" onClick={onOpen}>
+      <button type="button" className="flex min-h-[62px] w-full items-center gap-3 border-b border-divider px-5 py-2.5 text-left hover:bg-surface" onClick={() => onOpen(t)}>
         <span className="grid size-9 shrink-0 place-items-center rounded-[10px] border border-line bg-surface text-[13px] font-medium text-fg/80" aria-hidden="true">
           {merchant.charAt(0).toUpperCase()}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate">{merchant}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted">
-            <AccountBadge account={accounts.data?.byId.get(t.accountId)} />
+            <AccountBadge account={account} />
             <span>
               {category?.name ?? "Uncategorised"}
               {excluded ? " · excluded" : category?.kind === "tracked" ? " · tracked" : ""}
@@ -55,22 +53,33 @@ function Row({ t, category, onOpen }: { t: Transaction; category: Category | und
       </button>
     </li>
   );
-}
+});
 
 export function Transactions() {
-  const current = monthOf(londonToday());
   const today = londonToday();
+  const current = monthOf(today);
   const [month, setMonth] = useState(current);
   const txns = useMonthTransactions(month);
   const summary = useSummary(month);
   const categories = useCategories();
+  const accounts = useAccounts();
   const [open, setOpen] = useState<Transaction | null>(null);
 
-  // Replaced pending rows no longer count, and their posted versions are listed.
-  const rows = (txns.data?.pages.flatMap((p) => p.transactions) ?? []).filter((t) => t.vanishedAt === null);
-  const categoryOf = (t: Transaction) => (t.categoryId === null ? undefined : categories.data?.byId.get(t.categoryId));
-  const days = new Map<string, Transaction[]>();
-  for (const t of rows) days.set(t.txnDate, [...(days.get(t.txnDate) ?? []), t]);
+  const byId = categories.data?.byId;
+  const categoryOf = (t: Transaction) => (t.categoryId === null ? undefined : byId?.get(t.categoryId));
+  // Replaced pending rows no longer count, and their posted versions are listed. Each day's
+  // total leaves out rows that don't count as spending at all.
+  const { rows, days } = useMemo(() => {
+    const rows = (txns.data?.pages.flatMap((p) => p.transactions) ?? []).filter((t) => t.vanishedAt === null);
+    const days = new Map<string, { list: Transaction[]; total: number }>();
+    for (const t of rows) {
+      const day = days.get(t.txnDate) ?? { list: [], total: 0 };
+      day.list.push(t);
+      if (countsAs(t, t.categoryId === null ? undefined : byId?.get(t.categoryId)?.kind) !== "none") day.total += counted(t);
+      days.set(t.txnDate, day);
+    }
+    return { rows, days };
+  }, [txns.data, byId]);
   const complete = txns.data !== undefined && !txns.hasNextPage;
 
   return (
@@ -92,12 +101,7 @@ export function Transactions() {
       }
     >
       {txns.isError ? (
-        <p role="alert" className="mx-5 mt-4 text-over-fg">
-          Couldn't load transactions.{" "}
-          <button type="button" className="min-h-11 font-medium text-accent-fg underline" onClick={() => void txns.refetch()}>
-            Try again
-          </button>
-        </p>
+        <LoadError what="transactions" onRetry={() => void txns.refetch()} />
       ) : txns.isPending ? (
         <div className="mt-4 flex flex-col gap-3 px-5" aria-busy="true">
           {[0, 1, 2, 3, 4].map((i) => (
@@ -110,15 +114,15 @@ export function Transactions() {
             {rows.length === 0 ? "No transactions this month" : `${rows.length}${complete ? "" : "+"} ${rows.length === 1 ? "transaction" : "transactions"}`}
             {summary.data && ` · ${formatPounds(summary.data.spentMinor)} counted towards budget`}
           </p>
-          {[...days].map(([date, list]) => (
+          {[...days].map(([date, { list, total }]) => (
             <section key={date} aria-label={formatShortDate(date)}>
               <div className="flex items-baseline justify-between px-5 pt-5 pb-1.5 text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
                 <h2>{date === today ? `Today · ${formatShortDate(date)}` : formatShortDate(date)}</h2>
-                <span className="tracking-normal normal-case">{formatSigned(list.filter((t) => !isExcluded(t, categoryOf(t))).reduce((sum, t) => sum + counted(t), 0), "GBP")}</span>
+                <span className="tracking-normal normal-case">{formatSigned(total, "GBP")}</span>
               </div>
               <ul>
                 {list.map((t) => (
-                  <Row key={t.id} t={t} category={categoryOf(t)} onOpen={() => setOpen(t)} />
+                  <Row key={t.id} t={t} account={accounts.data?.byId.get(t.accountId)} category={categoryOf(t)} onOpen={setOpen} />
                 ))}
               </ul>
             </section>

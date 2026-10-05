@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOverride, draftOf, overrideOf } from "../../src/web/overrides";
+import { buildOverride, countsAs, draftOf, isEdited, overrideOf } from "../../src/web/overrides";
 
 const row = {
   amountMinor: -6400,
@@ -52,4 +52,32 @@ describe("buildOverride", () => {
     expect(buildOverride(row, { ...draft, amountText: "3.999" })).toHaveProperty("error");
     expect(buildOverride(row, { ...draft, amountText: "" })).toHaveProperty("error");
   });
+});
+
+describe("isEdited", () => {
+  it("is false for a row that only follows its rule", () => {
+    expect(isEdited(row)).toBe(false);
+  });
+  it.each([{ categorySource: "override" as const }, { excluded: true }, { countedAmountMinor: -100 }, { countedDate: "2026-09-30" }, { note: "x" }])("is true with %j", (patch) => {
+    expect(isEdited({ ...row, ...patch })).toBe(true);
+  });
+});
+
+describe("countsAs", () => {
+  const live = { ...row, vanishedAt: null };
+  it("follows the spec's counting table", () => {
+    expect(countsAs(live, "budgeted")).toBe("budget");
+    expect(countsAs(live, "tracked")).toBe("tracked");
+    expect(countsAs(live, "excluded")).toBe("none");
+    expect(countsAs({ ...live, excluded: true }, "budgeted")).toBe("none");
+    expect(countsAs({ ...live, vanishedAt: "2026-10-02T00:00:00Z" }, "budgeted")).toBe("none");
+    // Uncategorised: money out counts (as Misc), money in waits in the inbox.
+    expect(countsAs(live, undefined)).toBe("budget");
+    expect(countsAs({ ...live, amountMinor: 500 }, undefined)).toBe("inbox");
+    expect(countsAs({ ...live, countedAmountMinor: 200 }, undefined)).toBe("inbox");
+  });
+});
+
+it("refuses an impossible date", () => {
+  expect(buildOverride(row, { ...draftOf(row, "64"), date: "2026-02-31" })).toHaveProperty("error");
 });

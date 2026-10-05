@@ -1,88 +1,45 @@
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ApiError, createCategory, createRule, deleteRule, updateCategory, updateRule, type Category, type CategoryKind, type MatchType, type Rule } from "../api";
-import { PushedScreen } from "../components/Screen";
-import { Button, Dots, Skeleton } from "../components/ui";
+import { apiErrorText, createCategory, createRule, deleteRule, updateCategory, updateRule, type Category, type CategoryKind, type MatchType, type Rule } from "../api";
+import { LoadError, PushedScreen } from "../components/Screen";
+import { Button, Dots, FieldError, Segmented, SectionLabel, Skeleton, inputClass, segmentClass, segmentGroupClass } from "../components/ui";
 import { londonToday, monthOf } from "../dates";
 import { formatMoney } from "../format";
 import { formatPounds } from "../money";
-import { pickerOrder, useAccounts, useBudget, useCategories, useInvalidateAll, useRules, useSummary } from "../queries";
+import { KINDS, pickerOrder, useAccounts, useBudget, useCategories, useRules, useSummary } from "../queries";
+import { isRulablePattern, normalizePattern } from "../../worker/budget/resolve";
 import { Link } from "../router";
 import type { Back } from "../routes";
 
 // Categories and merchant rules (docs/ui-design.md). Categories are archived, never deleted.
 
-const KINDS: { kind: CategoryKind; label: string; title: string; about: string }[] = [
-  { kind: "budgeted", label: "Budgeted", title: "Budgeted", about: "Counts against your monthly budget" },
-  { kind: "tracked", label: "Tracked", title: "Tracked", about: "Shown in spending, never counts against the budget" },
-  { kind: "excluded", label: "Excluded", title: "Excluded", about: "Not spending at all: hidden from totals" },
-];
-
-const ERRORS: Record<string, string> = {
-  name_taken: "There's already a category with that name.",
-  rule_exists: "A rule with this match and text already exists.",
-  category_archived: "That category is archived. Pick another one.",
-  bad_request: "Check the text: 1 to 100 characters, with no spaces at either end.",
-  not_found: "That no longer exists. Refresh and try again.",
-};
-const errorText = (e: unknown) => (e instanceof ApiError && e.body && ERRORS[e.body.error]) || "Couldn't save. Check your connection and try again.";
-
-const inputClass = "h-11 w-full rounded-input border border-line bg-raised px-3 text-[15px] focus:border-accent focus:outline-2 focus:outline-offset-1 focus:outline-accent";
-
-function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
-  return (
-    <div role="radiogroup" aria-label={label} className="grid auto-cols-fr grid-flow-col gap-[3px] rounded-[12px] border border-divider bg-canvas p-[3px]">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={value === o.value}
-          className={`min-h-[38px] rounded-[9px] text-[13.5px] font-medium ${value === o.value ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+// Rules' bad_request is about the pattern, which the client also checks before sending.
+const RULE_ERRORS = { bad_request: "Use 1 to 100 characters, with no spaces at either end." };
+const kindOptions = KINDS.map((k) => ({ value: k.kind, label: k.label }));
 
 function Tabs({ active }: { active: "categories" | "rules" }) {
   const tab = (href: string, label: string, on: boolean) => (
-    <Link href={href} aria-current={on ? "page" : undefined} className={`grid min-h-[38px] place-items-center rounded-[9px] text-[13.5px] font-medium ${on ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}>
+    <Link href={href} aria-current={on ? "page" : undefined} className={segmentClass(on)}>
       {label}
     </Link>
   );
   return (
-    <nav aria-label="Categories and rules" className="mx-4 mt-3 grid grid-cols-2 gap-[3px] rounded-[12px] border border-divider bg-surface p-[3px]">
+    <nav aria-label="Categories and rules" className={`mx-4 mt-3 ${segmentGroupClass}`}>
       {tab("/categories", "Categories", active === "categories")}
       {tab("/rules", "Merchant rules", active === "rules")}
     </nav>
   );
 }
 
-function ErrorLine({ children }: { children: ReactNode }) {
-  return (
-    <p role="alert" className="text-[12.5px] text-over-fg">
-      {children}
-    </p>
-  );
-}
-
 // --- Categories ---------------------------------------------------------------------------------
 
 function CategoryEditor({ category, allocationMinor, ruleCount, onDone }: { category: Category; allocationMinor: number; ruleCount: number; onDone: () => void }) {
-  const invalidateAll = useInvalidateAll();
   const [name, setName] = useState(category.name);
   const [kind, setKind] = useState(category.kind);
   const [confirming, setConfirming] = useState(false);
   const save = useMutation({
     mutationFn: (patch: { name?: string; kind?: CategoryKind; archived?: boolean }) => updateCategory(category.id, patch),
-    onSuccess: () => {
-      void invalidateAll();
-      onDone();
-    },
+    onSuccess: onDone,
   });
   const givesBack = allocationMinor > 0 ? ` Its ${formatPounds(allocationMinor)} allocation goes back to Misc from this month.` : "";
 
@@ -96,7 +53,7 @@ function CategoryEditor({ category, allocationMinor, ruleCount, onDone }: { cate
           It disappears from category pickers and budget settings. Its transactions{ruleCount > 0 ? ` and ${ruleCount} merchant ${ruleCount === 1 ? "rule" : "rules"}` : ""} keep pointing at it, so nothing moves.
           {givesBack} You can unarchive it any time.
         </p>
-        {save.isError && <ErrorLine>{errorText(save.error)}</ErrorLine>}
+        {save.isError && <FieldError>{apiErrorText(save.error)}</FieldError>}
         <div className="flex justify-end gap-2">
           <Button kind="secondary" onClick={() => setConfirming(false)}>
             Keep
@@ -125,9 +82,9 @@ function CategoryEditor({ category, allocationMinor, ruleCount, onDone }: { cate
       </label>
       <input id={`rename-${category.id}`} className={inputClass} value={name} maxLength={50} onChange={(e) => setName(e.target.value)} />
       <span className="text-xs text-muted">Kind</span>
-      <Segmented label="Kind" value={kind} options={KINDS.map((k) => ({ value: k.kind, label: k.label }))} onChange={setKind} />
+      <Segmented label="Kind" value={kind} options={kindOptions} onChange={setKind} />
       {category.kind === "budgeted" && kind !== "budgeted" && givesBack && <p className="text-[12.5px] text-muted">{givesBack.trim()}</p>}
-      {save.isError && <ErrorLine>{errorText(save.error)}</ErrorLine>}
+      {save.isError && <FieldError>{apiErrorText(save.error)}</FieldError>}
       <div className="flex items-center gap-2">
         <button type="button" className="min-h-11 px-1 text-over-fg" onClick={() => setConfirming(true)}>
           Archive
@@ -145,15 +102,11 @@ function CategoryEditor({ category, allocationMinor, ruleCount, onDone }: { cate
 }
 
 function NewCategory({ onDone }: { onDone: () => void }) {
-  const invalidateAll = useInvalidateAll();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<CategoryKind>("budgeted");
   const create = useMutation({
     mutationFn: () => createCategory({ name: name.trim(), kind }),
-    onSuccess: () => {
-      void invalidateAll();
-      onDone();
-    },
+    onSuccess: onDone,
   });
   return (
     <form
@@ -167,8 +120,8 @@ function NewCategory({ onDone }: { onDone: () => void }) {
         New category
       </label>
       <input id="new-category" className={inputClass} value={name} maxLength={50} autoFocus onChange={(e) => setName(e.target.value)} />
-      <Segmented label="Kind" value={kind} options={KINDS.map((k) => ({ value: k.kind, label: k.label }))} onChange={setKind} />
-      {create.isError && <ErrorLine>{errorText(create.error)}</ErrorLine>}
+      <Segmented label="Kind" value={kind} options={kindOptions} onChange={setKind} />
+      {create.isError && <FieldError>{apiErrorText(create.error)}</FieldError>}
       <div className="flex justify-end gap-2">
         <Button kind="secondary" onClick={onDone}>
           Cancel
@@ -196,16 +149,17 @@ export function Categories({ back }: { back: Back }) {
   const budget = useBudget();
   const rules = useRules();
   const summary = useSummary(monthOf(londonToday()));
-  const invalidateAll = useInvalidateAll();
   const [editing, setEditing] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const unarchive = useMutation({ mutationFn: (id: number) => updateCategory(id, { archived: false }), onSuccess: () => void invalidateAll() });
+  const unarchive = useMutation({ mutationFn: (id: number) => updateCategory(id, { archived: false }) });
 
   const allocation = new Map(budget.data?.categories.map((c) => [c.categoryId, c.allocatedMinor]));
   const spent = new Map(summary.data?.categories.map((c) => [c.categoryId, c.spentMinor]));
-  const ruleCount = (id: number) => rules.data?.filter((r) => r.categoryId === id).length ?? 0;
+  const ruleCounts = new Map<number, number>();
+  for (const r of rules.data ?? []) ruleCounts.set(r.categoryId, (ruleCounts.get(r.categoryId) ?? 0) + 1);
   const all = categories.data?.all ?? [];
+  const ordered = pickerOrder(all);
   const archived = all.filter((c) => c.archived);
 
   const subOf = (c: Category) => {
@@ -232,24 +186,22 @@ export function Categories({ back }: { back: Back }) {
           <Skeleton className="h-[120px] rounded-card" />
         </div>
       ) : categories.isError ? (
-        <p role="alert" className="mx-5 mt-4 text-over-fg">
-          Couldn't load categories.
-        </p>
+        <LoadError what="categories" onRetry={() => void categories.refetch()} />
       ) : (
-        KINDS.map(({ kind, title, about }) => {
-          const list = pickerOrder(all).filter((c) => c.kind === kind);
+        KINDS.map(({ kind, label, about }) => {
+          const list = ordered.filter((c) => c.kind === kind);
           return (
             <section key={kind} aria-labelledby={`kind-${kind}`}>
               <div className="px-5 pt-5 pb-2">
-                <h2 id={`kind-${kind}`} className="text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
-                  {title} · {list.length + (kind === "budgeted" ? 1 : 0)}
-                </h2>
+                <SectionLabel id={`kind-${kind}`}>
+                  {label} · {list.length + (kind === "budgeted" ? 1 : 0)}
+                </SectionLabel>
                 <p className="text-[12.5px] text-muted">{about}</p>
               </div>
               <div className="mx-4 overflow-hidden rounded-card border border-divider bg-surface">
                 {list.map((c) =>
                   editing === c.id ? (
-                    <CategoryEditor key={c.id} category={c} allocationMinor={allocation.get(c.id) ?? 0} ruleCount={ruleCount(c.id)} onDone={() => setEditing(null)} />
+                    <CategoryEditor key={c.id} category={c} allocationMinor={allocation.get(c.id) ?? 0} ruleCount={ruleCounts.get(c.id) ?? 0} onDone={() => setEditing(null)} />
                   ) : (
                     <Row
                       key={c.id}
@@ -281,7 +233,7 @@ export function Categories({ back }: { back: Back }) {
                 <Row
                   key={c.id}
                   name={c.name}
-                  sub={KINDS.find((k) => k.kind === c.kind)?.label}
+                  sub={KINDS.find((k) => k.kind === c.kind)!.label}
                   action={
                     <button type="button" className="min-h-11 px-2.5 text-sm font-medium text-accent-fg" disabled={unarchive.isPending} onClick={() => unarchive.mutate(c.id)}>
                       Unarchive
@@ -305,25 +257,21 @@ export function Categories({ back }: { back: Back }) {
 // --- Merchant rules -------------------------------------------------------------------------------
 
 function RuleEditor({ rule, categories, onDone }: { rule: Rule | null; categories: Category[]; onDone: () => void }) {
-  const invalidateAll = useInvalidateAll();
   const [matchType, setMatchType] = useState<MatchType>(rule?.matchType ?? "contains");
   const [pattern, setPattern] = useState(rule?.pattern ?? "");
   const [categoryId, setCategoryId] = useState<number | "">(rule?.categoryId ?? "");
-  const done = () => {
-    void invalidateAll();
-    onDone();
-  };
   const save = useMutation({
     mutationFn: () => {
       const input = { matchType, pattern, categoryId: Number(categoryId) };
       return rule ? updateRule(rule.id, input) : createRule(input);
     },
-    onSuccess: done,
+    onSuccess: onDone,
   });
-  const remove = useMutation({ mutationFn: () => deleteRule(rule!.id), onSuccess: done });
+  const remove = useMutation({ mutationFn: () => deleteRule(rule!.id), onSuccess: onDone });
   // A rule's own category stays pickable even if it has been archived since.
   const options = categories.filter((c) => !c.archived || c.id === rule?.categoryId);
-  const error = save.isError ? errorText(save.error) : remove.isError ? errorText(remove.error) : null;
+  const error = save.isError ? apiErrorText(save.error, RULE_ERRORS) : remove.isError ? apiErrorText(remove.error) : null;
+  const patternProblem = pattern !== "" && !isRulablePattern(normalizePattern(pattern)) ? RULE_ERRORS.bad_request : null;
 
   return (
     <form
@@ -364,7 +312,7 @@ function RuleEditor({ rule, categories, onDone }: { rule: Rule | null; categorie
           Decides {rule.transactionCount} {rule.transactionCount === 1 ? "transaction" : "transactions"} now. Saving re-sorts every matching transaction you haven't edited by hand.
         </p>
       )}
-      {error && <ErrorLine>{error}</ErrorLine>}
+      {(patternProblem ?? error) && <FieldError>{patternProblem ?? error}</FieldError>}
       <div className="flex items-center gap-2">
         {rule && (
           <button type="button" className="min-h-11 px-1 text-over-fg disabled:opacity-50" disabled={remove.isPending} onClick={() => remove.mutate()}>
@@ -375,7 +323,7 @@ function RuleEditor({ rule, categories, onDone }: { rule: Rule | null; categorie
         <Button kind="secondary" onClick={onDone}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pattern.trim() === "" || categoryId === "" || save.isPending}>
+        <Button type="submit" disabled={pattern.trim() === "" || patternProblem !== null || categoryId === "" || save.isPending}>
           {save.isPending ? "Saving…" : "Save"}
         </Button>
       </div>
@@ -407,9 +355,7 @@ export function Rules({ back }: { back: Back }) {
       {rules.isPending ? (
         <Skeleton className="mx-4 mt-3 h-[200px] rounded-card" />
       ) : rules.isError ? (
-        <p role="alert" className="mx-5 mt-4 text-over-fg">
-          Couldn't load rules.
-        </p>
+        <LoadError what="rules" onRetry={() => void rules.refetch()} />
       ) : (
         <div className="mx-4 mt-3 mb-6 overflow-hidden rounded-card border border-divider bg-surface">
           {editing === "new" && <RuleEditor rule={null} categories={all} onDone={() => setEditing(null)} />}

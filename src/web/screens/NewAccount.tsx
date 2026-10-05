@@ -1,23 +1,15 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ApiError, enableAccount, linkAccount, type Account } from "../api";
+import { apiErrorText, enableAccount, linkAccount, type Account } from "../api";
 import { PushedScreen } from "../components/Screen";
-import { AccountBadge, Button, Check, Skeleton, Warning, badgeOf } from "../components/ui";
+import { AccountBadge, Button, Check, ErrorBanner, SectionLabel, Skeleton, Warning, badgeOf } from "../components/ui";
 import { addDays, formatDayMonth, formatShortDate } from "../dates";
-import { useAccounts, useInvalidateAll } from "../queries";
+import { useAccounts } from "../queries";
 import { Link } from "../router";
 import type { Back } from "../routes";
 
 // Reviewing an account Lunch Flow started sending (docs/ui-design.md, New account found; P2.1):
 // link it to the account it reconnects, or import it as a new one. Nothing is imported until then.
-
-const ERRORS: Record<string, string> = {
-  import_running: "An import is running right now. Try again in a minute.",
-  not_awaiting_review: "This account has already been reviewed.",
-  invalid_link_target: "It can't be linked to that account. Their currencies have to match.",
-  not_importable: "Tally can only import GBP accounts, and this one's currency isn't GBP or isn't known yet.",
-  conflict: "Something changed while you were deciding. Go back and try again.",
-};
 
 type Choice = { kind: "link"; intoId: number } | { kind: "new" };
 
@@ -56,7 +48,6 @@ function Radio({ on, title, body, onSelect, disabled }: { on: boolean; title: st
 
 export function NewAccount({ back, accountId }: { back: Back; accountId: number }) {
   const accounts = useAccounts();
-  const invalidateAll = useInvalidateAll();
   const [choice, setChoice] = useState<Choice | null>(null);
   const [done, setDone] = useState<{ choice: Choice; name: string } | null>(null);
 
@@ -71,10 +62,9 @@ export function NewAccount({ back, accountId }: { back: Back; accountId: number 
     mutationFn: (c: Choice) => (c.kind === "link" ? linkAccount(accountId, c.intoId) : enableAccount(accountId)),
     onSuccess: (_, c) => {
       setDone({ choice: c, name: c.kind === "link" ? (target?.name ?? "the account") : (held?.name ?? "the account") });
-      void invalidateAll();
     },
   });
-  const error = confirm.isError ? (confirm.error instanceof ApiError && confirm.error.body && ERRORS[confirm.error.body.error]) || "Couldn't save. Check your connection and try again." : null;
+  const error = confirm.isError ? apiErrorText(confirm.error) : null;
 
   if (done) {
     return (
@@ -138,7 +128,9 @@ export function NewAccount({ back, accountId }: { back: Back; accountId: number 
             )}
           </div>
 
-          <h2 className="mx-5 mt-[18px] mb-2 text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">What is it?</h2>
+          <div className="mx-5 mt-[18px] mb-2">
+            <SectionLabel>What is it?</SectionLabel>
+          </div>
           <div role="radiogroup" aria-label="What is it?" className="mx-4 flex flex-col gap-2.5">
             <Radio
               on={selected?.kind === "link"}
@@ -191,11 +183,7 @@ export function NewAccount({ back, accountId }: { back: Back; accountId: number 
               onSelect={() => setChoice({ kind: "new" })}
             />
           </div>
-          {error && (
-            <p role="alert" className="mx-4 mt-3 rounded-button border border-over/40 bg-over-tint px-3.5 py-3 text-[13px] text-over-fg">
-              {error}
-            </p>
-          )}
+          {error && <ErrorBanner className="mx-4 mt-3">{error}</ErrorBanner>}
           <div className="fixed inset-x-0 bottom-0 mx-auto max-w-lg bg-gradient-to-t from-canvas from-70% px-4 pt-6 pb-safe">
             <Button className="mb-2 min-h-[52px] w-full text-[15.5px]" disabled={!selected || (selected.kind === "link" && !target) || confirm.isPending} onClick={() => selected && confirm.mutate(selected)}>
               {confirm.isPending ? "Saving…" : selected?.kind === "new" ? "Add as a new account" : target ? `Link to ${target.name}` : "Choose what it is"}

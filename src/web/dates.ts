@@ -1,9 +1,9 @@
 // Dates stay YYYY-MM-DD and months YYYY-MM text. "Today" and month edges are London's, and a
 // date string is never parsed into a Date, which is how UTC shift bugs happen.
 
-import { addDays, londonToday as londonTodayAt } from "../worker/importer/dates";
+import { addDays, daysInMonth, isYmd, londonToday as londonTodayAt } from "../worker/importer/dates";
 
-export { addDays };
+export { addDays, daysInMonth, isYmd };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -15,12 +15,6 @@ export const monthOf = (date: string) => date.slice(0, 7);
 
 function splitMonth(month: string) {
   return { y: Number(month.slice(0, 4)), m: Number(month.slice(5, 7)) };
-}
-
-export function daysInMonth(month: string): number {
-  const { y, m } = splitMonth(month);
-  if (m === 2) return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28;
-  return [4, 6, 9, 11].includes(m) ? 30 : 31;
 }
 
 /** Days left in `today`'s month, counting today (docs/phase-2-spec.md, pacing). */

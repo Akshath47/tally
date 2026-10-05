@@ -1,34 +1,17 @@
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ApiError, deleteOverride, putOverride, type Account, type Category, type Transaction } from "../api";
+import { apiErrorText, deleteOverride, putOverride, type Account, type Category, type Transaction } from "../api";
 import { formatShortDate, monthName, monthOf } from "../dates";
 import { merchantLabel } from "../format";
 import { formatUnsigned, minorToInput } from "../money";
-import { buildOverride, draftOf, type Draft } from "../overrides";
-import { pickerOrder, useAccounts, useCategories, useInvalidateAll } from "../queries";
+import { buildOverride, countsAs, draftOf, isEdited, type Draft } from "../overrides";
+import { KINDS, pickerOrder, useAccounts, useCategories } from "../queries";
 import { Sheet } from "./Sheet";
-import { AccountBadge, ChevronLeft, ChevronRight, Info, Lock, Pencil } from "./ui";
+import { AccountBadge, ChevronLeft, ChevronRight, ErrorBanner, FieldError, Info, Lock, Pencil, SectionLabel, inputClass } from "./ui";
 
 // The transaction editor and the read-only sheet for pending or replaced rows (docs/ui-design.md).
 
-const KIND_LABEL = { budgeted: "Budgeted", tracked: "Tracked", excluded: "Excluded" } as const;
-
-const SAVE_ERRORS: Record<string, string> = {
-  not_editable: "This transaction can't be edited any more. It may have been replaced by its posted version.",
-  category_archived: "That category is archived. Pick another one.",
-  merchant_not_rulable: "This merchant's name can't be used for a rule, so only this transaction can change.",
-};
-
-const errorText = (e: unknown) => (e instanceof ApiError && e.body && SAVE_ERRORS[e.body.error]) || "Couldn't save. Check your connection and try again.";
-
-/** Whether a row counts towards the budget, and how, in the words the read-only sheet uses. */
-function countsOf(t: Transaction, category: Category | undefined): { counts: boolean; text: string } {
-  if (t.vanishedAt) return { counts: false, text: "No, it was replaced" };
-  if (t.excluded || category?.kind === "excluded") return { counts: false, text: "No" };
-  if (category?.kind === "tracked") return { counts: false, text: "No, tracked only" };
-  if (category) return { counts: true, text: `Yes, as ${category.name}` };
-  return (t.countedAmountMinor ?? t.amountMinor) < 0 ? { counts: true, text: "Yes, as Misc for now" } : { counts: false, text: "No, money in waits to be sorted" };
-}
+const COUNTS_TEXT = { budget: "Yes", tracked: "No, tracked only", inbox: "No, money in waits to be sorted", none: "No" } as const;
 
 function ReadOnlyRow({ label, value }: { label: string; value: string }) {
   return (
@@ -42,7 +25,8 @@ function ReadOnlyRow({ label, value }: { label: string; value: string }) {
 function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: Account | undefined; category: Category | undefined; onClose: () => void }) {
   const amount = formatUnsigned(t.countedAmountMinor ?? t.amountMinor, t.currency);
   const month = monthName(monthOf(t.countedDate ?? t.txnDate));
-  const counts = countsOf(t, category);
+  const counts = countsAs(t, category?.kind);
+  const countsText = counts === "budget" ? `Yes, as ${category?.name ?? "Misc for now"}` : t.vanishedAt ? "No, it was replaced" : COUNTS_TEXT[counts];
   return (
     <div className="flex flex-col gap-3.5 overflow-y-auto px-4 pt-2 pb-4">
       <div className="flex items-end justify-between gap-3 px-1">
@@ -62,12 +46,12 @@ function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: 
         <p>
           {t.vanishedAt
             ? "This pending charge was replaced when the bank posted it, so it no longer counts. The posted version is the one to edit."
-            : `Pending transactions can't be edited. ${counts.counts ? `It already counts towards ${month}'s spend.` : "It doesn't count towards your budget."} Once ${account?.name ?? "the bank"} posts it, usually in 1 to 3 days, ${category ? "it can be edited" : "it shows up in To sort"}.`}
+            : `Pending transactions can't be edited. ${counts === "budget" ? `It already counts towards ${month}'s spend.` : "It doesn't count towards your budget."} Once ${account?.name ?? "the bank"} posts it, usually in 1 to 3 days, ${category ? "it can be edited" : "it shows up in To sort"}.`}
         </p>
       </div>
       <div className="overflow-hidden rounded-2xl border border-divider bg-surface" aria-label="Details, read-only">
         <ReadOnlyRow label="Category" value={category?.name ?? "Uncategorised"} />
-        <ReadOnlyRow label="Counts towards spend" value={counts.text} />
+        <ReadOnlyRow label="Counts towards spend" value={countsText} />
         <ReadOnlyRow label="Amount" value={amount} />
         <ReadOnlyRow label="Date" value={formatShortDate(t.txnDate)} />
       </div>
@@ -93,10 +77,7 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
   );
 }
 
-const inputClass = "h-10 w-full rounded-[10px] border border-line bg-raised px-2.5 text-[15px] focus:border-accent focus:outline-2 focus:outline-offset-1 focus:outline-accent";
-
 export function CategoryPicker({ current, categories, onPick, onBack }: { current: number | null; categories: Category[]; onPick: (id: number | null) => void; onBack: () => void }) {
-  const kinds = ["budgeted", "tracked", "excluded"] as const;
   return (
     <>
       <div className="flex items-center px-2 pt-0.5">
@@ -109,12 +90,14 @@ export function CategoryPicker({ current, categories, onPick, onBack }: { curren
         </h2>
       </div>
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pt-2 pb-6">
-        {kinds.map((kind) => {
+        {KINDS.map(({ kind, label }) => {
           const list = categories.filter((c) => c.kind === kind);
           if (list.length === 0) return null;
           return (
             <section key={kind}>
-              <h3 className="mb-1.5 px-1 text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">{KIND_LABEL[kind]}</h3>
+              <div className="mb-1.5 px-1">
+                <SectionLabel>{label}</SectionLabel>
+              </div>
               <div className="overflow-hidden rounded-2xl border border-divider bg-surface">
                 {list.map((c) => (
                   <button
@@ -145,7 +128,6 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
   onClose: () => void;
   onSaved?: (t: Transaction) => void;
 }) {
-  const invalidateAll = useInvalidateAll();
   const bankAmount = formatUnsigned(t.amountMinor, t.currency);
   const [draft, setDraft] = useState<Draft>(() => draftOf(t, minorToInput(t.countedAmountMinor ?? t.amountMinor)));
   const [picking, setPicking] = useState(false);
@@ -155,19 +137,19 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
   const category = shownCategoryId === null ? undefined : byId.get(shownCategoryId);
   const merchant = merchantLabel(t);
   const built = buildOverride(t, draft);
-  const edited = t.categorySource === "override" || t.excluded || t.countedAmountMinor !== null || t.countedDate !== null || t.note !== null;
-  const amountOrDateChanged = "body" in built ? built.body.countedAmountMinor !== null || built.body.countedDate !== null : true;
+  const edited = isEdited(t);
+  // Which of the bank's values this draft replaces, for the info box.
+  const replaced = "body" in built ? [built.body.countedAmountMinor !== null && "amount", built.body.countedDate !== null && "date"].filter(Boolean) : [];
   const newMonth = monthOf(draft.date) !== monthOf(t.txnDate) && /^\d{4}-\d{2}-\d{2}$/.test(draft.date);
 
   const done = (next: Transaction) => {
-    void invalidateAll();
     onSaved?.(next);
     onClose();
   };
   const save = useMutation({ mutationFn: () => putOverride(t.id, "body" in built ? built.body : {}), onSuccess: (r) => done(r.transaction) });
   const reset = useMutation({ mutationFn: () => deleteOverride(t.id), onSuccess: (r) => done(r.transaction) });
   const busy = save.isPending || reset.isPending;
-  const error = save.isError ? errorText(save.error) : reset.isError ? errorText(reset.error) : null;
+  const error = save.isError ? apiErrorText(save.error) : reset.isError ? apiErrorText(reset.error) : null;
 
   if (picking) {
     return (
@@ -217,18 +199,13 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
           </div>
         </div>
 
-        {error && (
-          <p role="alert" className="rounded-button border border-over/40 bg-over-tint px-3.5 py-3 text-[13px] text-over-fg">
-            {error}
-          </p>
-        )}
+        {error && <ErrorBanner>{error}</ErrorBanner>}
 
-        {amountOrDateChanged && "body" in built && (
+        {replaced.length > 0 && (
           <div className="flex items-start gap-2.5 rounded-button border border-accent/20 bg-accent-tint/70 px-3.5 py-3">
             <Info size={17} className="mt-px shrink-0 text-accent-fg" />
             <p className="flex-1 text-[13px] leading-normal text-fg/85">
-              From the bank: <span className="font-semibold">{bankAmount}</span> on <span className="font-semibold">{formatShortDate(t.txnDate)}</span>. Your{" "}
-              {built.body.countedAmountMinor !== null && built.body.countedDate !== null ? "amount and date are" : built.body.countedAmountMinor !== null ? "amount is" : "date is"} used instead.
+              From the bank: <span className="font-semibold">{bankAmount}</span> on <span className="font-semibold">{formatShortDate(t.txnDate)}</span>. Your {replaced.join(" and ")} {replaced.length > 1 ? "are" : "is"} used instead.
             </p>
             <button type="button" className="min-h-8 px-1 text-[13px] font-medium text-accent-fg" onClick={() => set({ amountText: minorToInput(t.amountMinor), date: t.txnDate })}>
               Reset
@@ -303,11 +280,7 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
             </span>
           </span>
         </label>
-        {"error" in built && (
-          <p role="alert" className="px-1 text-[12.5px] text-over-fg">
-            {built.error}
-          </p>
-        )}
+        {"error" in built && <FieldError>{built.error}</FieldError>}
 
         {edited && (
           <button type="button" className="min-h-12 rounded-button border border-line text-[14.5px] font-medium text-over-fg disabled:opacity-50" disabled={busy} onClick={() => reset.mutate()}>

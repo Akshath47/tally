@@ -1,8 +1,8 @@
 import { useState, type KeyboardEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, putCategoryBudget, putOverallBudget, type Budget as BudgetData } from "../api";
-import { TabScreen } from "../components/Screen";
-import { Skeleton } from "../components/ui";
+import { LoadError, TabScreen } from "../components/Screen";
+import { FieldError, Skeleton } from "../components/ui";
 import { monthName } from "../dates";
 import { formatPounds, parseMoneyInput, poundsInput } from "../money";
 import { useBudget, useCategories } from "../queries";
@@ -14,22 +14,6 @@ import { Link } from "../router";
 
 /** Sage shades for the allocation segments and their row dots, biggest allocation first. */
 const SHADES = ["bg-accent", "bg-accent/80", "bg-accent/65", "bg-accent/50", "bg-accent/40", "bg-accent/30"];
-
-const ErrorIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="mt-px shrink-0">
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v6M12 16.5h.01" />
-  </svg>
-);
-
-function FieldError({ id, children }: { id: string; children: string }) {
-  return (
-    <p id={id} role="alert" className="flex items-start gap-1.5 pb-2.5 text-[12.5px] leading-snug text-over-fg">
-      <ErrorIcon />
-      <span>{children}</span>
-    </p>
-  );
-}
 
 type Drafts = Record<number, string>;
 
@@ -45,10 +29,8 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
   const [picking, setPicking] = useState(false);
   const [serverError, setServerError] = useState<{ field: "overall" | number; text: string } | null>(null);
 
-  const onSaved = (next: BudgetData) => {
-    queryClient.setQueryData(["budget"], next);
-    void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "budget" });
-  };
+  // The PUTs answer with the new budget, so it's shown at once; the shell refreshes the rest.
+  const onSaved = (next: BudgetData) => queryClient.setQueryData(["budget"], next);
   const saveOverall = useMutation({
     mutationFn: putOverallBudget,
     onSuccess: (next) => {
@@ -60,7 +42,7 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
         field: "overall",
         text:
           e instanceof ApiError && e.body?.minOverallMinor !== undefined
-            ? `Your allocations add up to ${formatPounds(e.body.minOverallMinor)}. Set at least ${formatPounds(e.body.minOverallMinor)}, or lower an allocation first.`
+            ? belowAllocatedText(e.body.minOverallMinor)
             : "Couldn't save the budget. Try again.",
       }),
   });
@@ -93,14 +75,12 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
 
   // Client-side checks mirror the server's, so nothing invalid is sent.
   // Client checks block a save; a server error is shown until the next attempt but never blocks one.
-  const overallClientError =
-    overallText.trim() !== "" && overallDraft === null
-      ? "Enter an amount in pounds, like 1,800."
-      : overallDraft !== null && overallDraft <= 0
-        ? "Set a budget above £0."
-        : overallDraft !== null && overallDraft < budget.allocatedMinor
-          ? `Your allocations add up to ${formatPounds(budget.allocatedMinor)}. Set at least ${formatPounds(budget.allocatedMinor)}, or lower an allocation first.`
-          : null;
+  const overallClientError = (() => {
+    if (overallText.trim() !== "" && overallDraft === null) return "Enter an amount in pounds, like 1,800.";
+    if (overallDraft !== null && overallDraft <= 0) return "Set a budget above £0.";
+    if (overallDraft !== null && overallDraft < budget.allocatedMinor) return belowAllocatedText(budget.allocatedMinor);
+    return null;
+  })();
   const overallError = overallClientError ?? (serverError?.field === "overall" ? serverError.text : null);
   const rowClientError = (r: (typeof rows)[number]) => {
     const text = drafts[r.categoryId];
@@ -127,15 +107,13 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
     else saveCategory.mutate({ id: r.categoryId, amount });
   };
 
-  const status = overallError
-    ? { text: "Not saved · fix the budget above", tone: "text-over-fg", dot: "bg-over" }
-    : anyRowError
-      ? { text: "Not saved · fix the allocation below", tone: "text-over-fg", dot: "bg-over" }
-      : saving
-        ? { text: "Saving…", tone: "text-muted", dot: "bg-muted" }
-        : budget.overallMinor === null
-          ? { text: "Not set yet", tone: "text-muted", dot: "bg-muted" }
-          : { text: `Saved · applies from ${monthName(budget.month)}`, tone: "text-accent-fg", dot: "bg-accent" };
+  const status = (() => {
+    if (overallError) return { text: "Not saved · fix the budget above", ...TONE.over };
+    if (anyRowError) return { text: "Not saved · fix the allocation below", ...TONE.over };
+    if (saving) return { text: "Saving…", ...TONE.muted };
+    if (budget.overallMinor === null) return { text: "Not set yet", ...TONE.muted };
+    return { text: `Saved · applies from ${monthName(budget.month)}`, ...TONE.ok };
+  })();
 
   const scale = Math.max(overall, allocated, 1);
   const enterCommits = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -184,7 +162,7 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
           />
         </div>
         {overallError && (
-          <div className="pt-2">
+          <div className="pt-2 pb-2.5">
             <FieldError id="budget-overall-error">{overallError}</FieldError>
           </div>
         )}
@@ -251,7 +229,11 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
                         />
                       </span>
                     </div>
-                    {error && <FieldError id={`${inputId}-error`}>{error}</FieldError>}
+                    {error && (
+                      <div className="pb-2.5">
+                        <FieldError id={`${inputId}-error`}>{error}</FieldError>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -301,6 +283,14 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
   );
 }
 
+const TONE = {
+  over: { tone: "text-over-fg", dot: "bg-over" },
+  muted: { tone: "text-muted", dot: "bg-muted" },
+  ok: { tone: "text-accent-fg", dot: "bg-accent" },
+};
+
+const belowAllocatedText = (minMinor: number) => `Your allocations add up to ${formatPounds(minMinor)}. Set at least ${formatPounds(minMinor)}, or lower an allocation first.`;
+
 function overAllocatedText(name: string, maxMinor: number, savedMinor: number, overallMinor: number) {
   return `You can allocate at most ${formatPounds(Math.max(maxMinor - savedMinor, 0))} more (${name} up to ${formatPounds(maxMinor)}). Allocations can't exceed your ${formatPounds(overallMinor)} budget.`;
 }
@@ -317,12 +307,7 @@ export function Budget() {
   return (
     <TabScreen title="Budget">
       {budget.isError ? (
-        <p role="alert" className="mx-5 mt-4 text-over-fg">
-          Couldn't load your budget.{" "}
-          <button type="button" className="min-h-11 font-medium text-accent-fg underline" onClick={() => void budget.refetch()}>
-            Try again
-          </button>
-        </p>
+        <LoadError what="your budget" onRetry={() => void budget.refetch()} />
       ) : (
         <div className="mx-4 mt-3.5 flex flex-col gap-3" aria-busy="true">
           <Skeleton className="h-[150px] rounded-card" />

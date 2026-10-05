@@ -68,6 +68,13 @@ export const Refresh = icon(
 );
 export const Dots = icon(<path d="M6 12h.01M12 12h.01M18 12h.01" />, 2.6);
 export const Spinner = icon(<path d="M20 12a8 8 0 1 1-3-6.2" />, 2.4);
+export const Alert = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v6M12 16.5h.01" />
+  </>,
+  2,
+);
 
 export const Skeleton = ({ className }: { className: string }) => <div className={`skeleton ${className}`} aria-hidden="true" />;
 
@@ -116,4 +123,52 @@ export function Button({ kind = "primary", className = "", ...rest }: ButtonHTML
     danger: "border border-divider bg-transparent text-over-fg",
   }[kind];
   return <button type="button" className={`min-h-11 rounded-button px-5 disabled:opacity-50 ${look} ${className}`} {...rest} />;
+}
+
+/** Text inputs and selects across the forms. */
+export const inputClass = "h-11 w-full rounded-input border border-line bg-raised px-3 text-[15px] focus:border-accent focus:outline-2 focus:outline-offset-1 focus:outline-accent";
+
+/** A boxed error above a form or list. */
+export function ErrorBanner({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <p role="alert" className={`rounded-button border border-over/40 bg-over-tint px-3.5 py-3 text-[13px] text-over-fg ${className}`}>
+      {children}
+    </p>
+  );
+}
+
+/** A one-line error under a field. */
+export function FieldError({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <p id={id} role="alert" className="flex items-start gap-1.5 text-[12.5px] leading-snug text-over-fg">
+      <Alert size={15} className="mt-px shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** Small uppercase label above a group. */
+export function SectionLabel({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <h2 id={id} className="text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
+      {children}
+    </h2>
+  );
+}
+
+/** The pill-group look shared by segmented controls and the Categories / Merchant rules tabs. */
+export const segmentGroupClass = "grid auto-cols-fr grid-flow-col gap-[3px] rounded-[12px] border border-divider bg-surface p-[3px]";
+export const segmentClass = (on: boolean) => `grid min-h-[38px] place-items-center rounded-[9px] text-[13.5px] font-medium ${on ? "bg-raised text-fg" : "text-muted hover:text-fg"}`;
+
+/** A segmented control: one choice of a few. */
+export function Segmented<T extends string>({ label, value, options, onChange, className = "" }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; className?: string }) {
+  return (
+    <div role="radiogroup" aria-label={label} className={`${segmentGroupClass} ${className}`}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} className={segmentClass(value === o.value)} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
 }

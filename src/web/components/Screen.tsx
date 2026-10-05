@@ -34,9 +34,16 @@ export function PushedScreen({ back, title, action, children }: { back: Back; ti
   );
 }
 
-/** The loading / error / empty line shown above a list. */
-export function QueryStatus({ query, what, empty }: { query: { isPending: boolean; isError: boolean }; what: string; empty: string | false }) {
-  if (query.isPending) return <p className="mt-2 text-meta text-muted">Loading…</p>;
-  if (query.isError) return <p className="mt-2 text-meta text-over-fg">Couldn't load {what}.</p>;
-  return empty ? <p className="mt-2 text-meta text-muted">{empty}</p> : null;
+/** A list or screen that failed to load, with a retry. */
+export function LoadError({ what, onRetry }: { what: string; onRetry?: () => void }) {
+  return (
+    <p role="alert" className="mx-5 mt-4 text-over-fg">
+      Couldn't load {what}.{" "}
+      {onRetry && (
+        <button type="button" className="min-h-11 font-medium text-accent-fg underline" onClick={onRetry}>
+          Try again
+        </button>
+      )}
+    </p>
+  );
 }

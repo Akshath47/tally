@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError, startImport, type Account, type ImportRun } from "../api";
+import { ApiError, startImport, type Account, type ImportRun, type RunStatus } from "../api";
 import { lastFinishedRun, useImportRuns } from "../components/ImportWatcher";
-import { PushedScreen } from "../components/Screen";
+import { LoadError, PushedScreen } from "../components/Screen";
 import { AccountBadge, Button, ChevronRight, Skeleton } from "../components/ui";
 import { formatShortDate } from "../dates";
 import { formatTimestamp } from "../format";
@@ -11,6 +11,8 @@ import { Link } from "../router";
 import { newAccountHref, type Back } from "../routes";
 
 // Account status (docs/ui-design.md, Accounts). Stale-data warnings are a later backend slice.
+
+const RUN_TEXT: Partial<Record<RunStatus, string>> = { success: "done", partial: "some accounts failed", failed: "failed" };
 
 function importMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 429) return `Imported less than a minute ago. Try again in ${error.body?.retryAfterSeconds ?? 60}s.`;
@@ -35,13 +37,9 @@ function ImportNow({ importing, lastFinished }: { importing: boolean; lastFinish
         {busy ? "Checking Lunch Flow…" : "Check for new transactions"}
       </Button>
       <p className="mt-1.5 px-1 text-[12.5px] text-muted" role="status">
-        {importing
-          ? "Importing in the background. You can leave this screen."
-          : failedToStart
-            ? importMessage(mutation.error)
-            : lastFinished
-              ? `Last check ${formatTimestamp(lastFinished.startedAt)}: ${lastFinished.status === "success" ? "done" : lastFinished.status === "partial" ? "some accounts failed" : "failed"}`
-              : null}
+        {importing && "Importing in the background. You can leave this screen."}
+        {!importing && failedToStart && importMessage(mutation.error)}
+        {!importing && !failedToStart && lastFinished && `Last check ${formatTimestamp(lastFinished.startedAt)}: ${RUN_TEXT[lastFinished.status] ?? lastFinished.status}`}
       </p>
     </div>
   );
@@ -58,7 +56,11 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function AccountCard({ account }: { account: Account }) {
   const failing = account.lastImportError !== null;
-  const status = !account.importEnabled ? { text: "Not imported", dot: "bg-muted", tone: "text-muted" } : failing ? { text: "Import failing", dot: "bg-over", tone: "text-over-fg" } : { text: "Up to date", dot: "bg-accent", tone: "text-accent-fg" };
+  const status = !account.importEnabled
+    ? { text: "Not imported", dot: "bg-muted", tone: "text-muted" }
+    : failing
+      ? { text: "Import failing", dot: "bg-over", tone: "text-over-fg" }
+      : { text: "Up to date", dot: "bg-accent", tone: "text-accent-fg" };
   const updated = account.lastDataChangeAt;
   return (
     <li className={`rounded-card border bg-surface px-4 pt-3.5 pb-1 ${failing ? "border-over/40" : "border-divider"}`}>
@@ -107,9 +109,7 @@ export function Accounts({ back }: { back: Back }) {
           <Skeleton className="h-[150px] rounded-card" />
         </div>
       ) : accounts.isError ? (
-        <p role="alert" className="mx-5 mt-4 text-over-fg">
-          Couldn't load accounts.
-        </p>
+        <LoadError what="accounts" onRetry={() => void accounts.refetch()} />
       ) : listed.length === 0 && awaiting.length === 0 ? (
         <p className="mx-5 mt-4 text-muted">No accounts yet. Check for new transactions to import them from Lunch Flow.</p>
       ) : (

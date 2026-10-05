@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
-import { AccountBadge, ArrowUp, Button, Check, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
+import { AccountBadge, ArrowUp, Button, Check, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
 import { addMonths, londonToday, monthName, monthOf } from "../dates";
 import { formatTimestamp } from "../format";
 import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
-import { useAccounts, useCategories, useInvalidateAll, usePreviousSpend, useSummary } from "../queries";
+import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
 import { Link } from "../router";
 
 // The five-second glance (docs/ui-design.md, Home).
@@ -270,11 +270,10 @@ function LoadError({ error, at, onRetry, retrying }: { error: unknown; at: numbe
 
 function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
   const accounts = useAccounts();
-  const previous = usePreviousSpend(month, true);
-  const invalidateAll = useInvalidateAll();
+  const [lastMonth, monthBefore] = usePreviousSummaries(month);
   const [text, setText] = useState("");
   const amount = parseMoneyInput(text);
-  const save = useMutation({ mutationFn: putOverallBudget, onSuccess: invalidateAll });
+  const save = useMutation({ mutationFn: putOverallBudget });
   const enabled = accounts.data?.all.filter((a) => a.importEnabled) ?? [];
 
   return (
@@ -326,14 +325,16 @@ function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
             className="w-full bg-transparent p-0 text-[42px] font-extralight tracking-[-0.03em] outline-none placeholder:text-muted/50"
           />
         </div>
-        {previous.data && (
+        {lastMonth?.data && monthBefore?.data && (
           <p className="mt-2.5 text-[12.5px] text-muted">
-            For reference: you spent {formatPounds(previous.data[0]!.spentMinor)} in {monthName(addMonths(month, -1))} and {formatPounds(previous.data[1]!.spentMinor)} in{" "}
+            For reference: you spent {formatPounds(lastMonth.data.spentMinor)} in {monthName(addMonths(month, -1))} and {formatPounds(monthBefore.data.spentMinor)} in{" "}
             {monthName(addMonths(month, -2))}.
           </p>
         )}
-        {text !== "" && !amount && <p className="mt-2 text-[12.5px] text-over-fg">Enter an amount in pounds, like 1,800 or 1800.50.</p>}
-        {save.isError && <p className="mt-2 text-[12.5px] text-over-fg">Couldn't save the budget. Try again.</p>}
+        <div className="mt-2 empty:hidden">
+          {text !== "" && !amount && <FieldError>Enter an amount in pounds, like 1,800 or 1800.50.</FieldError>}
+          {save.isError && <FieldError>Couldn't save the budget. Try again.</FieldError>}
+        </div>
         <Button type="submit" className="mt-3.5 min-h-[52px] w-full text-[15.5px]" disabled={!amount || save.isPending}>
           {save.isPending ? "Saving…" : "Set budget"}
         </Button>

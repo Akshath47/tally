@@ -1,4 +1,5 @@
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
+import { ChevronLeft } from "./components/ui";
 import type { Back } from "./routes";
 
 // A tiny History API router: real URLs, so the browser's and iOS's back gestures work, and the
@@ -67,9 +68,7 @@ export function BackLink({ href, label }: Back) {
         goBack(href);
       }}
     >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M15 6l-6 6 6 6" />
-      </svg>
+      <ChevronLeft size={18} />
       {label}
     </a>
   );
