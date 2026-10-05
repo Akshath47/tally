@@ -846,6 +846,17 @@ This step needs no migration: `monthly_budgets` and `category_budgets` exist sin
 - one summary call stays under 10 D1 statements
 - after deploy, one real summary from the owner's account matches a hand tally of a few categories (the owner checks this; nothing is committed)
 
+**Done (2026-10-05), on the branch:**
+- `npm run check` passed with 531 tests.
+- The Accept when tests in `test/summary.spec.ts`:
+  - the spec's counting cases
+  - pacing on the last day of the month (`daysRemaining = 1`, `perWeekMinor = left × 7`)
+  - a floored per-week figure (`left = 1000` over 3 days gives 2333)
+  - `400` for a malformed or future month
+  - one call runs 3 D1 statements, counted by wrapping `env.DB`
+- `code-review`, `simplify` and `security-review` ran on the branch. Code-review found that a month whose only uncategorised rows were money in listed an empty Uncategorised line. That's fixed and has a test. `security-review` found nothing.
+- Still to do after the owner merges and deploys: the owner checks one real summary against a hand tally of a few categories. Nothing from that check is committed.
+
 This step needs no migration. It builds on `RESOLVED_CTE` (P2.3), the inbox predicate (P2.4), and `readBudget` and `londonMonth` (P2.5).
 
 **Decisions:**
