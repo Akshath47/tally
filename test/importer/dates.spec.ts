@@ -45,6 +45,12 @@ describe("daysInMonth", () => {
   });
 });
 
+describe("daysInMonth rejects", () => {
+  it.each(["2026-00", "2026-13", "2026-1", "2026-10-01"])("%s", (month) => {
+    expect(() => daysInMonth(month)).toThrow();
+  });
+});
+
 describe("addDays", () => {
   it.each([
     ["2026-10-02", -13, "2026-09-19"],

@@ -41,7 +41,7 @@ export function addDays(ymd: string, days: number): string {
 
 /** How many days a YYYY-MM month has. */
 export function daysInMonth(month: string): number {
-  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
   if (!m) throw new Error("daysInMonth: not a YYYY-MM month");
   // Day 0 of the next month is this month's last day.
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
