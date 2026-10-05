@@ -1,6 +1,7 @@
 // A month's budget figures come from the row with the greatest effective_month ≤ that month
 // (docs/phase-2-spec.md, Data model). Writes only ever go to the current month, so past months
-// keep the figures they had.
+// keep their rows. Kinds aren't dated, though: which categories count is decided by their
+// current kind and archive state, for past months too.
 
 // The arguments are SQL placeholders or column names (`?1`, `c.id`), never values.
 
