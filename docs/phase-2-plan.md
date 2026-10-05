@@ -693,7 +693,7 @@ This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn
 - [ ] Add the override and inbox endpoints, and the new transaction fields, to [schema-and-api.md](schema-and-api.md).
 - [ ] Mark P2.4's checkbox once its **Accept when** has run, then commit: `docs: record the override and inbox endpoints`.
 
-## [ ] P2.5 Budgets
+## [x] P2.5 Budgets
 
 **Deliverable:**
 - The effective-month lookup.
@@ -708,11 +708,13 @@ This step is built in parallel with P2.5, from `main` with P2.3 merged. It doesn
 - `security-review` is clean
 - `npm run check` passes
 
-**Done (2026-10-05), on the branch:**
-- `npm run check` passed with 450 tests.
+**Done (2026-10-05):**
+- On the branch, `npm run check` passed with 450 tests.
 - The Accept when tests: `over_allocated` returns overall − the other allocations (and a category's own allocation doesn't count against it), `below_allocated` returns the current `allocated`, September's rows and figures survive October's edits, and writes at `2026-03-31T23:30Z` and `2026-10-31T23:30Z` land in `2026-04` and `2026-10`.
 - `code-review`, `simplify` and `security-review` ran on the branch. `security-review` found nothing.
-- No migration, so nothing to apply remotely. The Worker deploy waits for the owner's merge.
+- Merged as #30, together with P2.4 (#32). On `main` after both merges (4103683), `npm run check` passed with 499 tests and `db:check` was clean.
+- No migration: production had none pending. Version `00e24f48` was deployed.
+- Logged-out `/api/budget` still redirects to the Access login.
 
 This step needs no migration: `monthly_budgets` and `category_budgets` exist since P2.2. It runs in parallel with P2.4 and doesn't touch P2.4's files (`routes/transactions.ts`, the inbox routes, `transaction_overrides` writes).
 
