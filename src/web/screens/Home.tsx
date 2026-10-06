@@ -105,12 +105,14 @@ function Pills({ s }: { s: MonthSummary }) {
   const pill = "inline-flex h-8 items-center gap-[7px] rounded-full border border-divider bg-surface px-3 text-[12.5px]";
   return (
     <div className="mt-3 flex flex-wrap items-center justify-center gap-2 px-5">
-      <span className={pill}>
-        <span className="size-[9px] rounded-[3px] bg-accent" aria-hidden="true" />
-        Posted <span className="font-medium">{formatPounds(s.spentMinor - s.pendingSpentMinor)}</span>
-      </span>
+      <Link href={lineHref(s.month, "posted")} className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
+        <span className={pill}>
+          <span className="size-[9px] rounded-[3px] bg-accent" aria-hidden="true" />
+          Posted <span className="font-medium">{formatPounds(s.spentMinor - s.pendingSpentMinor)}</span>
+        </span>
+      </Link>
       {/* Lunch Flow doesn't send every pending charge, so this is a lower bound. */}
-      <Link href="/transactions" className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
+      <Link href={lineHref(s.month, "pending")} className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
         <span className={pill}>
           <span className="hatch size-[9px] rounded-[3px]" aria-hidden="true" />
           Pending <span className="text-muted">at least</span> <span className="font-medium">{formatPounds(s.pendingSpentMinor)}</span>

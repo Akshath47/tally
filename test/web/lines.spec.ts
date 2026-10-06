@@ -28,7 +28,7 @@ describe("budgetLines", () => {
       { category: 1, name: "Groceries", spentMinor: 3_000, pendingSpentMinor: 500, allocatedMinor: 10_000 },
       // Transport has no allocation, so it's in Misc, its pending charge included: it's categorised.
       { category: "misc", name: "Misc", note: "unallocated", spentMinor: 1_000, pendingSpentMinor: 100, allocatedMinor: 5_000 },
-      { category: "pending", name: "Uncategorised pending", spentMinor: 2_000, pendingSpentMinor: 2_000, allocatedMinor: null },
+      { category: "uncategorised-pending", name: "Uncategorised pending", spentMinor: 2_000, pendingSpentMinor: 2_000, allocatedMinor: null },
     ]);
   });
 

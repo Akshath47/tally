@@ -1,5 +1,5 @@
 import { londonToday, monthOf } from "./dates";
-import type { LineCategory } from "./lines";
+import { LINE_NAMES, type LineCategory } from "./lines";
 
 // Every screen and its URL. Tab screens show the tab bar; pushed screens replace it with a back link.
 
@@ -35,10 +35,11 @@ export function parseRoute(pathname: string, today = londonToday()): Route {
   if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
   if (review) return { screen: "newAccount", accountId: Number(review[1]) };
-  const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/(misc|pending|[1-9]\d{0,8})$/.exec(path);
+  const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/([a-z-]+|[1-9]\d{0,8})$/.exec(path);
   if (line && line[1]! <= monthOf(today)) {
     const category = line[2]!;
-    return { screen: "line", month: line[1]!, category: category === "misc" || category === "pending" ? category : Number(category) };
+    if (/^\d/.test(category)) return { screen: "line", month: line[1]!, category: Number(category) };
+    if (Object.hasOwn(LINE_NAMES, category)) return { screen: "line", month: line[1]!, category: category as keyof typeof LINE_NAMES };
   }
   return { screen: "notFound" };
 }

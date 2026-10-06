@@ -129,8 +129,16 @@ function inMisc(t: Transaction): boolean {
   return (t.categoryId === null && !t.isPending) || (c?.kind === "budgeted" && (c.archived || !budget.allocations.get(c.id)));
 }
 
-/** Home's Pending: uncategorised pending charges. */
-const inPending = (t: Transaction) => t.categoryId === null && t.isPending;
+/** Budget spend is budgeted or uncategorised; tracked isn't. */
+const isBudgetSpend = (t: Transaction) => t.categoryId === null || kindOf(t.categoryId) === "budgeted";
+
+/** Home's named lines, as the Worker's LINES. */
+const LINE_FILTERS: Record<string, (t: Transaction) => boolean> = {
+  misc: inMisc,
+  "uncategorised-pending": (t) => t.categoryId === null && t.isPending,
+  posted: (t) => isBudgetSpend(t) && !t.isPending,
+  pending: (t) => isBudgetSpend(t) && t.isPending,
+};
 
 function summary(month: string): MonthSummary {
   const byCategory = new Map<number | null, SummaryCategory>();
@@ -398,8 +406,9 @@ const ROUTES: [string, RegExp, Handler][] = [
     const month = m[1]!;
     const category = url.searchParams.get("category");
     const id = Number(category);
-    if (month > monthOf(today) || (category !== "misc" && category !== "pending" && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
-    const inLine = category === "misc" ? inMisc : category === "pending" ? inPending : (t: Transaction) => t.categoryId === id;
+    const named = category !== null && Object.hasOwn(LINE_FILTERS, category) ? LINE_FILTERS[category] : undefined;
+    if (month > monthOf(today) || (!named && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
+    const inLine = named ?? ((t: Transaction) => t.categoryId === id);
     const rows = transactions.map(resolve).filter((t) => countsIn(t, month) && inLine(t));
     return ok(page(rows, url));
   }],

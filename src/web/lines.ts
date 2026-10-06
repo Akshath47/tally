@@ -2,10 +2,19 @@
 // Worker's tests, which check that each line's transactions add up to it, so no React or
 // browser imports here.
 
-/** A Home line: a category id, Misc (the unallocated pot) or uncategorised pending charges. */
-export type LineCategory = number | "misc" | "pending";
+/**
+ * A Home line: a category id, Misc (the unallocated pot), uncategorised pending charges, or the
+ * Posted and Pending pills, which split the month's budget spend.
+ */
+export type LineCategory = number | "misc" | "uncategorised-pending" | "posted" | "pending";
+type NamedLine = Exclude<LineCategory, number>;
 
-/** `allocatedMinor` is null for the Pending line, which isn't a pot of its own. */
+export const LINE_NAMES: Record<NamedLine, string> = { misc: "Misc", "uncategorised-pending": "Uncategorised pending", posted: "Posted", pending: "Pending" };
+
+/** Pending figures are lower bounds: Lunch Flow doesn't send every pending charge. */
+export const isLowerBound = (category: LineCategory) => category === "pending" || category === "uncategorised-pending";
+
+/** `allocatedMinor` is null for a line that isn't a pot of its own. */
 export type Line = { category: LineCategory; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number | null };
 type Pot = Line & { allocatedMinor: number };
 
@@ -19,8 +28,8 @@ type SummaryLine = { categoryId: number | null; kind: string | null; spentMinor:
  */
 export function budgetLines(s: { miscMinor: number | null; categories: SummaryLine[] }, byId: Map<number, { name: string }>): Line[] {
   const lines: Pot[] = [];
-  const misc: Pot = { category: "misc", name: "Misc", note: "unallocated", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: s.miscMinor ?? 0 };
-  const pending: Line = { category: "pending", name: "Uncategorised pending", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: null };
+  const misc: Pot = { category: "misc", name: LINE_NAMES.misc, note: "unallocated", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: s.miscMinor ?? 0 };
+  const pending: Line = { category: "uncategorised-pending", name: LINE_NAMES["uncategorised-pending"], spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: null };
   for (const c of s.categories) {
     if (c.kind === "tracked") continue;
     if (c.categoryId !== null && c.allocatedMinor > 0) {
@@ -39,4 +48,11 @@ export function budgetLines(s: { miscMinor: number | null; categories: SummaryLi
   lines.sort((a, b) => b.allocatedMinor - a.allocatedMinor);
   if (misc.allocatedMinor > 0 || misc.spentMinor !== 0) lines.push(misc);
   return pending.spentMinor !== 0 ? [...lines, pending] : lines;
+}
+
+/** Any line Home links to, figures included: a category or Misc row, or a pill. */
+export function findLine(s: { spentMinor: number; pendingSpentMinor: number } & Parameters<typeof budgetLines>[0], byId: Map<number, { name: string }>, category: LineCategory): Line | undefined {
+  if (category === "posted") return { category, name: LINE_NAMES.posted, spentMinor: s.spentMinor - s.pendingSpentMinor, pendingSpentMinor: 0, allocatedMinor: null };
+  if (category === "pending") return { category, name: LINE_NAMES.pending, spentMinor: s.pendingSpentMinor, pendingSpentMinor: s.pendingSpentMinor, allocatedMinor: null };
+  return budgetLines(s, byId).find((l) => l.category === category);
 }

@@ -17,6 +17,7 @@ describe("parseRoute", () => {
     ["/spending/2026-10/0", "notFound"],
     ["/spending/2026-13/1", "notFound"],
     ["/spending/2026-10/food", "notFound"],
+    ["/spending/2026-10/constructor", "notFound"],
   ])("%s → %s", (path, screen) => {
     expect(parseRoute(path).screen).toBe(screen);
   });
@@ -28,7 +29,9 @@ describe("parseRoute", () => {
   it("reads the month and category of a Home line", () => {
     expect(parseRoute(lineHref("2026-10", 4), "2026-10-15")).toEqual({ screen: "line", month: "2026-10", category: 4 });
     expect(parseRoute(lineHref("2026-09", "misc"), "2026-10-15")).toEqual({ screen: "line", month: "2026-09", category: "misc" });
-    expect(parseRoute(lineHref("2026-10", "pending"), "2026-10-15")).toEqual({ screen: "line", month: "2026-10", category: "pending" });
+    for (const category of ["uncategorised-pending", "posted", "pending"] as const) {
+      expect(parseRoute(lineHref("2026-10", category), "2026-10-15")).toEqual({ screen: "line", month: "2026-10", category });
+    }
   });
 
   it("refuses a Home line in a future month, which the API would refuse too", () => {
