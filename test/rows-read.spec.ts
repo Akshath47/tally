@@ -68,8 +68,12 @@ async function measure(method: string, path: string, body?: unknown) {
   return { json: (await res.json()) as Record<string, unknown>, rowsRead };
 }
 
-// Deterministic PRNG so runs compare.
+// Deterministic PRNG so runs compare. Each describe reseeds, so its ledger doesn't depend on
+// which tests ran before it.
 let seed = 42;
+const reseed = () => {
+  seed = 42;
+};
 const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
 
 const N_TXNS = 4000;
@@ -130,6 +134,7 @@ async function seedLedger() {
 describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
   beforeAll(async () => {
     await resetDb();
+    reseed();
     await seedLedger();
   });
 
@@ -199,6 +204,7 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
 describe(`rows_read per cron import (${N_TXNS} transactions over 2 years)`, () => {
   it("stays a few rows per stored transaction", async () => {
     await resetDb();
+    reseed();
     const w = world([REVOLUT, AMEX]);
     const start = Date.parse("2024-10-06");
     w.txns[1] = [];
