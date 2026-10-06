@@ -42,17 +42,26 @@ function monthParam(c: Context, current: string): string | null {
   return month !== undefined && isYm(month) && month <= current ? month : null;
 }
 
-// Home's last two lines (src/web/lines.ts), on `resolved r` joined to `categories c`. Pending is
-// uncategorised pending charges, which can't be filed until they post. Misc is the unallocated
-// pot: the rest of the uncategorised money out, plus budgeted categories with no allocation in
-// the month (archived ones have none: readBudget leaves them out). Tracked ones aren't budget
-// spend. MISC has one bind: the month.
-const PENDING = "(r.category_id IS NULL AND r.is_pending = 1)";
-const MISC = `((r.category_id IS NULL AND r.is_pending = 0) OR (c.kind = 'budgeted'
-  AND (c.archived_at IS NOT NULL OR COALESCE(${effectiveAllocationSql("r.category_id", "?")}, 0) = 0)))`;
+// Home's named lines (src/web/lines.ts) beyond a single category, each `[sql, ...binds]` on
+// `resolved r` joined to `categories c`, among the rows COUNTS keeps. Budget spend is budgeted
+// or uncategorised (tracked isn't). The Posted and Pending pills split it. Uncategorised pending
+// charges can't be filed until they post, so they're a line of their own. Misc is the
+// unallocated pot: posted uncategorised money out, plus budgeted categories with no allocation in
+// the month (archived ones have none: readBudget leaves them out).
+const BUDGET_SPEND = "(r.category_id IS NULL OR c.kind = 'budgeted')";
+const LINES = {
+  posted: () => [`(${BUDGET_SPEND} AND r.is_pending = 0)`],
+  pending: () => [`(${BUDGET_SPEND} AND r.is_pending = 1)`],
+  "uncategorised-pending": () => ["(r.category_id IS NULL AND r.is_pending = 1)"],
+  misc: (month: string) => [
+    `((r.category_id IS NULL AND r.is_pending = 0) OR (c.kind = 'budgeted'
+      AND (c.archived_at IS NOT NULL OR COALESCE(${effectiveAllocationSql("r.category_id", "?")}, 0) = 0)))`,
+    month,
+  ],
+} satisfies Record<string, (month: string) => [string, ...unknown[]]>;
 
 const lineQuery = z.object({
-  category: z.union([z.literal("misc"), z.literal("pending"), z.coerce.number().int().positive()]),
+  category: z.union([z.enum(Object.keys(LINES) as [keyof typeof LINES]), z.coerce.number().int().positive()]),
   limit: limitParam(200, 100),
   cursor: cursorParam.optional(),
 });
@@ -120,7 +129,7 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
 })
   /**
    * The rows behind one Home line: those that count in the month (by counted date) in a
-   * category, in Misc or in Pending. Newest first by bank date, keyset-paged like /api/transactions.
+   * category or in one of the named lines (LINES). Newest first by bank date, keyset-paged like /api/transactions.
    */
   .get("/:month/transactions", async (c) => {
     const month = monthParam(c, londonMonth(new Date()));
@@ -133,7 +142,7 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
         ["substr(COALESCE(r.counted_date, r.txn_date), 1, 7) = ?", month],
         ["r.vanished_at IS NULL"],
         [COUNTS],
-        category === "misc" ? [MISC, month] : category === "pending" ? [PENDING] : ["r.category_id = ?", category],
+        typeof category === "number" ? ["r.category_id = ?", category] : LINES[category](month),
       ],
       limit,
       cursor,

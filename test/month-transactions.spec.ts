@@ -10,7 +10,7 @@ import { SEEDED, insertCategory, insertOverride, insertRule, ledger } from "./bu
 
 type Txn = { id: number; amountMinor: number; countedAmountMinor: number | null; categoryId: number | null };
 type Page = { transactions: Txn[]; nextCursor: string | null };
-type Summary = Parameters<typeof budgetLines>[0];
+type Summary = Parameters<typeof budgetLines>[0] & { spentMinor: number; pendingSpentMinor: number };
 
 const list = async (category: string | number, month = "2026-10", extra = "") => {
   const res = await get(`/api/months/${month}/transactions?category=${category}${extra}`);
@@ -104,7 +104,7 @@ describe("GET /api/months/:month/transactions?category=misc", () => {
   });
 });
 
-describe("GET /api/months/:month/transactions?category=pending", () => {
+describe("GET /api/months/:month/transactions?category=uncategorised-pending", () => {
   it("lists uncategorised pending money out, which Misc leaves out", async () => {
     const pending = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -300, isPending: true });
     const posted = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -200 });
@@ -112,8 +112,22 @@ describe("GET /api/months/:month/transactions?category=pending", () => {
     // Categorised, so it stays with its category: Misc here, as Groceries has no allocation.
     const categorised = await grocer(-400, { isPending: true });
     await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -100, isPending: true, vanished: true });
-    expect(ids(await list("pending"))).toEqual([pending]);
+    expect(ids(await list("uncategorised-pending"))).toEqual([pending]);
     expect(ids(await list("misc"))).toEqual([posted, categorised]);
+  });
+});
+
+describe("GET /api/months/:month/transactions?category=posted|pending", () => {
+  it("splits the month's budget spend into posted and pending, categorised or not, tracked left out", async () => {
+    const posted = await grocer(-1_000);
+    const pending = await grocer(-300, { isPending: true });
+    const uncategorisedPosted = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -200 });
+    const uncategorisedPending = await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -450, isPending: true });
+    await txn(accounts[0], { merchant: "Outfitter", amountMinor: -5_000 });
+    await txn(accounts[0], { merchant: "Outfitter", amountMinor: -900, isPending: true });
+    await grocer(-400, { isPending: true, vanished: true });
+    expect(ids(await list("posted"))).toEqual([posted, uncategorisedPosted]);
+    expect(ids(await list("pending"))).toEqual([pending, uncategorisedPending]);
   });
 });
 
@@ -137,8 +151,11 @@ describe("GET /api/months/:month/transactions: agrees with Home", () => {
 
     const s = (await (await get("/api/months/2026-10/summary")).json()) as Summary;
     const lines = budgetLines(s, new Map());
-    expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc", "pending"]);
+    expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc", "uncategorised-pending"]);
     for (const l of lines) expect(spend(await list(l.category)), String(l.category)).toBe(l.spentMinor);
+    // The Posted and Pending pills.
+    expect(spend(await list("posted"))).toBe(s.spentMinor - s.pendingSpentMinor);
+    expect(spend(await list("pending"))).toBe(s.pendingSpentMinor);
   });
 });
 
@@ -149,6 +166,7 @@ describe("GET /api/months/:month/transactions: bad requests", () => {
     ["/api/months/2026-10/transactions"],
     ["/api/months/2026-10/transactions?category=0"],
     ["/api/months/2026-10/transactions?category=food"],
+    ["/api/months/2026-10/transactions?category=constructor"],
   ])("%s → 400", async (path) => {
     expect((await get(path)).status).toBe(400);
   });
