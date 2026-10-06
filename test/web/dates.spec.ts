@@ -52,18 +52,37 @@ describe("month arithmetic", () => {
 });
 
 describe("display dates", () => {
+  const today = "2026-10-06";
+
   it.each([
     ["2026-10-15", "Thu 15 Oct"],
     ["2026-10-01", "Thu 1 Oct"],
     ["2026-03-29", "Sun 29 Mar"],
-    ["2028-02-29", "Tue 29 Feb"],
-    ["2027-01-01", "Fri 1 Jan"],
-  ])("%s → %s", (date, expected) => {
-    expect(formatShortDate(date)).toBe(expected);
+    ["2026-01-01", "Thu 1 Jan"],
+    ["2026-12-31", "Thu 31 Dec"],
+  ])("this year: %s → %s", (date, expected) => {
+    expect(formatShortDate(date, today)).toBe(expected);
+  });
+
+  it.each([
+    ["2025-12-31", "Wed 31 Dec 2025"],
+    ["2024-10-15", "Tue 15 Oct 2024"],
+    ["2028-02-29", "Tue 29 Feb 2028"],
+    ["2027-01-01", "Fri 1 Jan 2027"],
+  ])("another year: %s → %s", (date, expected) => {
+    expect(formatShortDate(date, today)).toBe(expected);
+  });
+
+  it("goes by London's year, not UTC's, on New Year's Eve", () => {
+    // 23:30 UTC on 31 Dec is still 31 Dec in London (GMT), so 2026 is this year.
+    const lastNight = londonToday(new Date("2026-12-31T23:30:00Z"));
+    expect(formatShortDate("2026-12-31", lastNight)).toBe("Thu 31 Dec");
+    expect(formatShortDate("2027-01-01", lastNight)).toBe("Fri 1 Jan 2027");
   });
 
   it("formats day and month, and month names", () => {
-    expect(formatDayMonth("2026-09-03")).toBe("3 Sep");
+    expect(formatDayMonth("2026-09-03", today)).toBe("3 Sep");
+    expect(formatDayMonth("2025-09-03", today)).toBe("3 Sep 2025");
     expect(monthName("2026-10")).toBe("October");
   });
 });

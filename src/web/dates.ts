@@ -38,8 +38,11 @@ function weekday(date: string): number {
   return (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4][m - 1]! + d) % 7;
 }
 
-/** "15 Oct". */
-export const formatDayMonth = (date: string) => `${Number(date.slice(8, 10))} ${monthName(monthOf(date)).slice(0, 3)}`;
+/** "15 Oct" this year, "15 Oct 2024" in any other: history goes back about two years. */
+export function formatDayMonth(date: string, today: string = londonToday()): string {
+  const dayMonth = `${Number(date.slice(8, 10))} ${monthName(monthOf(date)).slice(0, 3)}`;
+  return date.slice(0, 4) === today.slice(0, 4) ? dayMonth : `${dayMonth} ${date.slice(0, 4)}`;
+}
 
-/** "Thu 15 Oct". */
-export const formatShortDate = (date: string) => `${WEEKDAYS[weekday(date)]} ${formatDayMonth(date)}`;
+/** "Thu 15 Oct", or "Tue 15 Oct 2024" outside this year. */
+export const formatShortDate = (date: string, today?: string) => `${WEEKDAYS[weekday(date)]} ${formatDayMonth(date, today)}`;
