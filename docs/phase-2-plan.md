@@ -957,4 +957,11 @@ This step needs no migration. It builds on `RESOLVED_CTE` (P2.3), the inbox pred
 
 - [ ] Add the summary endpoint to [schema-and-api.md](schema-and-api.md), then commit: `docs: record the month summary endpoint`.
 
+## [ ] P2.7 Stored merchant matches
+
+Added 2026-10-06, after the first day of UI use reached 80% of D1's daily rows-read cap
+([research/d1-rows-read.md](research/d1-rows-read.md)). The plan, its **Accept when** checks and
+the measured results are in [stored-matches-plan.md](stored-matches-plan.md). It's checked off
+here once it's merged and deployed and the next day's usage report confirms the drop.
+
 **The first usable cut is done when P2.1–P2.6 are merged and deployed.** Bills, insights, stale-data warnings and the digest each get a short design before they're added here.

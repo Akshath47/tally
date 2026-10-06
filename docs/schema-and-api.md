@@ -52,6 +52,7 @@ transactions              -- bank-sourced fields only
   UNIQUE(account_id, provider_txn_id)
   INDEX(account_id, txn_date)
   INDEX(fingerprint)
+  INDEX(account_id, merchant) · INDEX(txn_date)   P2.7; a merchant's rows, and a month or page by date
 
 import_runs
   id PK
@@ -95,6 +96,17 @@ transaction_overrides     -- P2.2; the owner's edits, keyed by transactions.id; 
   counted_date             null = txn_date
   note                     ≤ 500 characters, untrusted text
   updated_at
+  INDEX(counted_date) WHERE counted_date IS NOT NULL   P2.7; rows a counted date moves into a month
+
+merchant_matches          -- P2.7; derived: which rule each (account, merchant) matches
+  account_id FK → accounts.id · merchant   PK; merchant exactly as transactions.merchant
+  merchant_key             generated: lower(trim(merchant)), what exact rules compare against
+  rule_id FK → merchant_rules.id  null = no rule matches
+  INDEX(rule_id) · INDEX(merchant_key)
+  Written only by triggers (on transactions insert and merchant update; on merchant_rules
+  insert, pattern/type/scope update and delete) and REBUILD_MATCHES_SQL, all generated from
+  src/worker/budget/matches.ts. Every transaction has a row; none is ever deleted.
+  MATCHES_DRIFT_SQL counts pairs that disagree with matching from scratch (always 0).
 
 monthly_budgets           -- P2.2; positive = spend
   effective_month PK       YYYY-MM

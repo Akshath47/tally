@@ -4,15 +4,24 @@ Investigated 2026-10-05, after Cloudflare warned that the account had used 4M of
 `rows_read` a day allowed on the free tier. Nothing new ran that day apart from the first real
 use of the UI: creating categories, setting budgets and sorting merchants in To sort.
 
-All numbers below come from `test/rows-read.probe.spec.ts`, which seeds a synthetic ledger and
-records D1's own `meta.rows_read` for every statement each API call runs. Run it with:
+All numbers below come from `test/rows-read.spec.ts` (then a probe, now a regression test with
+per-screen budgets), which seeds a synthetic ledger and records D1's own `meta.rows_read` for
+every statement each API call runs. Run it with:
 
 ```
-npx vitest run test/rows-read.probe.spec.ts --silent=false --reporter=verbose
+npx vitest run test/rows-read.spec.ts --silent=false --reporter=verbose
 ```
 
 Local D1 (workerd's SQLite) reports `rows_read` the same way the hosted D1 bills it. The real
-ledger's size isn't known here; the probe assumes about two years of two accounts.
+ledger's size isn't known here; the test assumes about two years of two accounts.
+
+**Outcome (2026-10-06):** the owner chose option C, built as P2.7
+([stored-matches-plan.md](../stored-matches-plan.md)) together with A's To sort and app-switch
+changes. Which rule each merchant matches is now stored and kept current by triggers, and every
+read seeks what it shows. Filing a group in To sort is now one request (13 rows), an override
+response 9 rows, a month summary 156 rows once the backlog is sorted, and a sorted To sort
+screen about 100 rows when it's next opened. The plan has the full before and after table. The
+sections below describe the state before the change.
 
 ## Result
 

@@ -7,8 +7,9 @@ transaction, the merchants still to sort), not on the whole transaction history.
 screen re-resolves every transaction ever imported, at about 9 rows read each
 ([research/d1-rows-read.md](research/d1-rows-read.md)).
 
-**Status:** proposed, not approved. It changes a spec decision (below), so the owner decides
-before any code is written.
+**Status:** approved by the owner on 2026-10-06, with triggers and S4 included, and built on one
+branch, `feat/stored-merchant-matches`, at the owner's request, as P2.7. Steps below record
+what was done and where it differs from the plan.
 
 ## Why categories weren't stored, and what changes
 
@@ -180,79 +181,102 @@ The ones in [phase-2-plan.md](phase-2-plan.md) still apply. Additionally:
 
 ## Steps
 
-Each step is its own `feat/` branch and PR, merged in order. Before each PR: `code-review`,
-`simplify`, `security-review` (steps 2 to 4 touch `/api/*`), and the step's **Accept when**.
+Built on one branch rather than one per step, as the owner asked. Before the PR: `code-review`,
+`simplify` and `security-review` (S2 to S4 touch `/api/*` and the routes behind it).
 
-### [ ] S1 Table, indexes, triggers and fill
+### [x] S1 Table, indexes, triggers and fill
 
-**Accept when:**
-- the migration applies locally on an empty database and on one seeded with the probe's ledger;
+**Accept when** (all passed):
+- the migrations apply with `wrangler d1 migrations apply DB --local` on an empty database, and
   `npm run db:check` passes
-- a property test: on random synthetic merchants and accounts, after random rule inserts,
-  pattern and scope edits, deletes and transaction inserts and merchant changes, every stored
-  match equals today's live resolution (the old CTE, kept in the test as the oracle)
-- the importer specs pass unchanged, and a run's statement count is unchanged
-- deleting a rule a match points at succeeds (the foreign key is satisfied once the trigger has
-  re-matched; the spike confirmed this locally)
+- a property test (`test/budget/matches.spec.ts`): 300 random rule inserts, pattern, type and
+  scope edits, deletes, transaction inserts and merchant changes, with the stored matches equal
+  to matching from scratch after every step. Breaking any one of the rule triggers' branches by
+  hand makes it fail.
+- the importer specs pass unchanged; a trigger is not a statement, so a run's count is unchanged,
+  and an import with a pending row posting under new merchant text leaves no drift
+- deleting a rule a match points at succeeds
 
-Tasks:
-- [ ] Test first: trigger specs in `test/budget/matches.spec.ts`: a new transaction gets a match;
-  a second transaction with the same merchant adds nothing; a merchant change adds a match; each
-  rule trigger re-matches only what it should; precedence ties as in `resolve.spec.ts`.
-- [ ] `BEST_RULE_SQL(account, merchant)` in `resolve.ts`, shared by the triggers, the rebuild and
-  the old CTE (so the oracle and the triggers can't diverge).
-- [ ] `merchant_matches` in `schema.ts`; generate the table migration with drizzle-kit, then a
-  `--custom` migration for the triggers and the fill. A test checks the custom migration's
-  trigger SQL equals what `BEST_RULE_SQL` generates, so they can't drift apart.
-- [ ] `REBUILD_MATCHES_SQL` and `MATCHES_CONSISTENCY_SQL` exported, with tests.
-- [ ] Commit per deliverable. All four steps use the trailer `Phase: P2.7`, if the owner adds this to the phase 2 plan as P2.7.
+Done:
+- `bestRuleSql`, `MATCH_TRIGGERS_SQL`, `REBUILD_MATCHES_SQL` and `MATCHES_DRIFT_SQL` live in
+  `src/worker/budget/matches.ts` (not `resolve.ts`). `0007_merchant_match_triggers.sql` is the
+  fill and the triggers from it, and a test fails if they differ, or if a trigger is missing
+  after all migrations.
+- The drift query is the oracle: it matches every merchant from scratch with the old CTE's
+  precedence, and also counts transactions with no match row.
+- Found on the way: D1's `meta.changes` counts rows changed by triggers, so `DELETE
+  /api/rules/:id` now confirms the delete with `RETURNING` instead.
 
-### [ ] S2 Reads use the stored matches
+### [x] S2 Reads use the stored matches
 
-**Accept when:**
-- every existing API spec passes unchanged
-- `test/rows-read.probe.spec.ts` becomes a regression test with budgets at 4,000 transactions:
-  override response < 50, month summary < 3,000, a month's listing < 3,000, To sort with a small
-  backlog < 2,000, rule counts < 10,000
-- `npm run check` passes
+**Accept when** (all passed): every existing API spec passes unchanged, apart from the
+summary's statement count (3 → 4: the inbox count is its own statement), and
+`test/rows-read.spec.ts` (the former probe) holds the budgets. At 4,000 synthetic transactions:
 
-Tasks:
-- [ ] `RESOLVED_CTE` becomes the plain join over `merchant_matches`; `resolve.spec.ts`'s
-  rows-read test is rewritten to pin the new costs.
-- [ ] The summary: month-scoped aggregate (month rows plus overrides counted into the month) and
-  a separate inbox count driven from `merchant_matches`.
-- [ ] Inbox list and merchant groups driven from `merchant_matches WHERE rule_id IS NULL`.
-- [ ] Rule counts from `merchant_matches` joined to transactions.
-- [ ] Check every query plan with `EXPLAIN QUERY PLAN` in the probe; record the plans' shapes in
-  the commit body where a query had to be shaped to get a seek.
-- [ ] `GET /api/months/:month/transactions` (Home's line and pill listings, merged in #39)
-  gets the same month scoping. It reads 23k rows per open today.
+| Read | Before | After | Budget |
+| --- | ---: | ---: | ---: |
+| Override response (`PUT`/`DELETE`) | 14,684 | 6 to 9 | 50 |
+| Month summary, 1,330 rows to sort | 37,306 | 4,882 | 3,000 + 4 per row to sort |
+| Month summary, 5 merchants to sort | 37,306 | 156 | 3,000 |
+| A month's listing | 19,565 | 367 | 3,000 |
+| Home line listing | 23,305 | 634 to 944 | 3,000 |
+| Newest 100 transactions | | 366 | 1,000 |
+| Inbox page / merchant groups, 1,330 rows to sort | 41,257 / 34,928 | 8,000 / 5,671 | 7 per row to sort |
+| Inbox page / merchant groups, 5 merchants to sort | 41,257 / 34,928 | 62 / 43 | 500 |
+| Rule counts | 61,371 | 8,918 | 10,000 |
+| Steady-state cron import | 12,473 | 12,473 | 5 per stored transaction |
 
-### [ ] S3 Docs and spec
+Done:
+- `RESOLVED_CTE` is a plain join, with an **inner** join to `merchant_matches`, so SQLite can
+  start from the matches for the inbox. That relies on every transaction having a match row:
+  the triggers guarantee it, the drift query counts any that don't, and `.claude/CLAUDE.md`
+  records the invariant.
+- `INBOX` spells out "no override category and no matched rule", so SQLite seeks
+  `merchant_matches_rule_idx` (the same rows as `category_id IS NULL`, since a rule always has
+  a category).
+- `IN_MONTH` narrows a month with the date index and the overrides' counted dates, then applies
+  the exact counted-month rule. The summary and `GET /api/months/:month/transactions` use it.
+- The listing no longer joins `transactions` a second time; `EDITABLE` became `editable(alias)`.
+- Every plan was checked with `EXPLAIN QUERY PLAN`: index seeks only, no full scans.
 
-- [ ] `phase-2-spec.md`: the "Rule changes" row says categories are still resolved when read,
-  from stored merchant matches kept current by triggers. `schema-and-api.md`: the table and
-  triggers. `.claude/CLAUDE.md` invariants: `merchant_matches` is derived and trigger-written.
-- [ ] `research/d1-rows-read.md`: the after numbers.
+### [x] S3 Docs and spec
 
-### [ ] S4 Fewer refetches (web)
+- [x] `phase-2-spec.md` (the "Rule changes" row and the Rules section), `schema-and-api.md`
+  (the table, triggers and new indexes) and `.claude/CLAUDE.md` (the derived-table and
+  rows-read invariants).
+- [x] `research/d1-rows-read.md`: the after numbers. The README links both docs.
 
-Optional, but it's what makes a big backlog sort cheap as well:
-- [ ] After filing a group or a row in To sort, update the cached groups and inbox from the
-  write's response, and mark the other screens' queries stale without refetching them.
-- [ ] Per-mutation invalidation instead of "everything", and `refetchOnWindowFocus: false`.
+### [x] S4 Fewer refetches (web)
+
+- [x] Filing a group or a row in To sort removes it from the loaded inbox and groups
+  (`src/web/inbox.ts`) instead of refetching the backlog. Checked in the browser on the mock
+  API: each tap is one request; Undo refetches and restores the list.
+- [x] `refetchOnWindowFocus: false`.
+- Changed from the plan: instead of a per-mutation invalidation map, a mutation can set
+  `meta: { refetch: "none" }`, which still marks every query stale but refetches nothing until
+  it's next shown. After S2 the other queries a write refetches cost tens of rows, so a map
+  wasn't worth its risk of a stale screen.
 
 ### Rollout
 
-1. Owner applies the S1 migration remotely. It's additive: the deployed code ignores the new
-   table, and the importer keeps working with the triggers in place. Check with the consistency
-   query (counts only).
-2. Owner deploys S2. Any problem rolls back by redeploying the previous version; the table and
-   triggers can stay.
-3. The next day, `node scripts/usage-report.ts` shows rows read per day back near the cron-only
-   baseline.
+The owner runs both steps from their own terminal, back to back:
 
-Open questions for the owner:
-1. OK to change the spec's decision row as described (re-sort behaviour unchanged)?
-2. Triggers (recommended) or matches maintained in route and importer code?
-3. Include S4, or keep it for later?
+1. `npm run db:migrate:remote` applies 0006 and 0007: the table and indexes, the fill (about
+   15k rows read and 2k written, once, plus the index builds) and the triggers.
+2. `npm run deploy`.
+
+Don't leave a gap between them. The code deployed now confirms a rule delete with
+`meta.changes === 1`, and with the triggers in place a delete that re-matches merchants changes
+more rows, so `DELETE /api/rules/:id` would delete the rule but answer 404 until the deploy.
+The same applies to rolling back: redeploying an older version keeps working otherwise (the
+table and triggers are additive and the importer is unaffected), with that one caveat.
+
+Then check, counts only:
+- `npx wrangler d1 execute tally-prod --remote --command "SELECT count(*) AS n FROM merchant_matches"`
+  is about the number of distinct merchants, and the drift query (`MATCHES_DRIFT_SQL` in
+  `src/worker/budget/matches.ts`) returns 0.
+- The next day, `node scripts/usage-report.ts` shows rows read per day back near the cron-only
+  baseline.
+
+The owner answered the open questions on 2026-10-06: change the spec row, use triggers, and
+include S4.

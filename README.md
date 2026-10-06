@@ -21,6 +21,8 @@ Only one person uses it. It runs on a single Cloudflare Worker (React SPA + Hono
 | [docs/phase-2-outline.md](docs/phase-2-outline.md) | Phase 2 outline, kept loose so the product can evolve |
 | [docs/phase-2-spec.md](docs/phase-2-spec.md) | Phase 2 backend spec: categories, rules, overrides, budgets, summary API, reconnection |
 | [docs/ui-design.md](docs/ui-design.md) | Mobile UI design spec: dark theme tokens, navigation, every screen and state |
+| [docs/research/d1-rows-read.md](docs/research/d1-rows-read.md) | Why the first day of UI use hit 80% of D1's daily read cap, with measurements |
+| [docs/stored-matches-plan.md](docs/stored-matches-plan.md) | Stored merchant matches (P2.7): reads cost what they show, not the history |
 
 ## Repository layout
 
