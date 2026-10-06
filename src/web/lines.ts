@@ -52,8 +52,43 @@ export function budgetLines(s: { miscMinor: number | null; categories: SummaryLi
 }
 
 /** Any line Home links to, figures included: a category or Misc row, or a pill. */
-export function findLine(s: { spentMinor: number; pendingSpentMinor: number } & Parameters<typeof budgetLines>[0], byId: Map<number, { name: string }>, category: LineCategory): Line | undefined {
+export function findLine(
+  s: { spentMinor: number; pendingSpentMinor: number; overallMinor: number | null } & Parameters<typeof budgetLines>[0],
+  byId: Map<number, { name: string }>,
+  category: LineCategory,
+): Line | undefined {
   if (category === "posted") return { category, name: LINE_NAMES.posted, spentMinor: s.spentMinor - s.pendingSpentMinor, pendingSpentMinor: 0, allocatedMinor: null };
   if (category === "pending") return { category, name: LINE_NAMES.pending, spentMinor: s.pendingSpentMinor, pendingSpentMinor: s.pendingSpentMinor, allocatedMinor: null };
-  return budgetLines(s, byId).find((l) => l.category === category);
+  // The same lines Home shows for the month: spending only before a budget, the pots after.
+  if (s.overallMinor !== null) return budgetLines(s, byId).find((l) => l.category === category);
+  const { lines, tracked } = spendingLines(s.categories, byId);
+  return [...lines, ...tracked].find((l): l is SpendLine & { category: number } => l.category === category);
+}
+
+/** A past month's line before any budget: a category, or Uncategorised (`null`); no pots. */
+export type SpendLine = Omit<Line, "category"> & { category: number | null; allocatedMinor: null };
+
+const spendLine = (c: SummaryLine, byId: Map<number, { name: string }>): SpendLine => ({
+  category: c.categoryId,
+  name: c.categoryId === null ? "Uncategorised" : (byId.get(c.categoryId)?.name ?? "Category"),
+  spentMinor: c.spentMinor,
+  pendingSpentMinor: c.pendingSpentMinor,
+  allocatedMinor: null,
+});
+
+/**
+ * A month with no budget to measure against: what each category spent, biggest first, with
+ * Uncategorised last. Tracked categories come back apart, since they're not in the month's spend.
+ * Categories that spent nothing (an allocation only, or refunds that net to zero) are left out.
+ */
+export function spendingLines(categories: SummaryLine[], byId: Map<number, { name: string }>): { lines: SpendLine[]; tracked: SpendLine[] } {
+  const lines: SpendLine[] = [];
+  const tracked: SpendLine[] = [];
+  let uncategorised: SpendLine | undefined;
+  for (const c of [...categories].sort((a, b) => b.spentMinor - a.spentMinor)) {
+    if (c.spentMinor === 0) continue;
+    if (c.categoryId === null) uncategorised = spendLine(c, byId);
+    else (c.kind === "tracked" ? tracked : lines).push(spendLine(c, byId));
+  }
+  return { lines: uncategorised ? [...lines, uncategorised] : lines, tracked };
 }

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { budgetLines } from "../../src/web/lines";
+import { budgetLines, findLine, spendingLines } from "../../src/web/lines";
 
 // All figures are synthetic.
 
 const names = new Map([
   [1, { name: "Groceries" }],
   [2, { name: "Transport" }],
+  [9, { name: "Shopping" }],
 ]);
 const summaryLine = (categoryId: number | null, kind: string | null, spentMinor: number, pendingSpentMinor: number, allocatedMinor = 0) => ({
   categoryId,
@@ -39,5 +40,45 @@ describe("budgetLines", () => {
 
   it("leaves tracked spend off every line", () => {
     expect(budgetLines({ miscMinor: 0, categories: [summaryLine(9, "tracked", 5_000, 5_000)] }, names)).toEqual([]);
+  });
+});
+
+describe("spendingLines", () => {
+  // A month before any budget: no pots, so each category shows what it spent.
+  it("lists budget spend by category, biggest first, with Uncategorised last and tracked apart", () => {
+    const { lines, tracked } = spendingLines(
+      [summaryLine(1, "budgeted", 3_000, 0), summaryLine(null, null, 9_000, 0), summaryLine(2, "budgeted", 4_500, 500), summaryLine(9, "tracked", 7_000, 0)],
+      names,
+    );
+    expect(lines).toEqual([
+      { category: 2, name: "Transport", spentMinor: 4_500, pendingSpentMinor: 500, allocatedMinor: null },
+      { category: 1, name: "Groceries", spentMinor: 3_000, pendingSpentMinor: 0, allocatedMinor: null },
+      { category: null, name: "Uncategorised", spentMinor: 9_000, pendingSpentMinor: 0, allocatedMinor: null },
+    ]);
+    expect(tracked).toEqual([{ category: 9, name: "Shopping", spentMinor: 7_000, pendingSpentMinor: 0, allocatedMinor: null }]);
+  });
+
+  it("leaves out categories with nothing spent", () => {
+    // A refund can net a category to zero; an allocation alone lists it in the summary too.
+    const { lines, tracked } = spendingLines([summaryLine(1, "budgeted", 0, 0, 10_000), summaryLine(9, "tracked", 0, 0)], names);
+    expect(lines).toEqual([]);
+    expect(tracked).toEqual([]);
+  });
+});
+
+describe("findLine", () => {
+  const categories = [summaryLine(1, "budgeted", 3_000, 0), summaryLine(9, "tracked", 7_000, 0)];
+
+  it("finds a category's plain spend in a month without a budget, tracked ones included", () => {
+    const s = { spentMinor: 3_000, pendingSpentMinor: 0, overallMinor: null, miscMinor: null, categories };
+    expect(findLine(s, names, 1)).toEqual({ category: 1, name: "Groceries", spentMinor: 3_000, pendingSpentMinor: 0, allocatedMinor: null });
+    expect(findLine(s, names, 9)).toEqual({ category: 9, name: "Shopping", spentMinor: 7_000, pendingSpentMinor: 0, allocatedMinor: null });
+    expect(findLine(s, names, 2)).toBeUndefined();
+  });
+
+  it("finds only Home's pots in a month with a budget", () => {
+    const s = { spentMinor: 3_000, pendingSpentMinor: 0, overallMinor: 10_000, miscMinor: 10_000, categories };
+    expect(findLine(s, names, "misc")).toMatchObject({ spentMinor: 3_000, allocatedMinor: 10_000 });
+    expect(findLine(s, names, 9)).toBeUndefined();
   });
 });

@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { Transaction } from "../api";
 import { TabScreen } from "../components/Screen";
 import { TransactionList } from "../components/TransactionList";
-import { ChevronLeft, ChevronRight } from "../components/ui";
-import { addMonths, londonToday, monthName, monthOf, yearSuffix } from "../dates";
+import { MonthStepper } from "../components/MonthStepper";
+import { londonToday, monthName, monthOf, yearSuffix } from "../dates";
 import { formatPounds } from "../money";
 import { useMonthTransactions, useSummary } from "../queries";
 
@@ -23,18 +23,12 @@ export function Transactions() {
     <TabScreen
       title="Transactions"
       action={
-        <div className="flex items-center" role="group" aria-label="Month">
-          <button type="button" aria-label="Previous month" className="grid size-11 place-items-center text-fg/80" onClick={() => setMonth(addMonths(month, -1))}>
-            <ChevronLeft size={18} />
-          </button>
+        <MonthStepper month={month} current={current} onStep={setMonth}>
           <span className="min-w-9 text-center" aria-live="polite">
             {monthName(month).slice(0, 3)}
             {yearSuffix(month, current)}
           </span>
-          <button type="button" aria-label="Next month" className="grid size-11 place-items-center text-fg/80 disabled:opacity-30" disabled={month >= current} onClick={() => setMonth(addMonths(month, 1))}>
-            <ChevronRight size={18} />
-          </button>
-        </div>
+        </MonthStepper>
       }
     >
       <TransactionList
