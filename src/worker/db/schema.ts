@@ -256,7 +256,7 @@ export const transactionOverrides = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    // Rows a counted date moves into a month (src/worker/budget/resolve.ts, inMonth).
+    // Rows a counted date moves into a month (src/worker/budget/resolve.ts, IN_MONTH).
     index("transaction_overrides_counted_date_idx").on(t.countedDate).where(sql`${t.countedDate} IS NOT NULL`),
     check("transaction_overrides_excluded_ck", isBool(t.excluded)),
     check(

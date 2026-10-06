@@ -1,14 +1,15 @@
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/worker";
 import { runImport } from "../src/worker/importer";
 import { AMEX, REVOLUT, txn, world } from "./fixtures/lunchflow";
 import { resetDb } from "./db";
 
-// Exploratory probe, not a regression test: how many rows D1 bills (meta.rows_read) for each
-// API call the UI makes, and for a cron import, on a synthetic ledger about the size of two
-// years of two accounts. It asserts nothing; run it with --reporter=verbose to see the table
-// (docs/research/d1-rows-read.md). All data is synthetic.
+// How many rows D1 bills (meta.rows_read) for each API call the UI makes, and for a cron
+// import, on a synthetic ledger about the size of two years of two accounts. D1's free tier
+// allows 5M rows read a day, so a screen must cost what it shows, not the whole history
+// (docs/research/d1-rows-read.md). Run with --reporter=verbose to see the table. All data is
+// synthetic.
 
 const ORIGIN = "http://localhost";
 const app = createApp();
@@ -132,60 +133,71 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     await seedLedger();
   });
 
-  it("reports", async () => {
+  it("keeps each screen's reads to what it shows", async () => {
     const table: [string, number][] = [];
     const record = async (label: string, method: string, path: string, body?: unknown) => {
       const r = await measure(method, path, body);
       table.push([label, r.rowsRead]);
-      return r.json;
+      return r;
     };
     const counts = await env.DB.prepare(
-      "SELECT (SELECT count(*) FROM transactions) t, (SELECT count(DISTINCT account_id || merchant) FROM transactions) m, (SELECT count(*) FROM merchant_rules) r",
+      `SELECT (SELECT count(*) FROM transactions) AS txns, (SELECT count(*) FROM merchant_matches) AS merchants,
+         (SELECT count(*) FROM merchant_rules) AS rules`,
     ).first();
     console.log("ledger", counts);
 
-    await record("GET /api/categories", "GET", "/api/categories");
-    await record("GET /api/accounts", "GET", "/api/accounts");
-    await record("GET /api/budget", "GET", "/api/budget");
-    await record("GET /api/import-runs", "GET", "/api/import-runs?limit=10");
-    await record("GET /api/months/2026-10/summary", "GET", "/api/months/2026-10/summary");
-    await record("GET /api/rules", "GET", "/api/rules");
-    const inbox = (await record("GET /api/inbox?limit=100", "GET", "/api/inbox?limit=100")) as { transactions: { id: number }[] };
-    await record("GET /api/inbox/merchants", "GET", "/api/inbox/merchants");
-    await record("GET /api/transactions (one month, 100)", "GET", "/api/transactions?limit=100&from=2026-09-01&to=2026-09-30");
-    await record("GET /api/months/:month/transactions (a line)", "GET", "/api/months/2026-09/transactions?category=1");
-    const id = inbox.transactions[0]!.id;
-    await record("PUT /api/transactions/:id/override", "PUT", `/api/transactions/${id}/override`, { categoryId: 4 });
-    await record("POST /api/rules", "POST", "/api/rules", { matchType: "exact", pattern: "synthetic merchant 300", categoryId: 2 });
+    const cheap = [
+      await record("GET /api/categories", "GET", "/api/categories"),
+      await record("GET /api/accounts", "GET", "/api/accounts"),
+      await record("GET /api/budget", "GET", "/api/budget"),
+      await record("GET /api/import-runs", "GET", "/api/import-runs?limit=10"),
+    ];
+    const summary = await record("GET /api/months/2026-09/summary", "GET", "/api/months/2026-09/summary");
+    const rules = await record("GET /api/rules", "GET", "/api/rules");
+    const monthList = await record("GET /api/transactions (one month)", "GET", "/api/transactions?limit=100&from=2026-09-01&to=2026-09-30");
+    const allList = await record("GET /api/transactions (newest 100)", "GET", "/api/transactions?limit=100");
+    const line = await record("GET /api/months/:month/transactions", "GET", "/api/months/2026-09/transactions?category=1");
+    const misc = await record("GET /api/months/:month/transactions (misc)", "GET", "/api/months/2026-09/transactions?category=misc");
+    const inbox = await record("GET /api/inbox (backlog)", "GET", "/api/inbox?limit=100");
+    const merchants = await record("GET /api/inbox/merchants (backlog)", "GET", "/api/inbox/merchants");
+    const inboxRows = (inbox.json as { total: number }).total;
+    const id = (inbox.json as { transactions: { id: number }[] }).transactions[0]!.id;
+    const put = await record("PUT /api/transactions/:id/override", "PUT", `/api/transactions/${id}/override`, { categoryId: 4 });
+    const del = await record("DELETE /api/transactions/:id/override", "DELETE", `/api/transactions/${id}/override`, {});
+    const rule = await record("POST /api/rules (exact)", "POST", "/api/rules", { matchType: "exact", pattern: "synthetic merchant 300", categoryId: 2 });
 
-    // What one tap costs once the global invalidate-on-every-write refetches the open screen
-    // (src/web/main.tsx). Only active queries refetch at once; the rest refetch on next visit.
-    const screen = async (paths: string[]) => {
-      let n = 0;
-      for (const p of paths) n += (await measure("GET", p)).rowsRead;
-      return n;
-    };
-    const refs = ["/api/categories", "/api/accounts", "/api/budget"];
-    const toSort = await screen(["/api/inbox/merchants", "/api/inbox?limit=100", ...refs]);
-    const fileGroup = (await measure("POST", "/api/rules", { matchType: "exact", pattern: "synthetic merchant 301", categoryId: 2 })).rowsRead + toSort;
-    const fileRow = (await measure("PUT", `/api/transactions/${inbox.transactions[1]!.id}/override`, { categoryId: 4 })).rowsRead + toSort;
-    const home = await screen(["/api/months/2026-10/summary", "/api/months/2026-09/summary", "/api/months/2026-08/summary", "/api/categories", "/api/accounts"]);
-    const categories = await screen(["/api/rules", "/api/months/2026-10/summary", ...refs]);
-    const transactions = await screen(["/api/transactions?limit=100&from=2026-10-01&to=2026-10-31", "/api/months/2026-10/summary", "/api/categories", "/api/accounts"]);
-    table.push(
-      ["", 0],
-      ["To sort: file a merchant group (+ refetch)", fileGroup],
-      ["To sort: file one row (+ refetch)", fileRow],
-      ["Open Home (3 month summaries)", home],
-      ["Open Categories", categories],
-      ["Open Transactions (one month)", transactions],
-    );
-    console.log(table.map(([l, n]) => (l ? `${l.padEnd(44)} ${String(n).padStart(9)}` : "")).join("\n"));
+    // Sort all but five merchants, as after the first big sort.
+    await env.DB.prepare(
+      `INSERT INTO merchant_rules (match_type, pattern, category_id, created_at, updated_at)
+       SELECT 'exact', merchant_key, 1, ?1, ?1 FROM merchant_matches WHERE rule_id IS NULL
+       ORDER BY merchant_key LIMIT -1 OFFSET 5 ON CONFLICT DO NOTHING`,
+    )
+      .bind("2026-10-05T12:00:00.000Z")
+      .run();
+    const sortedInbox = await record("GET /api/inbox (sorted)", "GET", "/api/inbox?limit=100");
+    const sortedMerchants = await record("GET /api/inbox/merchants (sorted)", "GET", "/api/inbox/merchants");
+    const sortedSummary = await record("GET /api/months/2026-10/summary (sorted)", "GET", "/api/months/2026-10/summary");
+
+    console.log(`inbox rows in the backlog: ${inboxRows}`);
+    console.log(table.map(([l, n]) => `${l.padEnd(48)} ${String(n).padStart(9)}`).join("\n"));
+
+    for (const r of cheap) expect(r.rowsRead).toBeLessThan(100);
+    expect(put.rowsRead).toBeLessThan(50);
+    expect(del.rowsRead).toBeLessThan(50);
+    expect(rule.rowsRead).toBeLessThan(500);
+    for (const r of [sortedSummary, monthList, line, misc]) expect(r.rowsRead).toBeLessThan(3_000);
+    expect(allList.rowsRead).toBeLessThan(1_000);
+    expect(rules.rowsRead).toBeLessThan(10_000);
+    // A backlog costs a few rows per transaction still to sort (the summary counts them for the
+    // inbox badge), never the whole history again. Once sorted, To sort costs almost nothing.
+    expect(summary.rowsRead).toBeLessThan(3_000 + 4 * inboxRows);
+    for (const r of [inbox, merchants]) expect(r.rowsRead).toBeLessThan(7 * inboxRows);
+    for (const r of [sortedInbox, sortedMerchants]) expect(r.rowsRead).toBeLessThan(500);
   });
 });
 
 describe(`rows_read per cron import (${N_TXNS} transactions over 2 years)`, () => {
-  it("reports", async () => {
+  it("stays a few rows per stored transaction", async () => {
     await resetDb();
     const w = world([REVOLUT, AMEX]);
     const start = Date.parse("2024-10-06");
@@ -215,5 +227,7 @@ describe(`rows_read per cron import (${N_TXNS} transactions over 2 years)`, () =
     const steady = await go();
     const stored = await env.DB.prepare("SELECT count(*) AS n FROM transactions").first();
     console.log("stored", stored, "backfill runs rows_read", backfill.join(", "), "\nsteady-state cron run", steady);
+    expect(steady.status).toBe("success");
+    expect(steady.rowsRead).toBeLessThan(5 * N_TXNS);
   });
 });

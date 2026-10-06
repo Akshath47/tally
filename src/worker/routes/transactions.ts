@@ -20,9 +20,9 @@ export const transactionRoutes = new Hono<AppEnv>().route("/", overrideRoutes).g
   const { account_id, from, to, limit, cursor } = q.data;
 
   const where: [string, unknown][] = [];
-  if (account_id !== undefined) where.push(["t.account_id = ?", account_id]);
-  if (from) where.push(["t.txn_date >= ?", from]);
-  if (to) where.push(["t.txn_date <= ?", to]);
+  if (account_id !== undefined) where.push(["r.account_id = ?", account_id]);
+  if (from) where.push(["r.txn_date >= ?", from]);
+  if (to) where.push(["r.txn_date <= ?", to]);
 
   const { transactions, nextCursor } = await listTransactions(c.env.DB, { where, limit, cursor });
   return c.json({ transactions, nextCursor });

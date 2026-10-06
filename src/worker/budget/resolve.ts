@@ -1,6 +1,7 @@
 // Which category each transaction is in (docs/phase-2-spec.md, Rules): its override, otherwise
-// the best-matching merchant rule, otherwise none. Worked out in SQL when read, so a rule
-// change re-sorts every transaction without one, and D1 does the work rather than the Worker.
+// the best-matching merchant rule, otherwise none. Worked out in SQL when read, from the stored
+// merchant matches (./matches.ts), so a rule change re-sorts every transaction without an
+// override, and D1 does the work rather than the Worker.
 
 /**
  * Mirrors SQLite's `lower(trim(x))`, which rules are matched against: `trim()` strips spaces
@@ -19,47 +20,54 @@ export function normalizePattern(text: string): string {
 export const isRulablePattern = (pattern: string) => pattern.length >= 1 && pattern.length <= 100 && !/^\s|\s$/.test(pattern);
 
 /**
- * `merchant_rule AS (...), resolved AS (...)`. `resolved` has one row per transaction,
- * vanished ones included (consumers filter). Use as `WITH ${RESOLVED_CTE} SELECT ... FROM resolved`.
+ * `resolved AS (...)`: one row per transaction, vanished ones included (consumers filter). Use
+ * as `WITH ${RESOLVED_CTE} SELECT ... FROM resolved r`.
  *
- * Rule precedence: exact before contains, then account-scoped before any-account, then the
- * longer pattern, then the older rule. `instr()` matches a contains pattern literally, so a
- * `%` or `_` in it is never a wildcard.
- *
- * D1 bills rows read, so each distinct (account, merchant) is matched once rather than every
- * transaction against every rule: exact rules are an index lookup on (match_type, pattern,
- * account_scope), and only contains rules are scanned.
+ * A plain join, not materialised, so SQLite pushes each consumer's conditions into it, and they
+ * decide the cost: D1 bills rows read, so a consumer must give it something to seek (an id, a
+ * month with IN_MONTH, or INBOX's match_rule_id), never filter the whole history. The rule's
+ * category and the override are read here, so neither needs anything stored. The inner join
+ * relies on every transaction having a match row, which the triggers guarantee.
  */
-export const RESOLVED_CTE = `merchant_rule AS MATERIALIZED (
-  SELECT m.account_id, m.merchant, COALESCE(
-    (SELECT r.id FROM merchant_rules r
-     WHERE r.match_type = 'exact' AND r.pattern = lower(trim(m.merchant)) AND r.account_scope IN (m.account_id, 0)
-     ORDER BY r.account_scope = 0 LIMIT 1),
-    (SELECT r.id FROM merchant_rules r
-     WHERE r.match_type = 'contains' AND r.account_scope IN (m.account_id, 0) AND instr(lower(m.merchant), r.pattern) > 0
-     ORDER BY r.account_scope = 0, length(r.pattern) DESC, r.id LIMIT 1)
-  ) AS rule_id
-  FROM (SELECT DISTINCT account_id, merchant FROM transactions) AS m
-),
-resolved AS (
-  SELECT t.id, t.account_id, t.amount_minor, t.txn_date, t.merchant, t.is_pending, t.vanished_at,
+export const RESOLVED_CTE = `resolved AS (
+  SELECT t.id, t.account_id, t.amount_minor, t.currency, t.txn_date, t.merchant, t.description,
+    t.is_pending, t.vanished_at, t.first_seen_at,
     o.category_id AS override_category_id, COALESCE(o.excluded, 0) AS excluded,
     o.counted_amount_minor, o.counted_date, o.note,
-    CASE WHEN o.category_id IS NULL THEN mr.rule_id END AS rule_id,
+    m.rule_id AS match_rule_id,
+    CASE WHEN o.category_id IS NULL THEN m.rule_id END AS rule_id,
     COALESCE(o.category_id, r.category_id) AS category_id,
-    CASE WHEN o.category_id IS NOT NULL THEN 'override' WHEN mr.rule_id IS NOT NULL THEN 'rule' END AS category_source
+    CASE WHEN o.category_id IS NOT NULL THEN 'override' WHEN m.rule_id IS NOT NULL THEN 'rule' END AS category_source
   FROM transactions t
+  JOIN merchant_matches m ON m.account_id = t.account_id AND m.merchant = t.merchant
   LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
-  LEFT JOIN merchant_rule mr ON mr.account_id = t.account_id AND mr.merchant = t.merchant
-  LEFT JOIN merchant_rules r ON r.id = mr.rule_id
+  LEFT JOIN merchant_rules r ON r.id = m.rule_id
 )`;
+
+/**
+ * On `resolved r`: the rows counted in a month, by `counted_date ?? txn_date`; bind
+ * inMonthBinds(month). The first condition only narrows: it lets SQLite seek the month's bank
+ * dates and the overrides that count a row in it. The second is the exact rule.
+ */
+export const IN_MONTH = `(r.txn_date BETWEEN ? AND ? OR r.id IN (SELECT transaction_id FROM transaction_overrides WHERE counted_date BETWEEN ? AND ?))
+  AND substr(COALESCE(r.counted_date, r.txn_date), 1, 7) = ?`;
+
+/** IN_MONTH's binds. Every date in a month sorts between its -01 and -31. */
+export function inMonthBinds(month: string): string[] {
+  const [from, to] = [`${month}-01`, `${month}-31`];
+  return [from, to, from, to, month];
+}
 
 /**
  * On `resolved r`: what still needs sorting. Counted transactions that no override or rule
  * categorises and that haven't been excluded. Money in and out both wait here; pending rows too,
  * though not editable. The inbox and the summary's `inboxCount` share it, so they always agree.
+ *
+ * "No override category and no matched rule" is `category_id IS NULL` (a rule always has a
+ * category), spelled out so SQLite seeks merchant_matches_rule_idx and reads only the
+ * transactions still to sort.
  */
-export const INBOX = "r.vanished_at IS NULL AND r.category_id IS NULL AND r.excluded = 0";
+export const INBOX = "r.vanished_at IS NULL AND r.match_rule_id IS NULL AND r.override_category_id IS NULL AND r.excluded = 0";
 
 /**
  * On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's

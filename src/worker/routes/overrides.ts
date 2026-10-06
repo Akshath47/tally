@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { EDITABLE, getTransaction } from "../budget/listing";
+import { editable, getTransaction } from "../budget/listing";
 import { isRulablePattern } from "../budget/resolve";
 import { NOTE_MAX_LENGTH } from "../db/schema";
 import { idParam, parseBody } from "./query";
@@ -42,7 +42,7 @@ type State = {
 const readState = (db: D1Database, id: number) =>
   db
     .prepare(
-      `SELECT ${EDITABLE} AS editable, t.account_id AS accountId, lower(trim(t.merchant)) AS pattern,
+      `SELECT ${editable("t")} AS editable, t.account_id AS accountId, lower(trim(t.merchant)) AS pattern,
          o.category_id AS currentCategoryId
        FROM transactions t LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
        WHERE t.id = ?1`,

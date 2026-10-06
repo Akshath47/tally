@@ -233,7 +233,8 @@ describe("GET /api/months/:month/summary: freshness and cost", () => {
     expect((await summary()).lastDataChangeAt).toBe("2026-10-14T08:00:00.000Z");
   });
 
-  it("runs 3 D1 statements", async () => {
+  // The budget, the month's lines, the inbox count and the freshness: each reads only its own rows.
+  it("runs 4 D1 statements", async () => {
     await grocer(-1_000);
     let statements = 0;
     const db = new Proxy(env.DB, {
@@ -245,6 +246,6 @@ describe("GET /api/months/:month/summary: freshness and cost", () => {
     });
     const res = await app.request(`${ORIGIN}/api/months/2026-10/summary`, {}, { ...env, DB: db });
     expect(res.status).toBe(200);
-    expect(statements).toBe(3);
+    expect(statements).toBe(4);
   });
 });

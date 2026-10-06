@@ -23,10 +23,13 @@ const fields = {
 
 export const ruleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
-    // Only rows a rule decides (no category override) that still count.
+    // Only rows a rule decides (no category override) that still count. Driven from the matched
+    // merchants, so it never resolves the unmatched ones.
     const { results } = await c.env.DB.prepare(
       `WITH ${RESOLVED_CTE},
-         counts AS (SELECT rule_id, count(*) AS n FROM resolved WHERE category_source = 'rule' AND vanished_at IS NULL GROUP BY rule_id)
+         counts AS (SELECT r.match_rule_id AS rule_id, count(*) AS n FROM resolved r
+                    WHERE r.match_rule_id IS NOT NULL AND r.override_category_id IS NULL AND r.vanished_at IS NULL
+                    GROUP BY r.match_rule_id)
        SELECT r.id, r.match_type AS matchType, r.pattern, r.account_id AS accountId, r.category_id AS categoryId,
          COALESCE(counts.n, 0) AS transactionCount
        FROM merchant_rules r LEFT JOIN counts ON counts.rule_id = r.id

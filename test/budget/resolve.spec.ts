@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { RESOLVED_CTE, normalizePattern } from "../../src/worker/budget/resolve";
+import { INBOX, RESOLVED_CTE, normalizePattern } from "../../src/worker/budget/resolve";
 import { resetDb } from "../db";
 import { SEEDED, insertOverride, insertRule, ledger } from "./helpers";
 
@@ -110,9 +110,9 @@ describe("resolved", () => {
   });
 });
 
-// D1's free tier allows 5M rows read a day, so resolution mustn't cost transactions × rules.
+// D1's free tier allows 5M rows read a day, so resolving one row mustn't resolve the history.
 describe("resolved: rows read", () => {
-  it("stays well below transactions × rules on a realistic history", async () => {
+  it("resolves one transaction, or the ones to sort, without reading the rest", async () => {
     // 600 transactions across 120 merchants, and 80 rules of each match type that match none of them.
     await env.DB.prepare(
       `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 600)
@@ -133,12 +133,17 @@ describe("resolved: rows read", () => {
       .run();
     await insertRule("contains", "merchant 1", SEEDED.shopping);
 
-    const res = await env.DB.prepare(`WITH ${RESOLVED_CTE} SELECT count(*) AS n FROM resolved WHERE category_id IS NOT NULL`).run<{ n: number }>();
+    const all = await env.DB.prepare(`WITH ${RESOLVED_CTE} SELECT count(*) AS n FROM resolved WHERE category_id IS NOT NULL`).run<{ n: number }>();
     // Merchants 1, 10–19 and 100–119 contain "merchant 1": 31 merchants × 5 transactions.
-    expect(res.results[0]!.n).toBe(155);
-    // Every transaction against every rule would be about 600 × 161 ≈ 97,000, and every
-    // merchant against every transaction 120 × 600 = 72,000.
-    expect(res.meta.rows_read).toBeLessThan(20_000);
+    expect(all.results[0]!.n).toBe(155);
+
+    const one = await env.DB.prepare(`WITH ${RESOLVED_CTE} SELECT category_id FROM resolved WHERE id = ?1`).bind(300).run();
+    expect(one.meta.rows_read).toBeLessThan(10);
+
+    const inbox = await env.DB.prepare(`WITH ${RESOLVED_CTE} SELECT count(*) AS n FROM resolved r WHERE ${INBOX}`).run<{ n: number }>();
+    expect(inbox.results[0]!.n).toBe(600 - 155);
+    // A few rows per transaction to sort; matching every merchant against every rule cost ~13k.
+    expect(inbox.meta.rows_read).toBeLessThan(5 * 445);
   });
 });
 
