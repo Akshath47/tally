@@ -1,5 +1,6 @@
 import { londonToday, monthOf } from "./dates";
-import { LINE_NAMES, type LineCategory } from "./lines";
+import { NAMED_LINES, isNamedLine } from "../worker/budget/lines";
+import type { LineCategory } from "./lines";
 
 // Every screen and its URL. Tab screens show the tab bar; pushed screens replace it with a back link.
 
@@ -28,6 +29,8 @@ const STATIC: Record<string, Exclude<Route["screen"], "newAccount" | "line">> = 
   "/accounts": "accounts",
 };
 
+const LINE_PATH = new RegExp(`^/spending/(\\d{4}-(?:0[1-9]|1[0-2]))/(${NAMED_LINES.join("|")}|[1-9]\\d{0,8})$`);
+
 /** `today` is the London date, for refusing a future month (the API would only 400). */
 export function parseRoute(pathname: string, today = londonToday()): Route {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
@@ -35,13 +38,10 @@ export function parseRoute(pathname: string, today = londonToday()): Route {
   if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
   if (review) return { screen: "newAccount", accountId: Number(review[1]) };
-  const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/([a-z-]+|[1-9]\d{0,8})$/.exec(path);
-  if (line && line[1]! <= monthOf(today)) {
-    const category = line[2]!;
-    if (/^\d/.test(category)) return { screen: "line", month: line[1]!, category: Number(category) };
-    if (Object.hasOwn(LINE_NAMES, category)) return { screen: "line", month: line[1]!, category: category as keyof typeof LINE_NAMES };
-  }
-  return { screen: "notFound" };
+  const line = LINE_PATH.exec(path);
+  if (!line || line[1]! > monthOf(today)) return { screen: "notFound" };
+  const category = line[2]!;
+  return { screen: "line", month: line[1]!, category: isNamedLine(category) ? category : Number(category) };
 }
 
 export const newAccountHref = (accountId: number) => `/accounts/${accountId}/review`;

@@ -100,24 +100,34 @@ function Pace({ s }: { s: MonthSummary & { leftMinor: number } }) {
   );
 }
 
+const pill = "inline-flex h-8 items-center gap-[7px] rounded-full border border-divider bg-surface px-3 text-[12.5px]";
+
+/** A pill with a 44 px tap target, opening the transactions behind it. */
+function PillLink({ href, swatch, children }: { href: string; swatch: string; children: ReactNode }) {
+  return (
+    <Link href={href} className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
+      <span className={pill}>
+        <span className={`size-[9px] rounded-[3px] ${swatch}`} aria-hidden="true" />
+        {children}
+      </span>
+    </Link>
+  );
+}
+
 function Pills({ s }: { s: MonthSummary }) {
-  if (s.pendingSpentMinor === 0) return <p className="mt-3 text-center text-meta text-muted">No pending charges</p>;
-  const pill = "inline-flex h-8 items-center gap-[7px] rounded-full border border-divider bg-surface px-3 text-[12.5px]";
   return (
     <div className="mt-3 flex flex-wrap items-center justify-center gap-2 px-5">
-      <Link href={lineHref(s.month, "posted")} className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
-        <span className={pill}>
-          <span className="size-[9px] rounded-[3px] bg-accent" aria-hidden="true" />
-          Posted <span className="font-medium">{formatPounds(s.spentMinor - s.pendingSpentMinor)}</span>
-        </span>
-      </Link>
-      {/* Lunch Flow doesn't send every pending charge, so this is a lower bound. */}
-      <Link href={lineHref(s.month, "pending")} className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
-        <span className={pill}>
-          <span className="hatch size-[9px] rounded-[3px]" aria-hidden="true" />
+      <PillLink href={lineHref(s.month, "posted")} swatch="bg-accent">
+        Posted <span className="font-medium">{formatPounds(s.spentMinor - s.pendingSpentMinor)}</span>
+      </PillLink>
+      {s.pendingSpentMinor === 0 ? (
+        <span className="text-meta text-muted">No pending charges</span>
+      ) : (
+        // Lunch Flow doesn't send every pending charge, so this is a lower bound.
+        <PillLink href={lineHref(s.month, "pending")} swatch="hatch">
           Pending <span className="text-muted">at least</span> <span className="font-medium">{formatPounds(s.pendingSpentMinor)}</span>
-        </span>
-      </Link>
+        </PillLink>
+      )}
     </div>
   );
 }

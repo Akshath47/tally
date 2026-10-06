@@ -2,6 +2,7 @@
 // rules in docs/phase-2-spec.md closely enough to drive the screens, but the Worker stays the
 // authority: this is never a reference for how the backend behaves.
 
+import { isNamedLine, type NamedLine } from "../../worker/budget/lines";
 import type { Account, Budget, Category, CategoryKind, ImportRun, InboxMerchant, MatchType, MonthSummary, OverrideInput, Rule, SummaryCategory, Transaction } from "../api";
 import { addDays, daysRemaining, londonToday, monthOf } from "../dates";
 import { normalizePattern as normalize } from "../../worker/budget/resolve";
@@ -133,7 +134,7 @@ function inMisc(t: Transaction): boolean {
 const isBudgetSpend = (t: Transaction) => t.categoryId === null || kindOf(t.categoryId) === "budgeted";
 
 /** Home's named lines, as the Worker's LINES. */
-const LINE_FILTERS: Record<string, (t: Transaction) => boolean> = {
+const LINE_FILTERS: Record<NamedLine, (t: Transaction) => boolean> = {
   misc: inMisc,
   "uncategorised-pending": (t) => t.categoryId === null && t.isPending,
   posted: (t) => isBudgetSpend(t) && !t.isPending,
@@ -406,7 +407,7 @@ const ROUTES: [string, RegExp, Handler][] = [
     const month = m[1]!;
     const category = url.searchParams.get("category");
     const id = Number(category);
-    const named = category !== null && Object.hasOwn(LINE_FILTERS, category) ? LINE_FILTERS[category] : undefined;
+    const named = category !== null && isNamedLine(category) ? LINE_FILTERS[category] : undefined;
     if (month > monthOf(today) || (!named && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
     const inLine = named ?? ((t: Transaction) => t.categoryId === id);
     const rows = transactions.map(resolve).filter((t) => countsIn(t, month) && inLine(t));

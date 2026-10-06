@@ -19,7 +19,8 @@ export function LineTransactions({ back, month, category }: { back: Back; month:
   const summary = useSummary(month);
   const byId = useCategories().data?.byId;
 
-  const line = summary.data && byId ? findLine(summary.data, byId, category) : undefined;
+  // Only a category's own line needs its name; the rest have figures as soon as the summary loads.
+  const line = summary.data && (byId || typeof category !== "number") ? findLine(summary.data, byId ?? new Map(), category) : undefined;
   const name = line?.name ?? (typeof category === "number" ? (byId?.get(category)?.name ?? "Category") : LINE_NAMES[category]);
   const amount = line && (line.allocatedMinor !== null ? `${formatPounds(line.spentMinor)} of ${formatPounds(line.allocatedMinor)}` : `${isLowerBound(category) ? "at least " : ""}${formatPounds(line.spentMinor)}`);
 

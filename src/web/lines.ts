@@ -2,12 +2,13 @@
 // Worker's tests, which check that each line's transactions add up to it, so no React or
 // browser imports here.
 
+import type { NamedLine } from "../worker/budget/lines";
+
 /**
  * A Home line: a category id, Misc (the unallocated pot), uncategorised pending charges, or the
  * Posted and Pending pills, which split the month's budget spend.
  */
-export type LineCategory = number | "misc" | "uncategorised-pending" | "posted" | "pending";
-type NamedLine = Exclude<LineCategory, number>;
+export type LineCategory = number | NamedLine;
 
 export const LINE_NAMES: Record<NamedLine, string> = { misc: "Misc", "uncategorised-pending": "Uncategorised pending", posted: "Posted", pending: "Pending" };
 
@@ -22,8 +23,8 @@ type SummaryLine = { categoryId: number | null; kind: string | null; spentMinor:
 
 /**
  * Budgeted categories with an allocation, biggest first, then Misc: the unallocated pot, which
- * takes posted uncategorised spend and budgeted categories without an allocation. Then Pending:
- * uncategorised pending charges, which can't be filed until they post, so they'd otherwise
+ * takes posted uncategorised spend and budgeted categories without an allocation. Then
+ * Uncategorised pending: pending charges no rule categorises yet, which can't be filed until they post, so they'd otherwise
  * swell Misc. Tracked spend isn't budget spend, so it's on no line.
  */
 export function budgetLines(s: { miscMinor: number | null; categories: SummaryLine[] }, byId: Map<number, { name: string }>): Line[] {
