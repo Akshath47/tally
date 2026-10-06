@@ -72,17 +72,17 @@ All in one hand-written migration, next to the table:
 
 | Trigger | Fires on | Does |
 | --- | --- | --- |
-| `transactions_match_ai` | `AFTER INSERT ON transactions`, when the (account, merchant) has no match row | inserts the match row, with the best rule |
-| `transactions_match_au` | `AFTER UPDATE OF merchant ON transactions`, same condition | same; the importer's upsert can change a row's merchant text when a pending row posts |
-| `merchant_rules_match_ai` | `AFTER INSERT ON merchant_rules` | re-matches the merchants the new pattern matches (exact: `merchant_key = pattern`, a seek; contains: `instr()`, a scan of `merchant_matches`) |
-| `merchant_rules_match_au` | `AFTER UPDATE OF match_type, pattern, account_id ON merchant_rules` | re-matches the merchants that pointed at the rule, and the ones the new pattern matches |
-| `merchant_rules_match_ad` | `AFTER DELETE ON merchant_rules` | re-matches the merchants that pointed at the rule |
+| `merchant_matches_transaction_insert` | `AFTER INSERT ON transactions`, when the (account, merchant) has no match row | inserts the match row, with the best rule |
+| `merchant_matches_transaction_update` | `AFTER UPDATE OF account_id, merchant ON transactions`, same condition | same; the importer's upsert can change a row's merchant text when a pending row posts |
+| `merchant_matches_rule_insert` | `AFTER INSERT ON merchant_rules` | re-matches the merchants the new pattern matches (exact: `merchant_key = pattern`, a seek; contains: `instr()`, a scan of `merchant_matches`) |
+| `merchant_matches_rule_update` | `AFTER UPDATE OF match_type, pattern, account_id ON merchant_rules`, when one of them actually changed | re-matches the merchants that pointed at the rule, then the others the new pattern matches |
+| `merchant_matches_rule_delete` | `AFTER DELETE ON merchant_rules` | re-matches the merchants that pointed at the rule |
 
 Each re-match uses one SQL fragment for "the best rule for this account and merchant", the same
 precedence as today (account-scoped exact, any-account exact, account-scoped contains,
 any-account contains, longer pattern, older rule). It lives in TypeScript (`resolve.ts`) and is
 interpolated into the migration's triggers and the rebuild statement by a small generator, so
-the precedence is written once. `transactions.account_id` never changes (`linkAccounts` swaps
+the precedence is written once (`bestRuleSql` in `src/worker/budget/matches.ts`). `transactions.account_id` never changes (`linkAccounts` swaps
 provider ids on `accounts`), so no trigger is needed for it. Nothing ever deletes a match row; a
 merchant that no transaction uses any more is harmless.
 
@@ -224,13 +224,13 @@ summary's statement count (3 → 4: the inbox count is its own statement), and
 | Inbox page / merchant groups, 1,330 rows to sort | 41,257 / 34,928 | 8,000 / 5,671 | 7 per row to sort |
 | Inbox page / merchant groups, 5 merchants to sort | 41,257 / 34,928 | 62 / 43 | 500 |
 | Rule counts | 61,371 | 8,918 | 10,000 |
-| Steady-state cron import | 12,473 | 12,473 | 5 per stored transaction |
+| Steady-state cron import | about 12.4k | about 12.4k | 5 per stored transaction |
 
 Done:
-- `RESOLVED_CTE` is a plain join, with an **inner** join to `merchant_matches`, so SQLite can
-  start from the matches for the inbox. That relies on every transaction having a match row:
-  the triggers guarantee it, the drift query counts any that don't, and `.claude/CLAUDE.md`
-  records the invariant.
+- `RESOLVED_CTE` is a plain join with a LEFT join to `merchant_matches`, so a transaction
+  missing its match row (only drift could do that) counts as uncategorised rather than vanishing
+  from the totals. `INBOX` includes `match_account_id = account_id`, which lets SQLite treat the
+  join as an inner one there and start from the matches.
 - `INBOX` spells out "no override category and no matched rule", so SQLite seeks
   `merchant_matches_rule_idx` (the same rows as `category_id IS NULL`, since a rule always has
   a category).
