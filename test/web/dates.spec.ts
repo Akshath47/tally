@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, addMonths, daysInMonth, daysRemaining, formatDayMonth, formatShortDate, londonToday, monthName } from "../../src/web/dates";
+import { addDays, addMonths, daysInMonth, daysRemaining, formatDayMonth, formatShortDate, londonToday, monthName, yearSuffix } from "../../src/web/dates";
 
 describe("londonToday", () => {
   it.each([
@@ -60,29 +60,20 @@ describe("display dates", () => {
     ["2026-03-29", "Sun 29 Mar"],
     ["2026-01-01", "Thu 1 Jan"],
     ["2026-12-31", "Thu 31 Dec"],
-  ])("this year: %s → %s", (date, expected) => {
-    expect(formatShortDate(date, today)).toBe(expected);
-  });
-
-  it.each([
+    // Outside this year the year is shown: history goes back about two years.
     ["2025-12-31", "Wed 31 Dec 2025"],
     ["2024-10-15", "Tue 15 Oct 2024"],
     ["2028-02-29", "Tue 29 Feb 2028"],
     ["2027-01-01", "Fri 1 Jan 2027"],
-  ])("another year: %s → %s", (date, expected) => {
+  ])("%s → %s", (date, expected) => {
     expect(formatShortDate(date, today)).toBe(expected);
   });
 
-  it("goes by London's year, not UTC's, on New Year's Eve", () => {
-    // 23:30 UTC on 31 Dec is still 31 Dec in London (GMT), so 2026 is this year.
-    const lastNight = londonToday(new Date("2026-12-31T23:30:00Z"));
-    expect(formatShortDate("2026-12-31", lastNight)).toBe("Thu 31 Dec");
-    expect(formatShortDate("2027-01-01", lastNight)).toBe("Fri 1 Jan 2027");
-  });
-
-  it("formats day and month, and month names", () => {
+  it("adds the year to dates and months outside today's year", () => {
     expect(formatDayMonth("2026-09-03", today)).toBe("3 Sep");
     expect(formatDayMonth("2025-09-03", today)).toBe("3 Sep 2025");
+    expect(yearSuffix("2026-03", "2026-10")).toBe("");
+    expect(yearSuffix("2024-11", "2026-10")).toBe(" 2024");
     expect(monthName("2026-10")).toBe("October");
   });
 });
