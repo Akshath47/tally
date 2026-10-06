@@ -60,8 +60,8 @@ const toTransaction = (r: Row) => ({
 
 export type Transaction = ReturnType<typeof toTransaction>;
 
-/** On a transactions row aliased `t`: pending and vanished rows can't be edited (docs/phase1-assessment.md). */
-export const editable = (t: string) => `${t}.is_pending = 0 AND ${t}.vanished_at IS NULL`;
+/** On the transactions (or resolved) row aliased `alias`: pending and vanished rows can't be edited (docs/phase1-assessment.md). */
+export const editable = (alias: string) => `${alias}.is_pending = 0 AND ${alias}.vanished_at IS NULL`;
 
 const COLUMNS = `r.id, r.account_id AS accountId, r.amount_minor AS amountMinor, r.currency, r.txn_date AS txnDate,
   r.merchant, r.description, r.is_pending AS isPending, r.vanished_at AS vanishedAt, r.first_seen_at AS firstSeenAt,

@@ -16,7 +16,7 @@ import { limitParam, parseQuery } from "./query";
 // One row per category_id among the counted rows (vanished_at IS NULL) that count in the month
 // (of counted_date ?? txn_date). Binds: inMonthBinds(month).
 const MONTH_SQL = `WITH ${RESOLVED_CTE}
-SELECT r.category_id, c.kind, count(*) AS counting,
+SELECT r.category_id, c.kind,
   sum(-COALESCE(r.counted_amount_minor, r.amount_minor)) AS spent,
   COALESCE(sum(CASE WHEN r.is_pending = 1 THEN -COALESCE(r.counted_amount_minor, r.amount_minor) END), 0) AS pending
 FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
@@ -26,7 +26,7 @@ GROUP BY r.category_id`;
 // The inbox spans every month.
 const INBOX_COUNT_SQL = `WITH ${RESOLVED_CTE} SELECT count(*) AS n FROM resolved r WHERE ${INBOX}`;
 
-type Group = { category_id: number | null; kind: string | null; counting: number; spent: number; pending: number };
+type Group = { category_id: number | null; kind: string | null; spent: number; pending: number };
 type Line = { categoryId: number | null; kind: string | null; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number };
 
 /** Integer division, so the per-week figure is floored exactly. */

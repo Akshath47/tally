@@ -18,7 +18,7 @@
  * `lower(trim(merchant))` with an index seek; `instr()` matches a contains pattern literally, so
  * a `%` or `_` in it is never a wildcard.
  */
-export const bestRuleSql = (accountId: string, merchant: string) => `COALESCE(
+const bestRuleSql = (accountId: string, merchant: string) => `COALESCE(
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'exact' AND r.pattern = lower(trim(${merchant})) AND r.account_scope IN (${accountId}, 0)
      ORDER BY r.account_scope = 0 LIMIT 1),

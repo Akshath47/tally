@@ -9,7 +9,10 @@ import { SEEDED, insertOverride, insertRule, ledger } from "./helpers";
 type Resolved = { category_id: number | null; category_source: string | null; rule_id: number | null };
 
 const resolve = (id: number) =>
-  env.DB.prepare(`WITH ${RESOLVED_CTE} SELECT category_id, category_source, rule_id FROM resolved WHERE id = ?1`)
+  env.DB.prepare(
+    `WITH ${RESOLVED_CTE} SELECT category_id, category_source, CASE WHEN override_category_id IS NULL THEN match_rule_id END AS rule_id
+     FROM resolved WHERE id = ?1`,
+  )
     .bind(id)
     .first<Resolved>();
 
