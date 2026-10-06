@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
@@ -122,29 +122,54 @@ function Pills({ s }: { s: MonthSummary }) {
 
 /** Taps through to the transactions that counted towards the line. */
 function CategoryRow({ line, month }: { line: Line; month: string }) {
-  const state = barState(line.spentMinor, line.allocatedMinor);
-  const posted = fraction(line.spentMinor - line.pendingSpentMinor, line.allocatedMinor);
-  const pending = Math.min(fraction(line.pendingSpentMinor, line.allocatedMinor), 1 - posted);
-  const fill = { ok: "bg-accent", near: "bg-warn", over: "bg-over" }[state];
   return (
     <li className="border-b border-divider last:border-b-0">
       <Link href={lineHref(month, line.category)} className="-mx-4 flex flex-col gap-2 px-4 py-[11px] hover:bg-raised/50">
-      <div className="flex items-center gap-2">
-        <span>{line.name}</span>
-        {line.note && <span className="text-[11.5px] text-muted">{line.note}</span>}
-        {state === "near" && <Flag tone="warn">{formatPounds(line.allocatedMinor - line.spentMinor)} left</Flag>}
-        {state === "over" && (
-          <Flag tone="over">
-            <ArrowUp size={10} />
-            {formatPounds(line.spentMinor - line.allocatedMinor)} over
-          </Flag>
-        )}
-        <span className="ml-auto whitespace-nowrap">
-          <span className={`font-medium ${state === "over" ? "text-over-fg" : ""}`}>{formatPounds(line.spentMinor)}</span>{" "}
-          <span className="text-muted">/ {formatPounds(line.allocatedMinor)}</span>
-        </span>
-        <ChevronRight size={14} className="-mr-1 shrink-0 text-muted" />
-      </div>
+        {line.allocatedMinor === null ? <PendingLine line={line} /> : <PotLine line={line} allocatedMinor={line.allocatedMinor} />}
+      </Link>
+    </li>
+  );
+}
+
+function LineHeading({ line, flag, amount }: { line: Line; flag?: ReactNode; amount: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span>{line.name}</span>
+      {line.note && <span className="text-[11.5px] text-muted">{line.note}</span>}
+      {flag}
+      <span className="ml-auto whitespace-nowrap">{amount}</span>
+      <ChevronRight size={14} className="-mr-1 shrink-0 text-muted" />
+    </div>
+  );
+}
+
+/** "£spent / £allocated" with a bar: posted solid, pending hatched. */
+function PotLine({ line, allocatedMinor }: { line: Line; allocatedMinor: number }) {
+  const state = barState(line.spentMinor, allocatedMinor);
+  const posted = fraction(line.spentMinor - line.pendingSpentMinor, allocatedMinor);
+  const pending = Math.min(fraction(line.pendingSpentMinor, allocatedMinor), 1 - posted);
+  const fill = { ok: "bg-accent", near: "bg-warn", over: "bg-over" }[state];
+  return (
+    <>
+      <LineHeading
+        line={line}
+        flag={
+          state === "near" ? (
+            <Flag tone="warn">{formatPounds(allocatedMinor - line.spentMinor)} left</Flag>
+          ) : state === "over" ? (
+            <Flag tone="over">
+              <ArrowUp size={10} />
+              {formatPounds(line.spentMinor - allocatedMinor)} over
+            </Flag>
+          ) : undefined
+        }
+        amount={
+          <>
+            <span className={`font-medium ${state === "over" ? "text-over-fg" : ""}`}>{formatPounds(line.spentMinor)}</span>{" "}
+            <span className="text-muted">/ {formatPounds(allocatedMinor)}</span>
+          </>
+        }
+      />
       <div className="flex h-1 gap-px overflow-hidden rounded-sm bg-line" aria-hidden="true">
         {state === "over" ? (
           <div className="w-full bg-over" />
@@ -155,8 +180,24 @@ function CategoryRow({ line, month }: { line: Line; month: string }) {
           </>
         )}
       </div>
-      </Link>
-    </li>
+    </>
+  );
+}
+
+/** Uncategorised pending charges: no pot of their own, so just the amount (a lower bound, like the pill, which counts every pending charge). */
+function PendingLine({ line }: { line: Line }) {
+  return (
+    <>
+      <LineHeading
+        line={line}
+        amount={
+          <>
+            <span className="text-muted">at least</span> <span className="font-medium">{formatPounds(line.spentMinor)}</span>
+          </>
+        }
+      />
+      <div className="hatch h-1 rounded-sm" aria-hidden="true" />
+    </>
   );
 }
 

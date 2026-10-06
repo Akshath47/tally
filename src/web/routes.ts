@@ -35,8 +35,11 @@ export function parseRoute(pathname: string, today = londonToday()): Route {
   if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
   if (review) return { screen: "newAccount", accountId: Number(review[1]) };
-  const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/(misc|[1-9]\d{0,8})$/.exec(path);
-  if (line && line[1]! <= monthOf(today)) return { screen: "line", month: line[1]!, category: line[2] === "misc" ? "misc" : Number(line[2]) };
+  const line = /^\/spending\/(\d{4}-(?:0[1-9]|1[0-2]))\/(misc|pending|[1-9]\d{0,8})$/.exec(path);
+  if (line && line[1]! <= monthOf(today)) {
+    const category = line[2]!;
+    return { screen: "line", month: line[1]!, category: category === "misc" || category === "pending" ? category : Number(category) };
+  }
   return { screen: "notFound" };
 }
 

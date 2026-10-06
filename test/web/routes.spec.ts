@@ -28,6 +28,7 @@ describe("parseRoute", () => {
   it("reads the month and category of a Home line", () => {
     expect(parseRoute(lineHref("2026-10", 4), "2026-10-15")).toEqual({ screen: "line", month: "2026-10", category: 4 });
     expect(parseRoute(lineHref("2026-09", "misc"), "2026-10-15")).toEqual({ screen: "line", month: "2026-09", category: "misc" });
+    expect(parseRoute(lineHref("2026-10", "pending"), "2026-10-15")).toEqual({ screen: "line", month: "2026-10", category: "pending" });
   });
 
   it("refuses a Home line in a future month, which the API would refuse too", () => {

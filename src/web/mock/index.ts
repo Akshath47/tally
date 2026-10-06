@@ -123,11 +123,14 @@ function countsIn(t: Transaction, month: string): boolean {
   return kind === "budgeted" || kind === "tracked" || (t.categoryId === null && (t.countedAmountMinor ?? t.amountMinor) < 0);
 }
 
-/** Home's Misc: uncategorised spend, plus budgeted categories without an allocation. */
+/** Home's Misc: posted uncategorised spend, plus budgeted categories without an allocation. */
 function inMisc(t: Transaction): boolean {
   const c = findCategory(t.categoryId);
-  return t.categoryId === null || (c?.kind === "budgeted" && (c.archived || !budget.allocations.get(c.id)));
+  return (t.categoryId === null && !t.isPending) || (c?.kind === "budgeted" && (c.archived || !budget.allocations.get(c.id)));
 }
+
+/** Home's Pending: uncategorised pending charges. */
+const inPending = (t: Transaction) => t.categoryId === null && t.isPending;
 
 function summary(month: string): MonthSummary {
   const byCategory = new Map<number | null, SummaryCategory>();
@@ -395,8 +398,9 @@ const ROUTES: [string, RegExp, Handler][] = [
     const month = m[1]!;
     const category = url.searchParams.get("category");
     const id = Number(category);
-    if (month > monthOf(today) || (category !== "misc" && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
-    const rows = transactions.map(resolve).filter((t) => countsIn(t, month) && (category === "misc" ? inMisc(t) : t.categoryId === id));
+    if (month > monthOf(today) || (category !== "misc" && category !== "pending" && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
+    const inLine = category === "misc" ? inMisc : category === "pending" ? inPending : (t: Transaction) => t.categoryId === id;
+    const rows = transactions.map(resolve).filter((t) => countsIn(t, month) && inLine(t));
     return ok(page(rows, url));
   }],
 ];
