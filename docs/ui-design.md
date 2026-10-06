@@ -98,7 +98,7 @@ The five-second glance.
 States:
 - **Over budget overall:** ring fully brick, "£112 over this month" in `over-text`, pace line replaced with "Budget used up with 5 days to go…".
 - **Stale data:** amber dot on the freshness line, which names each account ("Revolut 2h ago · Amex 4 days ago"), and an amber banner: "Amex hasn't updated for 4 days, so recent card spending may be missing." with a link to Accounts.
-- **No pending:** "No pending charges" in place of the pills.
+- **No pending:** "No pending charges" in place of the Pending pill. The Posted pill stays, so its transactions can still be opened.
 - **Loading:** skeletons for the ring centre, pills and category rows, with "Loading your budget…" in the freshness line. The shimmer stops under `prefers-reduced-motion`.
 - **Error:** "Tally couldn't load your budget", reassurance that nothing changed, a "Try again" button, a link to account status and a small error code and time. The freshness line turns brick: "Couldn't refresh · last loaded …".
 - **First run (no budget yet):** "Welcome to Tally / Set your budget", a confirmation that both accounts are connected and how many transactions were imported, an empty dashed ring, a single "How much do you want to spend each month?" input with last two months' spend for reference, a "Set budget" button, and a 3-step checklist (set budget, allocate, sort).
