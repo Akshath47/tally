@@ -15,8 +15,11 @@ import "./index.css";
 // a client error: a 4xx won't change on retry, and the screens show their error state sooner.
 const queryClient: QueryClient = new QueryClient({
   mutationCache: new MutationCache({
-    // Not returned: TanStack would wait for every refetch before the screen's own onSuccess runs.
-    onSuccess: (_data, _variables, _context, mutation) => {
+    // onSettled, so it runs after the screen's own onSuccess: a cache the screen just updated is
+    // still marked stale. Not returned: TanStack would wait for every refetch before the screen's
+    // own onSettled runs.
+    onSettled: (_data, error, _variables, _context, mutation) => {
+      if (error) return;
       void queryClient.invalidateQueries({
         predicate: (q) => q.queryKey[0] !== "import-runs",
         refetchType: mutation.meta?.refetch === "none" ? "none" : "active",

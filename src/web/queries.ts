@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery, type InfiniteData } from "@tanstack/react-query";
 import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getLineTransactions, getMonthSummary, getRules, getTransactions, type Account, type Category, type CategoryKind } from "./api";
 import type { LineCategory } from "./lines";
 import { addMonths, daysInMonth } from "./dates";
@@ -26,13 +26,18 @@ const selectAccounts = (d: { accounts: Account[] }) => ({ all: d.accounts, byId:
 export const useSummary = (month: string) => useQuery(summaryQuery(month));
 export const useBudget = () => useQuery({ queryKey: ["budget"], queryFn: getBudget });
 export const useRules = () => useQuery({ queryKey: ["rules"], queryFn: getRules, select: selectRules });
-export const useInboxMerchants = () => useQuery({ queryKey: ["inbox", "merchants"], queryFn: getInboxMerchants, select: selectMerchants });
+/** The inbox's keys, for screens that update it from a write's response (To sort). */
+export const INBOX_LIST_KEY = ["inbox", "list"] as const;
+export const INBOX_MERCHANTS_KEY = ["inbox", "merchants"] as const;
+export type InboxPages = InfiniteData<Awaited<ReturnType<typeof getInbox>>, string | null>;
+
+export const useInboxMerchants = () => useQuery({ queryKey: INBOX_MERCHANTS_KEY, queryFn: getInboxMerchants, select: selectMerchants });
 export const useCategories = () => useQuery({ queryKey: ["categories"], queryFn: getCategories, select: selectCategories });
 export const useAccounts = () => useQuery({ queryKey: ["accounts"], queryFn: getAccounts, select: selectAccounts });
 
 export const useInbox = () =>
   useInfiniteQuery({
-    queryKey: ["inbox", "list"],
+    queryKey: INBOX_LIST_KEY,
     queryFn: ({ pageParam }) => getInbox({ limit: PAGE, cursor: pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,

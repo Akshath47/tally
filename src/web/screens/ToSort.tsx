@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { apiErrorText, createRule, deleteRule, getInbox, putOverride, type Category, type InboxMerchant, type Transaction } from "../api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiErrorText, createRule, deleteRule, putOverride, type Category, type InboxMerchant, type Transaction } from "../api";
 import { LoadError, PushedScreen } from "../components/Screen";
 import { Sheet } from "../components/Sheet";
 import { CategoryPicker, TransactionSheet } from "../components/TransactionSheet";
@@ -10,7 +10,7 @@ import { inGroup, patternOf, withoutGroup, withoutRow, withoutRows } from "../in
 import { merchantLabel } from "../format";
 import { formatUnsigned } from "../money";
 import { overrideOf } from "../overrides";
-import { pickerOrder, useAccounts, useBudget, useCategories, useInbox, useInboxMerchants } from "../queries";
+import { INBOX_LIST_KEY, INBOX_MERCHANTS_KEY, pickerOrder, useAccounts, useBudget, useCategories, useInbox, useInboxMerchants, type InboxPages } from "../queries";
 import { Link } from "../router";
 import type { Back } from "../routes";
 import { ageText } from "../pace";
@@ -19,8 +19,6 @@ import { ageText } from "../pace";
 // files the whole group and future ones; by date, one tap files just that transaction.
 
 const CHIPS = 3;
-
-type InboxPages = InfiniteData<Awaited<ReturnType<typeof getInbox>>, string | null>;
 
 /** What the picker is choosing a category for. */
 type Target = { kind: "group"; group: InboxMerchant; count: number } | { kind: "row"; row: Transaction };
@@ -91,7 +89,7 @@ export function ToSort({ back }: { back: Back }) {
   /**
    * A filing's own result, applied to the loaded inbox and groups (src/web/inbox.ts). Its
    * mutation has `meta: { refetch: "none" }`, so the backlog isn't read again on every tap; the
-   * inbox is marked stale again here, so it refetches on the next visit.
+   * shared invalidation, which runs after this, marks the inbox stale for the next visit.
    */
   const settle = (drop: (t: Transaction) => boolean, removed: number, groups: (g: InboxMerchant[]) => InboxMerchant[]) => {
     // A refetch in flight (after an Undo, say) may or may not include this filing, and
@@ -100,9 +98,8 @@ export function ToSort({ back }: { back: Back }) {
       void queryClient.invalidateQueries({ queryKey: ["inbox"] });
       return;
     }
-    queryClient.setQueryData<InboxPages>(["inbox", "list"], (d) => d && withoutRows(d, drop, removed));
-    queryClient.setQueryData<{ merchants: InboxMerchant[] }>(["inbox", "merchants"], (d) => d && { merchants: groups(d.merchants) });
-    void queryClient.invalidateQueries({ queryKey: ["inbox"], refetchType: "none" });
+    queryClient.setQueryData<InboxPages>(INBOX_LIST_KEY, (d) => d && withoutRows(d, drop, removed));
+    queryClient.setQueryData<{ merchants: InboxMerchant[] }>(INBOX_MERCHANTS_KEY, (d) => d && { merchants: groups(d.merchants) });
   };
 
   const fail = (e: unknown) => setFailed(apiErrorText(e, {}, "Couldn't file that. Check your connection and try again."));
