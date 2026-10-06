@@ -60,17 +60,20 @@ const toTransaction = (r: Row) => ({
 
 export type Transaction = ReturnType<typeof toTransaction>;
 
-/** On `transactions t`: pending and vanished rows can't be edited (docs/phase1-assessment.md). */
-export const EDITABLE = "t.is_pending = 0 AND t.vanished_at IS NULL";
+/** On the transactions (or resolved) row aliased `alias`: pending and vanished rows can't be edited (docs/phase1-assessment.md). */
+export const editable = (alias: string) => `${alias}.is_pending = 0 AND ${alias}.vanished_at IS NULL`;
 
-const COLUMNS = `t.id, t.account_id AS accountId, t.amount_minor AS amountMinor, t.currency, t.txn_date AS txnDate,
-  t.merchant, t.description, t.is_pending AS isPending, t.vanished_at AS vanishedAt, t.first_seen_at AS firstSeenAt,
+const COLUMNS = `r.id, r.account_id AS accountId, r.amount_minor AS amountMinor, r.currency, r.txn_date AS txnDate,
+  r.merchant, r.description, r.is_pending AS isPending, r.vanished_at AS vanishedAt, r.first_seen_at AS firstSeenAt,
   r.category_id AS categoryId, r.category_source AS categorySource, r.excluded,
   r.counted_amount_minor AS countedAmountMinor, r.counted_date AS countedDate, r.note,
-  (${EDITABLE}) AS editable`;
+  (${editable("r")}) AS editable`;
 
 type ListOptions = {
-  /** `[sql, ...binds]`: a static condition on `t` (transactions) or `r` (resolved), and a value per `?`. */
+  /**
+   * `[sql, ...binds]`: a static condition on `r` (resolved), and a value per `?`. Something here
+   * should let SQLite seek (see RESOLVED_CTE); with nothing, a page walks the date index.
+   */
   where: [sql: string, ...binds: unknown[]][];
   limit: number;
   cursor?: Cursor;
@@ -81,8 +84,8 @@ type ListOptions = {
 };
 
 /**
- * Newest first, keyset-paged. Each call evaluates RESOLVED_CTE once; the total is a window
- * count in the same statement rather than a second query, which would resolve everything again.
+ * Newest first, keyset-paged. The total is a window count over the rows `where` matches, in the
+ * same statement.
  */
 export async function listTransactions(db: D1Database, opts: ListOptions): Promise<{ transactions: Transaction[]; nextCursor: string | null; total: number }> {
   const where = opts.where.length ? `WHERE ${opts.where.map(([sql]) => sql).join(" AND ")}` : "";
@@ -95,7 +98,7 @@ export async function listTransactions(db: D1Database, opts: ListOptions): Promi
   const { results } = await db
     .prepare(
       `WITH ${RESOLVED_CTE},
-         listed AS (SELECT ${COLUMNS}${total} FROM resolved r JOIN transactions t ON t.id = r.id ${category} ${where})
+         listed AS (SELECT ${COLUMNS}${total} FROM resolved r ${category} ${where})
        SELECT * FROM listed ${cursor} ORDER BY txnDate DESC, id DESC LIMIT ?`,
     )
     .bind(...binds, ...cursorBinds, opts.limit + 1)
@@ -115,6 +118,6 @@ export async function listTransactions(db: D1Database, opts: ListOptions): Promi
 }
 
 export async function getTransaction(db: D1Database, id: number): Promise<Transaction | null> {
-  const { transactions } = await listTransactions(db, { where: [["t.id = ?", id]], limit: 1 });
+  const { transactions } = await listTransactions(db, { where: [["r.id = ?", id]], limit: 1 });
   return transactions[0] ?? null;
 }

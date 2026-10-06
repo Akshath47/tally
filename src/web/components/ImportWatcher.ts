@@ -12,6 +12,9 @@ export const useImportRuns = () =>
     queryKey: ["import-runs"],
     queryFn: () => getRuns(RUN_LIMIT),
     refetchInterval: (q) => (q.state.data?.importing ? POLL_MS : false),
+    // The one query that refetches on returning to the app (a few rows): a cron run that
+    // finished meanwhile is how the watcher knows to refresh everything else.
+    refetchOnWindowFocus: true,
   });
 
 export const lastFinishedRun = (runs: Awaited<ReturnType<typeof getRuns>> | undefined) => runs?.runs.find((r) => FINISHED.has(r.status));

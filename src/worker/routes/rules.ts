@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { RESOLVED_CTE, isRulablePattern, normalizePattern } from "../budget/resolve";
+import { isRulablePattern, normalizePattern } from "../budget/resolve";
 import { MATCH_TYPES } from "../db/schema";
 import { idParam, isUniqueViolation, parseBody } from "./query";
 import { checkRefs } from "./refs";
@@ -23,10 +23,16 @@ const fields = {
 
 export const ruleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
-    // Only rows a rule decides (no category override) that still count.
+    // Only rows a rule decides (no category override) that still count: each matched merchant's
+    // transactions. Not over RESOLVED_CTE, whose join to each rule's category it doesn't need.
     const { results } = await c.env.DB.prepare(
-      `WITH ${RESOLVED_CTE},
-         counts AS (SELECT rule_id, count(*) AS n FROM resolved WHERE category_source = 'rule' AND vanished_at IS NULL GROUP BY rule_id)
+      `WITH counts AS (
+         SELECT m.rule_id, count(*) AS n
+         FROM merchant_matches m
+         JOIN transactions t ON t.account_id = m.account_id AND t.merchant = m.merchant
+         LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
+         WHERE m.rule_id IS NOT NULL AND o.category_id IS NULL AND t.vanished_at IS NULL
+         GROUP BY m.rule_id)
        SELECT r.id, r.match_type AS matchType, r.pattern, r.account_id AS accountId, r.category_id AS categoryId,
          COALESCE(counts.n, 0) AS transactionCount
        FROM merchant_rules r LEFT JOIN counts ON counts.rule_id = r.id
@@ -92,6 +98,7 @@ export const ruleRoutes = new Hono<AppEnv>()
   .delete("/:id", async (c) => {
     const id = idParam(c);
     if (id === null) return c.json({ error: "bad_request" }, 400);
-    const res = await c.env.DB.prepare("DELETE FROM merchant_rules WHERE id = ?1").bind(id).run();
-    return res.meta.changes === 1 ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
+    // RETURNING, not meta.changes: D1 counts the merchant matches the delete trigger re-matches too.
+    const deleted = await c.env.DB.prepare("DELETE FROM merchant_rules WHERE id = ?1 RETURNING id").bind(id).first();
+    return deleted ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
   });

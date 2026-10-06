@@ -22,7 +22,7 @@ Not wanted: income tracking, savings goals, splitting costs with other people, m
 | Budget shape | The owner sets **one overall monthly figure** first, then allocates parts of it to categories. The unallocated rest is **Misc**. Allocations may never exceed the overall figure. Bills sit inside it. |
 | Category kinds | **budgeted** (counts against the budget), **tracked** (visible in spending views, never counts, e.g. clothes and one-offs), **excluded** (not spending, e.g. savings, investments, card repayments, income). |
 | Categorising | Merchant rules set a default. A per-transaction override always wins over a rule. Anything no rule matches lands in the inbox. |
-| Rule changes | A new or changed rule also re-sorts past transactions that have no category override, because categories are resolved when data is read, not stored. |
+| Rule changes | A new or changed rule also re-sorts past transactions that have no category override. Categories are resolved when data is read; only which rule each merchant matches is stored, and triggers keep it current ([stored-matches-plan.md](stored-matches-plan.md)). |
 | One-off purchases | Handled by overriding that one transaction (its category, or excluding it). Changing one transaction never changes the merchant's rule unless the owner opts in. |
 | Money sent to people | Counts as spending by default (it's usually dinners). The owner excludes individual transfers by hand. |
 | Card repayments | Rules put both halves, Revolut's payment out and the Amex's payment received, in the excluded **Card repayment** category. This replaces the outline's amount-pairing heuristic. |
@@ -99,7 +99,7 @@ The first match wins:
    Within a `contains` tier the longer pattern wins, and then the older rule (lower `id`).
 3. None: the transaction is **uncategorised**.
 
-This is worked out in SQL when the data is read, so D1 does the work rather than the Worker's 10 ms CPU budget. The same query logic serves the summary, the inbox and the transaction list.
+This is worked out in SQL when the data is read, so D1 does the work rather than the Worker's 10 ms CPU budget. The same query logic serves the summary, the inbox and the transaction list. Step 2's match is stored per (account, merchant) in `merchant_matches`, kept current by SQLite triggers when a transaction or rule changes, so a read joins it rather than matching every merchant against every rule ([stored-matches-plan.md](stored-matches-plan.md)).
 
 ### What a transaction counts as
 
