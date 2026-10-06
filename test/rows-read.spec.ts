@@ -1,9 +1,9 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createApp } from "../src/worker";
 import { runImport } from "../src/worker/importer";
 import { AMEX, REVOLUT, txn, world } from "./fixtures/lunchflow";
 import { resetDb } from "./db";
+import { get, send } from "./http";
 
 // How many rows D1 bills (meta.rows_read) for each API call the UI makes, and for a cron
 // import, on a synthetic ledger about the size of two years of two accounts. D1's free tier
@@ -11,8 +11,6 @@ import { resetDb } from "./db";
 // (docs/research/d1-rows-read.md). Run with --reporter=verbose to see the table. All data is
 // synthetic.
 
-const ORIGIN = "http://localhost";
-const app = createApp();
 
 let rowsRead = 0;
 const counted = (meta: { rows_read?: number } | undefined) => (rowsRead += meta?.rows_read ?? 0);
@@ -59,11 +57,7 @@ const probeEnv = { ...env, DB };
 
 async function measure(method: string, path: string, body?: unknown) {
   rowsRead = 0;
-  const res = await app.request(
-    `${ORIGIN}${path}`,
-    method === "GET" ? {} : { method, headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify(body) },
-    probeEnv,
-  );
+  const res = method === "GET" ? await get(path, probeEnv) : await send(method, path, body, {}, probeEnv);
   if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
   return { json: (await res.json()) as Record<string, unknown>, rowsRead };
 }

@@ -7,12 +7,12 @@ import { createApp } from "../src/worker";
 export const ORIGIN = "http://localhost";
 export const app = createApp();
 
-export const get = (path: string) => app.request(`${ORIGIN}${path}`, {}, env);
+export const get = (path: string, workerEnv: Env = env) => app.request(`${ORIGIN}${path}`, {}, workerEnv);
 
 /** A state-changing request, with the Origin and JSON content type the API requires. */
-export const send = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
+export const send = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}, workerEnv: Env = env) =>
   app.request(
     `${ORIGIN}${path}`,
     { method, headers: { Origin: ORIGIN, "Content-Type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) },
-    env,
+    workerEnv,
   );
