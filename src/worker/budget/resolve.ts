@@ -26,20 +26,21 @@ export const isRulablePattern = (pattern: string) => pattern.length >= 1 && patt
  * A plain join, not materialised, so SQLite pushes each consumer's conditions into it, and they
  * decide the cost: D1 bills rows read, so a consumer must give it something to seek (an id, a
  * month with IN_MONTH, or INBOX's match_rule_id), never filter the whole history. The rule's
- * category and the override are read here, so neither needs anything stored. The inner join
- * relies on every transaction having a match row, which the triggers guarantee.
+ * category and the override are read here, so neither needs anything stored. The triggers give
+ * every transaction a match row; the join is still LEFT so that a row missing one counts as
+ * uncategorised rather than vanishing from the totals (MATCHES_DRIFT_SQL finds it).
  */
 export const RESOLVED_CTE = `resolved AS (
   SELECT t.id, t.account_id, t.amount_minor, t.currency, t.txn_date, t.merchant, t.description,
     t.is_pending, t.vanished_at, t.first_seen_at,
     o.category_id AS override_category_id, COALESCE(o.excluded, 0) AS excluded,
     o.counted_amount_minor, o.counted_date, o.note,
-    m.rule_id AS match_rule_id,
+    m.account_id AS match_account_id, m.rule_id AS match_rule_id,
     CASE WHEN o.category_id IS NULL THEN m.rule_id END AS rule_id,
     COALESCE(o.category_id, r.category_id) AS category_id,
     CASE WHEN o.category_id IS NOT NULL THEN 'override' WHEN m.rule_id IS NOT NULL THEN 'rule' END AS category_source
   FROM transactions t
-  JOIN merchant_matches m ON m.account_id = t.account_id AND m.merchant = t.merchant
+  LEFT JOIN merchant_matches m ON m.account_id = t.account_id AND m.merchant = t.merchant
   LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
   LEFT JOIN merchant_rules r ON r.id = m.rule_id
 )`;
@@ -65,9 +66,13 @@ export function inMonthBinds(month: string): string[] {
  *
  * "No override category and no matched rule" is `category_id IS NULL` (a rule always has a
  * category), spelled out so SQLite seeks merchant_matches_rule_idx and reads only the
- * transactions still to sort.
+ * transactions still to sort. `match_account_id = account_id` is false for a row with no match,
+ * which lets SQLite treat the match join as an inner one here and start from the matches (it
+ * doesn't for `IS NOT NULL`). A row with no match row (drift) is left out of the inbox, though it
+ * still counts as uncategorised spend.
  */
-export const INBOX = "r.vanished_at IS NULL AND r.match_rule_id IS NULL AND r.override_category_id IS NULL AND r.excluded = 0";
+export const INBOX = `r.vanished_at IS NULL AND r.match_account_id = r.account_id AND r.match_rule_id IS NULL
+  AND r.override_category_id IS NULL AND r.excluded = 0`;
 
 /**
  * On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's

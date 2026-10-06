@@ -101,6 +101,14 @@ describe("resolved", () => {
     expect((await resolve(overridden))!.category_id).toBe(SEEDED.shopping);
   });
 
+  it("keeps a transaction whose match row is missing, uncategorised, rather than dropping it", async () => {
+    const t = await L.txn(a1, { merchant: "Synthetic Cafe" });
+    await insertRule("exact", "synthetic cafe", SEEDED.eatingOut);
+    // Only drift could do this: the triggers give every transaction a match row.
+    await env.DB.prepare("DELETE FROM merchant_matches").run();
+    expect(await resolve(t)).toEqual({ category_id: null, category_source: null, rule_id: null });
+  });
+
   it("categorises pending and vanished transactions by rule too", async () => {
     const pending = await L.txn(a1, { merchant: "Synthetic Cafe", isPending: true });
     const vanished = await L.txn(a1, { merchant: "Synthetic Cafe", vanished: true });
