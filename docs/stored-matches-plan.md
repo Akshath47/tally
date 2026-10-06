@@ -225,8 +225,8 @@ Tasks:
 - [ ] Rule counts from `merchant_matches` joined to transactions.
 - [ ] Check every query plan with `EXPLAIN QUERY PLAN` in the probe; record the plans' shapes in
   the commit body where a query had to be shaped to get a seek.
-- [ ] If `feat/pending-line` (Home's line listings) merges first, its `/:month/transactions`
-  gets the same month scoping; otherwise it's rebased onto this.
+- [ ] `GET /api/months/:month/transactions` (Home's line and pill listings, merged in #39)
+  gets the same month scoping. It reads 23k rows per open today.
 
 ### [ ] S3 Docs and spec
 
