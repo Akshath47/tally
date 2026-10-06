@@ -2,6 +2,7 @@
 // rules in docs/phase-2-spec.md closely enough to drive the screens, but the Worker stays the
 // authority: this is never a reference for how the backend behaves.
 
+import { isNamedLine, type NamedLine } from "../../worker/budget/lines";
 import type { Account, Budget, Category, CategoryKind, ImportRun, InboxMerchant, MatchType, MonthSummary, OverrideInput, Rule, SummaryCategory, Transaction } from "../api";
 import { addDays, daysRemaining, londonToday, monthOf } from "../dates";
 import { normalizePattern as normalize } from "../../worker/budget/resolve";
@@ -116,6 +117,30 @@ function allocated() {
   return sum;
 }
 
+/** Whether a resolved row counts in `month`, as the Worker's COUNTS decides. */
+function countsIn(t: Transaction, month: string): boolean {
+  if (t.vanishedAt !== null || t.excluded || monthOf(t.countedDate ?? t.txnDate) !== month) return false;
+  const kind = kindOf(t.categoryId);
+  return kind === "budgeted" || kind === "tracked" || (t.categoryId === null && (t.countedAmountMinor ?? t.amountMinor) < 0);
+}
+
+/** Home's Misc: posted uncategorised spend, plus budgeted categories without an allocation. */
+function inMisc(t: Transaction): boolean {
+  const c = findCategory(t.categoryId);
+  return (t.categoryId === null && !t.isPending) || (c?.kind === "budgeted" && (c.archived || !budget.allocations.get(c.id)));
+}
+
+/** Budget spend is budgeted or uncategorised; tracked isn't. */
+const isBudgetSpend = (t: Transaction) => t.categoryId === null || kindOf(t.categoryId) === "budgeted";
+
+/** Home's named lines, as the Worker's LINES. */
+const LINE_FILTERS: Record<NamedLine, (t: Transaction) => boolean> = {
+  misc: inMisc,
+  "uncategorised-pending": (t) => t.categoryId === null && t.isPending,
+  posted: (t) => isBudgetSpend(t) && !t.isPending,
+  pending: (t) => isBudgetSpend(t) && t.isPending,
+};
+
 function summary(month: string): MonthSummary {
   const byCategory = new Map<number | null, SummaryCategory>();
   const entry = (categoryId: number | null) => {
@@ -128,10 +153,9 @@ function summary(month: string): MonthSummary {
   let tracked = 0;
   const resolved = transactions.map(resolve);
   for (const t of resolved) {
-    if (t.vanishedAt !== null || t.excluded || monthOf(t.countedDate ?? t.txnDate) !== month) continue;
+    if (!countsIn(t, month)) continue;
     const amount = t.countedAmountMinor ?? t.amountMinor;
     const kind = kindOf(t.categoryId);
-    if (kind === "excluded" || (t.categoryId === null && amount >= 0)) continue;
     const e = entry(t.categoryId);
     e.spentMinor -= amount;
     if (t.isPending) e.pendingSpentMinor -= amount;
@@ -379,6 +403,16 @@ const ROUTES: [string, RegExp, Handler][] = [
   }],
 
   ["GET", /^\/api\/months\/(\d{4}-(?:0[1-9]|1[0-2]))\/summary$/, (m) => (m[1]! > monthOf(today) ? fail(400, "bad_request") : ok(summary(m[1]!)))],
+  ["GET", /^\/api\/months\/(\d{4}-(?:0[1-9]|1[0-2]))\/transactions$/, (m, url) => {
+    const month = m[1]!;
+    const category = url.searchParams.get("category");
+    const id = Number(category);
+    const named = category !== null && isNamedLine(category) ? LINE_FILTERS[category] : undefined;
+    if (month > monthOf(today) || (!named && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
+    const inLine = named ?? ((t: Transaction) => t.categoryId === id);
+    const rows = transactions.map(resolve).filter((t) => countsIn(t, month) && inLine(t));
+    return ok(page(rows, url));
+  }],
 ];
 
 /**

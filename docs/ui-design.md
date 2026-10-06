@@ -90,14 +90,15 @@ The five-second glance.
 - Header: month name, freshness line ("Updated 3h ago · both accounts", sage dot), "to sort" chip when needed, settings icon.
 - Hollow donut of the month's budget. Solid sage = posted spend, hatched = pending. Centre: "Spent in October", the **spent** amount large, "£546 left this month", "of £1,800".
 - Pace line under the ring: "£239/week for the remaining 2.3 weeks".
-- Two pills: "Posted £1,166" and "Pending £88 · 3 charges" (taps to Transactions).
+- Two pills: "Posted £1,166" and "Pending £88 · 3 charges". Each taps through to the transactions behind it (Category transactions, below): the month's posted or pending budget spend, categorised or not.
   - **Pending is a lower bound.** Lunch Flow doesn't send every pending charge, so a purchase can be missing until it posts ([lunchflow-findings.md](lunchflow-findings.md#pending)). The pending pill, the hatched bars and the pending sheet shouldn't present pending as complete, for example by saying "at least" or adding a short note that recent charges can appear late.
-- Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated".
+- Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated" and takes posted uncategorised spend. Uncategorised **pending** charges get their own last row, "Uncategorised pending", showing "at least £51" with a fully hatched bar and no allocation: they can't be filed until they post, so counting them in Misc made it look overspent. Each row taps through to its transactions (below).
+- **Category transactions** (pushed, back to Home, `/spending/:month/:category`, where `:category` is an id, `misc`, `uncategorised-pending`, `posted` or `pending`): the rows that counted towards one line or pill in that month, grouped by counted date (the bank date unless edited). The header repeats the line's "£spent of £allocated", or "at least £spent" for Uncategorised pending. Misc lists posted uncategorised spending plus budgeted categories with no allocation; Uncategorised pending lists the pending charges no rule categorises yet. The Pending pill above still counts every pending charge, categorised or not. A row opens the transaction editor.
 
 States:
 - **Over budget overall:** ring fully brick, "£112 over this month" in `over-text`, pace line replaced with "Budget used up with 5 days to go…".
 - **Stale data:** amber dot on the freshness line, which names each account ("Revolut 2h ago · Amex 4 days ago"), and an amber banner: "Amex hasn't updated for 4 days, so recent card spending may be missing." with a link to Accounts.
-- **No pending:** "No pending charges" in place of the pills.
+- **No pending:** "No pending charges" in place of the Pending pill. The Posted pill stays, so its transactions can still be opened.
 - **Loading:** skeletons for the ring centre, pills and category rows, with "Loading your budget…" in the freshness line. The shimmer stops under `prefers-reduced-motion`.
 - **Error:** "Tally couldn't load your budget", reassurance that nothing changed, a "Try again" button, a link to account status and a small error code and time. The freshness line turns brick: "Couldn't refresh · last loaded …".
 - **First run (no budget yet):** "Welcome to Tally / Set your budget", a confirmation that both accounts are connected and how many transactions were imported, an empty dashed ring, a single "How much do you want to spend each month?" input with last two months' spend for reference, a "Set budget" button, and a 3-step checklist (set budget, allocate, sort).
@@ -212,6 +213,7 @@ Most of the design already matches [phase-2-spec.md](phase-2-spec.md):
 
 - Budget shape, category kinds, Misc and the allocation errors: `GET/PUT /api/budget…`, with `over_allocated` (`maxAllocatableMinor`) and `below_allocated` (`minOverallMinor`) driving the two error messages.
 - Home: `GET /api/months/:month/summary` (`spentMinor`, `pendingSpentMinor`, `leftMinor`, `perWeekMinor`, `categories[]`, `inboxCount` for the chip, `lastDataChangeAt` for freshness).
+- Category transactions: `GET /api/months/:month/transactions?category=<id>|misc|uncategorised-pending|posted|pending`.
 - To sort: `GET /api/inbox` and `GET /api/inbox/merchants`.
 - "Use for all <merchant>": `applyToMerchant: true` on `PUT /api/transactions/:id/override`.
 - Rules re-sorting past transactions without an override: categories resolved at read time.
