@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
 import { effectiveAllocationSql, readBudget, sumAllocated } from "../budget/effective";
+import { NAMED_LINES, type NamedLine } from "../budget/lines";
 import { cursorParam, listTransactions } from "../budget/listing";
 import { COUNTS, INBOX, RESOLVED_CTE } from "../budget/resolve";
 import { daysInMonth, isYm, londonMonth, londonToday } from "../importer/dates";
@@ -58,10 +59,10 @@ const LINES = {
       AND (c.archived_at IS NOT NULL OR COALESCE(${effectiveAllocationSql("r.category_id", "?")}, 0) = 0)))`,
     month,
   ],
-} satisfies Record<string, (month: string) => [string, ...unknown[]]>;
+} satisfies Record<NamedLine, (month: string) => [string, ...unknown[]]>;
 
 const lineQuery = z.object({
-  category: z.union([z.enum(Object.keys(LINES) as [keyof typeof LINES]), z.coerce.number().int().positive()]),
+  category: z.union([z.enum(NAMED_LINES), z.coerce.number().int().positive()]),
   limit: limitParam(200, 100),
   cursor: cursorParam.optional(),
 });
