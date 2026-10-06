@@ -10,7 +10,8 @@ import "./index.css";
 // queries from the response sets `meta: { refetch: "none" }`: everything is still marked stale,
 // but nothing refetches until it's next shown (D1 bills every row a refetch reads). Between
 // writes, data stays fresh for 30 s rather than refetching on every tab switch, and returning
-// to the app doesn't refetch: the import watcher refreshes after imports. One retry, and none for
+// to the app refetches only the import runs: the import watcher refreshes the rest when a run
+// has finished since (components/ImportWatcher.ts). One retry, and none for
 // a client error: a 4xx won't change on retry, and the screens show their error state sooner.
 const queryClient: QueryClient = new QueryClient({
   mutationCache: new MutationCache({
