@@ -104,6 +104,19 @@ describe("GET /api/months/:month/transactions?category=misc", () => {
   });
 });
 
+describe("GET /api/months/:month/transactions?category=pending", () => {
+  it("lists uncategorised pending money out, which Misc leaves out", async () => {
+    const pending = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -300, isPending: true });
+    const posted = await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -200 });
+    await txn(accounts[0], { merchant: "Unknown sender", amountMinor: 900, isPending: true });
+    // Categorised, so it stays with its category: Misc here, as Groceries has no allocation.
+    const categorised = await grocer(-400, { isPending: true });
+    await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -100, isPending: true, vanished: true });
+    expect(ids(await list("pending"))).toEqual([pending]);
+    expect(ids(await list("misc"))).toEqual([posted, categorised]);
+  });
+});
+
 describe("GET /api/months/:month/transactions: agrees with Home", () => {
   it("adds up to each line Home draws from the summary", async () => {
     await insertOverall("2026-10", 100_000);
@@ -118,12 +131,13 @@ describe("GET /api/months/:month/transactions: agrees with Home", () => {
     await insertOverride(await grocer(-800, { txnDate: "2026-09-28" }), { counted_date: "2026-10-02", counted_amount_minor: -600 });
     await txn(accounts[0], { merchant: "Cafe", amountMinor: -700 });
     await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -300 });
+    await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -450, isPending: true });
     await txn(accounts[0], { merchant: "Outfitter", amountMinor: -5_000 });
     await insertOverride(await txn(accounts[0], { merchant: "Shop", amountMinor: -400 }), { category_id: archived });
 
     const s = (await (await get("/api/months/2026-10/summary")).json()) as Summary;
     const lines = budgetLines(s, new Map());
-    expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc"]);
+    expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc", "pending"]);
     for (const l of lines) expect(spend(await list(l.category)), String(l.category)).toBe(l.spentMinor);
   });
 });
