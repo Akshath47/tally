@@ -46,7 +46,8 @@ BEGIN
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'contains' AND r.account_scope IN (merchant_matches.account_id, 0) AND instr(lower(merchant_matches.merchant), r.pattern) > 0
      ORDER BY r.account_scope = 0, length(r.pattern) DESC, r.id LIMIT 1))
-  WHERE NEW.match_type = 'exact' AND merchant_key = NEW.pattern AND (NEW.account_id IS NULL OR account_id = NEW.account_id);
+  WHERE NEW.match_type = 'exact' AND merchant_key = NEW.pattern AND (NEW.account_id IS NULL OR account_id = NEW.account_id)
+    AND rule_id IS NOT NEW.id;
   UPDATE merchant_matches SET rule_id = COALESCE(
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'exact' AND r.pattern = lower(trim(merchant_matches.merchant)) AND r.account_scope IN (merchant_matches.account_id, 0)
@@ -54,7 +55,8 @@ BEGIN
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'contains' AND r.account_scope IN (merchant_matches.account_id, 0) AND instr(lower(merchant_matches.merchant), r.pattern) > 0
      ORDER BY r.account_scope = 0, length(r.pattern) DESC, r.id LIMIT 1))
-  WHERE NEW.match_type = 'contains' AND instr(lower(merchant), NEW.pattern) > 0 AND (NEW.account_id IS NULL OR account_id = NEW.account_id);
+  WHERE NEW.match_type = 'contains' AND instr(lower(merchant), NEW.pattern) > 0 AND (NEW.account_id IS NULL OR account_id = NEW.account_id)
+    AND rule_id IS NOT NEW.id;
 END;
 --> statement-breakpoint
 CREATE TRIGGER merchant_matches_rule_update AFTER UPDATE OF match_type, pattern, account_id ON merchant_rules
@@ -75,7 +77,8 @@ BEGIN
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'contains' AND r.account_scope IN (merchant_matches.account_id, 0) AND instr(lower(merchant_matches.merchant), r.pattern) > 0
      ORDER BY r.account_scope = 0, length(r.pattern) DESC, r.id LIMIT 1))
-  WHERE NEW.match_type = 'exact' AND merchant_key = NEW.pattern AND (NEW.account_id IS NULL OR account_id = NEW.account_id);
+  WHERE NEW.match_type = 'exact' AND merchant_key = NEW.pattern AND (NEW.account_id IS NULL OR account_id = NEW.account_id)
+    AND rule_id IS NOT NEW.id;
   UPDATE merchant_matches SET rule_id = COALESCE(
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'exact' AND r.pattern = lower(trim(merchant_matches.merchant)) AND r.account_scope IN (merchant_matches.account_id, 0)
@@ -83,7 +86,8 @@ BEGIN
     (SELECT r.id FROM merchant_rules r
      WHERE r.match_type = 'contains' AND r.account_scope IN (merchant_matches.account_id, 0) AND instr(lower(merchant_matches.merchant), r.pattern) > 0
      ORDER BY r.account_scope = 0, length(r.pattern) DESC, r.id LIMIT 1))
-  WHERE NEW.match_type = 'contains' AND instr(lower(merchant), NEW.pattern) > 0 AND (NEW.account_id IS NULL OR account_id = NEW.account_id);
+  WHERE NEW.match_type = 'contains' AND instr(lower(merchant), NEW.pattern) > 0 AND (NEW.account_id IS NULL OR account_id = NEW.account_id)
+    AND rule_id IS NOT NEW.id;
 END;
 --> statement-breakpoint
 CREATE TRIGGER merchant_matches_rule_delete AFTER DELETE ON merchant_rules

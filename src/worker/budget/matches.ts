@@ -29,14 +29,17 @@ export const bestRuleSql = (accountId: string, merchant: string) => `COALESCE(
 const REMATCH = `UPDATE merchant_matches SET rule_id = ${bestRuleSql("merchant_matches.account_id", "merchant_matches.merchant")}`;
 
 /**
- * Re-matches the merchants `rule` (NEW) now matches: only they can gain it as their best rule.
- * The exact branch seeks merchant_matches_key_idx; the contains branch scans the (small) table.
+ * Re-matches the merchants the rule (NEW) now matches: only they can gain it as their best rule.
+ * One already pointing at it was re-matched by the update trigger's first statement. The exact
+ * branch seeks merchant_matches_key_idx; the contains branch scans the (small) table.
  */
 const rematchMatchedBy = `
   ${REMATCH}
-  WHERE NEW.match_type = 'exact' AND merchant_key = NEW.pattern AND (NEW.account_id IS NULL OR account_id = NEW.account_id);
+  WHERE NEW.match_type = 'exact' AND merchant_key = NEW.pattern AND (NEW.account_id IS NULL OR account_id = NEW.account_id)
+    AND rule_id IS NOT NEW.id;
   ${REMATCH}
-  WHERE NEW.match_type = 'contains' AND instr(lower(merchant), NEW.pattern) > 0 AND (NEW.account_id IS NULL OR account_id = NEW.account_id);`;
+  WHERE NEW.match_type = 'contains' AND instr(lower(merchant), NEW.pattern) > 0 AND (NEW.account_id IS NULL OR account_id = NEW.account_id)
+    AND rule_id IS NOT NEW.id;`;
 
 /** A new (account, merchant) gets its match. Skipped when it has one, which is a single seek. */
 const addMatch = (head: string) => `${head}
