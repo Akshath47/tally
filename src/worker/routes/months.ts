@@ -1,18 +1,16 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { readBudget, sumAllocated } from "../budget/effective";
-import { INBOX, RESOLVED_CTE } from "../budget/resolve";
+import { effectiveAllocationSql, readBudget, sumAllocated } from "../budget/effective";
+import { NAMED_LINES, type NamedLine } from "../budget/lines";
+import { cursorParam, listTransactions } from "../budget/listing";
+import { COUNTS, INBOX, RESOLVED_CTE } from "../budget/resolve";
 import { daysInMonth, isYm, londonMonth, londonToday } from "../importer/dates";
+import { limitParam, parseQuery } from "./query";
 
 // Everything the home screen needs for one month (docs/phase-2-spec.md, "What a transaction
 // counts as" and "Budget figures for a month"). Spend is positive = money out, so a refund is
 // negative spend. Aggregation is in SQL: three statements, and one evaluation of RESOLVED_CTE.
-
-// On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's
-// budgeted or tracked, or uncategorised money out. Uncategorised money in waits in the inbox.
-// Always 0 or 1: a bare `c.kind IN (...)` is NULL for an uncategorised row.
-const COUNTS = `(r.excluded = 0 AND (COALESCE(c.kind IN ('budgeted', 'tracked'), 0)
-  OR (r.category_id IS NULL AND COALESCE(r.counted_amount_minor, r.amount_minor) < 0)))`;
 
 // One row per category_id among the counted rows (vanished_at IS NULL) that count in month ?1
 // (of counted_date ?? txn_date) or are in the inbox. The inbox spans every month.
@@ -38,12 +36,42 @@ type Line = { categoryId: number | null; kind: string | null; spentMinor: number
 const perWeek = (leftMinor: number, daysRemaining: number) =>
   leftMinor > 0 ? Number((BigInt(leftMinor) * 7n) / BigInt(daysRemaining)) : 0;
 
+/** The `:month` path parameter, or null unless it's a YYYY-MM no later than `current`. */
+function monthParam(c: Context, current: string): string | null {
+  const month = c.req.param("month");
+  // YYYY-MM strings compare in calendar order.
+  return month !== undefined && isYm(month) && month <= current ? month : null;
+}
+
+// Home's named lines (src/web/lines.ts) beyond a single category, each `[sql, ...binds]` on
+// `resolved r` joined to `categories c`, among the rows COUNTS keeps. Budget spend is budgeted
+// or uncategorised (tracked isn't). The Posted and Pending pills split it. Uncategorised pending
+// charges can't be filed until they post, so they're a line of their own. Misc is the
+// unallocated pot: posted uncategorised money out, plus budgeted categories with no allocation in
+// the month (archived ones have none: readBudget leaves them out).
+const BUDGET_SPEND = "(r.category_id IS NULL OR c.kind = 'budgeted')";
+const LINES = {
+  posted: () => [`(${BUDGET_SPEND} AND r.is_pending = 0)`],
+  pending: () => [`(${BUDGET_SPEND} AND r.is_pending = 1)`],
+  "uncategorised-pending": () => ["(r.category_id IS NULL AND r.is_pending = 1)"],
+  misc: (month: string) => [
+    `((r.category_id IS NULL AND r.is_pending = 0) OR (c.kind = 'budgeted'
+      AND (c.archived_at IS NOT NULL OR COALESCE(${effectiveAllocationSql("r.category_id", "?")}, 0) = 0)))`,
+    month,
+  ],
+} satisfies Record<NamedLine, (month: string) => [string, ...unknown[]]>;
+
+const lineQuery = z.object({
+  category: z.union([z.enum(NAMED_LINES), z.coerce.number().int().positive()]),
+  limit: limitParam(200, 100),
+  cursor: cursorParam.optional(),
+});
+
 export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) => {
   const now = new Date();
   const current = londonMonth(now);
-  const month = c.req.param("month");
-  // YYYY-MM strings compare in calendar order.
-  if (!isYm(month) || month > current) return c.json({ error: "bad_request" }, 400);
+  const month = monthParam(c, current);
+  if (month === null) return c.json({ error: "bad_request" }, 400);
 
   const db = c.env.DB;
   const [budget, groups, freshness] = await Promise.all([
@@ -99,4 +127,27 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
     inboxCount: groups.results.reduce((n, g) => n + g.inbox, 0),
     lastDataChangeAt: freshness?.at ?? null,
   });
-});
+})
+  /**
+   * The rows behind one Home line: those that count in the month (by counted date) in a
+   * category or in one of the named lines (LINES). Newest first by bank date, keyset-paged like /api/transactions.
+   */
+  .get("/:month/transactions", async (c) => {
+    const month = monthParam(c, londonMonth(new Date()));
+    const q = parseQuery(c, lineQuery);
+    if (month === null || !q.ok) return c.json({ error: "bad_request" }, 400);
+    const { category, limit, cursor } = q.data;
+
+    const { transactions, nextCursor } = await listTransactions(c.env.DB, {
+      where: [
+        ["substr(COALESCE(r.counted_date, r.txn_date), 1, 7) = ?", month],
+        ["r.vanished_at IS NULL"],
+        [COUNTS],
+        typeof category === "number" ? ["r.category_id = ?", category] : LINES[category](month),
+      ],
+      limit,
+      cursor,
+      withCategory: true,
+    });
+    return c.json({ transactions, nextCursor });
+  });

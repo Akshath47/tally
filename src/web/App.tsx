@@ -7,6 +7,7 @@ import { Accounts } from "./screens/Accounts";
 import { Budget } from "./screens/Budget";
 import { Categories, Rules } from "./screens/Categories";
 import { Home } from "./screens/Home";
+import { LineTransactions } from "./screens/LineTransactions";
 import { NewAccount } from "./screens/NewAccount";
 import { ToSort } from "./screens/ToSort";
 import { Transactions } from "./screens/Transactions";
@@ -29,6 +30,8 @@ function Screen({ route }: { route: Route }) {
       return <NewAccount back={backOf(route)} accountId={route.accountId} />;
     case "accounts":
       return <Accounts back={backOf(route)} />;
+    case "line":
+      return <LineTransactions back={backOf(route)} month={route.month} category={route.category} />;
     case "notFound":
       return (
         <PushedScreen back={backOf(route)} title="Page not found">

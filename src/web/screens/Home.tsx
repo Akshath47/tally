@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
-import { AccountBadge, ArrowUp, Button, Check, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
+import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
 import { addMonths, londonToday, monthName, monthOf } from "../dates";
 import { formatTimestamp } from "../format";
 import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
 import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
 import { Link } from "../router";
+import { budgetLines, type Line } from "../lines";
+import { lineHref } from "../routes";
 
 // The five-second glance (docs/ui-design.md, Home).
 
@@ -98,68 +100,88 @@ function Pace({ s }: { s: MonthSummary & { leftMinor: number } }) {
   );
 }
 
+const pill = "inline-flex h-8 items-center gap-[7px] rounded-full border border-divider bg-surface px-3 text-[12.5px]";
+
+/** A pill with a 44 px tap target, opening the transactions behind it. */
+function PillLink({ href, swatch, children }: { href: string; swatch: string; children: ReactNode }) {
+  return (
+    <Link href={href} className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
+      <span className={pill}>
+        <span className={`size-[9px] rounded-[3px] ${swatch}`} aria-hidden="true" />
+        {children}
+      </span>
+    </Link>
+  );
+}
+
 function Pills({ s }: { s: MonthSummary }) {
-  if (s.pendingSpentMinor === 0) return <p className="mt-3 text-center text-meta text-muted">No pending charges</p>;
-  const pill = "inline-flex h-8 items-center gap-[7px] rounded-full border border-divider bg-surface px-3 text-[12.5px]";
   return (
     <div className="mt-3 flex flex-wrap items-center justify-center gap-2 px-5">
-      <span className={pill}>
-        <span className="size-[9px] rounded-[3px] bg-accent" aria-hidden="true" />
+      <PillLink href={lineHref(s.month, "posted")} swatch="bg-accent">
         Posted <span className="font-medium">{formatPounds(s.spentMinor - s.pendingSpentMinor)}</span>
-      </span>
-      {/* Lunch Flow doesn't send every pending charge, so this is a lower bound. */}
-      <Link href="/transactions" className={`${pill} min-h-11 border-transparent bg-transparent p-0`}>
-        <span className={pill}>
-          <span className="hatch size-[9px] rounded-[3px]" aria-hidden="true" />
+      </PillLink>
+      {s.pendingSpentMinor === 0 ? (
+        <span className="text-meta text-muted">No pending charges</span>
+      ) : (
+        // Lunch Flow doesn't send every pending charge, so this is a lower bound.
+        <PillLink href={lineHref(s.month, "pending")} swatch="hatch">
           Pending <span className="text-muted">at least</span> <span className="font-medium">{formatPounds(s.pendingSpentMinor)}</span>
-        </span>
-      </Link>
+        </PillLink>
+      )}
     </div>
   );
 }
 
-type Line = { key: string; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number };
-
-/** Budgeted categories with an allocation, biggest first, then Misc: the unallocated pot. */
-function budgetLines(s: MonthSummary, byId: Map<number, Category>): Line[] {
-  const lines: Line[] = [];
-  const misc: Line = { key: "misc", name: "Misc", note: "unallocated", spentMinor: 0, pendingSpentMinor: 0, allocatedMinor: s.miscMinor ?? 0 };
-  for (const c of s.categories) {
-    if (c.kind === "tracked") continue;
-    if (c.categoryId !== null && c.allocatedMinor > 0) {
-      lines.push({ key: String(c.categoryId), name: byId.get(c.categoryId)?.name ?? "Category", ...c });
-    } else {
-      misc.spentMinor += c.spentMinor;
-      misc.pendingSpentMinor += c.pendingSpentMinor;
-    }
-  }
-  lines.sort((a, b) => b.allocatedMinor - a.allocatedMinor);
-  if (misc.allocatedMinor > 0 || misc.spentMinor !== 0) lines.push(misc);
-  return lines;
+/** Taps through to the transactions that counted towards the line. */
+function CategoryRow({ line, month }: { line: Line; month: string }) {
+  return (
+    <li className="border-b border-divider last:border-b-0">
+      <Link href={lineHref(month, line.category)} className="-mx-4 flex flex-col gap-2 px-4 py-[11px] hover:bg-raised/50">
+        {line.allocatedMinor === null ? <PendingLine line={line} /> : <PotLine line={line} allocatedMinor={line.allocatedMinor} />}
+      </Link>
+    </li>
+  );
 }
 
-function CategoryRow({ line }: { line: Line }) {
-  const state = barState(line.spentMinor, line.allocatedMinor);
-  const posted = fraction(line.spentMinor - line.pendingSpentMinor, line.allocatedMinor);
-  const pending = Math.min(fraction(line.pendingSpentMinor, line.allocatedMinor), 1 - posted);
+function LineHeading({ line, flag, amount }: { line: Line; flag?: ReactNode; amount: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span>{line.name}</span>
+      {line.note && <span className="text-[11.5px] text-muted">{line.note}</span>}
+      {flag}
+      <span className="ml-auto whitespace-nowrap">{amount}</span>
+      <ChevronRight size={14} className="-mr-1 shrink-0 text-muted" />
+    </div>
+  );
+}
+
+/** "£spent / £allocated" with a bar: posted solid, pending hatched. */
+function PotLine({ line, allocatedMinor }: { line: Line; allocatedMinor: number }) {
+  const state = barState(line.spentMinor, allocatedMinor);
+  const posted = fraction(line.spentMinor - line.pendingSpentMinor, allocatedMinor);
+  const pending = Math.min(fraction(line.pendingSpentMinor, allocatedMinor), 1 - posted);
   const fill = { ok: "bg-accent", near: "bg-warn", over: "bg-over" }[state];
   return (
-    <li className="flex flex-col gap-2 border-b border-divider py-[11px] last:border-b-0">
-      <div className="flex items-center gap-2">
-        <span>{line.name}</span>
-        {line.note && <span className="text-[11.5px] text-muted">{line.note}</span>}
-        {state === "near" && <Flag tone="warn">{formatPounds(line.allocatedMinor - line.spentMinor)} left</Flag>}
-        {state === "over" && (
-          <Flag tone="over">
-            <ArrowUp size={10} />
-            {formatPounds(line.spentMinor - line.allocatedMinor)} over
-          </Flag>
-        )}
-        <span className="ml-auto whitespace-nowrap">
-          <span className={`font-medium ${state === "over" ? "text-over-fg" : ""}`}>{formatPounds(line.spentMinor)}</span>{" "}
-          <span className="text-muted">/ {formatPounds(line.allocatedMinor)}</span>
-        </span>
-      </div>
+    <>
+      <LineHeading
+        line={line}
+        flag={
+          state === "near" ? (
+            <Flag tone="warn">{formatPounds(allocatedMinor - line.spentMinor)} left</Flag>
+          ) : state === "over" ? (
+            <Flag tone="over">
+              <ArrowUp size={10} />
+              {formatPounds(line.spentMinor - allocatedMinor)} over
+            </Flag>
+          ) : undefined
+        }
+        amount={
+          <>
+            <span className={`font-medium ${state === "over" ? "text-over-fg" : ""}`}>{formatPounds(line.spentMinor)}</span>{" "}
+            <span className="text-muted">/ {formatPounds(allocatedMinor)}</span>
+          </>
+        }
+      />
       <div className="flex h-1 gap-px overflow-hidden rounded-sm bg-line" aria-hidden="true">
         {state === "over" ? (
           <div className="w-full bg-over" />
@@ -170,7 +192,24 @@ function CategoryRow({ line }: { line: Line }) {
           </>
         )}
       </div>
-    </li>
+    </>
+  );
+}
+
+/** Uncategorised pending charges: no pot of their own, so just the amount (a lower bound, like the pill, which counts every pending charge). */
+function PendingLine({ line }: { line: Line }) {
+  return (
+    <>
+      <LineHeading
+        line={line}
+        amount={
+          <>
+            <span className="text-muted">at least</span> <span className="font-medium">{formatPounds(line.spentMinor)}</span>
+          </>
+        }
+      />
+      <div className="hatch h-1 rounded-sm" aria-hidden="true" />
+    </>
   );
 }
 
@@ -199,9 +238,9 @@ function Dashboard({ s, byId }: { s: MonthSummary & { overallMinor: number; left
           <h2 id="home-categories" className="text-base font-medium">
             Categories
           </h2>
-          <ul className="mt-2 rounded-card border border-divider bg-surface px-4 py-0.5">
+          <ul className="mt-2 overflow-hidden rounded-card border border-divider bg-surface px-4 py-0.5">
             {lines.map((l) => (
-              <CategoryRow key={l.key} line={l} />
+              <CategoryRow key={l.category} line={l} month={s.month} />
             ))}
           </ul>
         </section>
