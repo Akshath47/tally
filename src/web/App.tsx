@@ -15,7 +15,7 @@ import { Transactions } from "./screens/Transactions";
 function Screen({ route }: { route: Route }) {
   switch (route.screen) {
     case "home":
-      return <Home />;
+      return <Home month={"month" in route ? route.month : undefined} />;
     case "transactions":
       return <Transactions />;
     case "budget":

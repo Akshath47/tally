@@ -2,13 +2,16 @@ import type { ReactNode } from "react";
 import { BackLink } from "../router";
 import type { Back } from "../routes";
 
-/** A tab screen's header: title, plus an optional action on the right. */
-export function TabScreen({ title, titleExtra, action, children }: { title: string; titleExtra?: ReactNode; action?: ReactNode; children?: ReactNode }) {
+/** A tab screen's header: title (with optional controls beside it), plus an optional action on the right. */
+export function TabScreen({ title, titleNav, titleExtra, action, children }: { title: string; titleNav?: ReactNode; titleExtra?: ReactNode; action?: ReactNode; children?: ReactNode }) {
   return (
     <>
       <header className="flex items-start justify-between pt-safe pr-3 pl-5">
         <div>
-          <h1 className="text-title">{title}</h1>
+          <div className="flex items-center">
+            <h1 className="text-title">{title}</h1>
+            {titleNav}
+          </div>
           {titleExtra}
         </div>
         {action}

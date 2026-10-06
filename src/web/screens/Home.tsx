@@ -2,15 +2,15 @@ import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
-import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
-import { addMonths, londonToday, monthName, monthOf } from "../dates";
+import { AccountBadge, ArrowUp, Button, Check, ChevronLeft, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
+import { addMonths, londonToday, monthName, monthOf, yearSuffix } from "../dates";
 import { formatTimestamp } from "../format";
 import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
 import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
 import { Link } from "../router";
-import { budgetLines, type Line } from "../lines";
-import { lineHref } from "../routes";
+import { budgetLines, spendingLines, type Line, type SpendLine } from "../lines";
+import { homeHref, lineHref } from "../routes";
 
 // The five-second glance (docs/ui-design.md, Home).
 
@@ -143,7 +143,7 @@ function CategoryRow({ line, month }: { line: Line; month: string }) {
   );
 }
 
-function LineHeading({ line, flag, amount }: { line: Line; flag?: ReactNode; amount: ReactNode }) {
+function LineHeading({ line, flag, amount }: { line: Pick<Line, "name" | "note">; flag?: ReactNode; amount: ReactNode }) {
   return (
     <div className="flex items-center gap-2">
       <span>{line.name}</span>
@@ -213,8 +213,9 @@ function PendingLine({ line }: { line: Line }) {
   );
 }
 
-function Dashboard({ s, byId }: { s: MonthSummary & { overallMinor: number; leftMinor: number }; byId: Map<number, Category> }) {
+function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: number; leftMinor: number }; byId: Map<number, Category>; isCurrent: boolean }) {
   const over = s.leftMinor < 0;
+  const left = isCurrent ? (over ? "over this month" : "left this month") : over ? "over budget" : "under budget";
   const lines = budgetLines(s, byId);
   return (
     <>
@@ -225,7 +226,7 @@ function Dashboard({ s, byId }: { s: MonthSummary & { overallMinor: number; left
             <div className="text-xs text-muted">Spent in {monthName(s.month)}</div>
             <div className="text-[46px] leading-[1.1] font-extralight tracking-[-0.035em]">{formatPounds(s.spentMinor)}</div>
             <div className={`mt-0.5 text-sm ${over ? "text-over-fg" : ""}`}>
-              {over ? `${formatPounds(-s.leftMinor)} over this month` : `${formatPounds(s.leftMinor)} left this month`}
+              {formatPounds(Math.abs(s.leftMinor))} {left}
             </div>
             <div className="mt-0.5 text-[11.5px] text-muted">of {formatPounds(s.overallMinor)}</div>
           </div>
@@ -246,6 +247,70 @@ function Dashboard({ s, byId }: { s: MonthSummary & { overallMinor: number; left
         </section>
       )}
     </>
+  );
+}
+
+/** A spending row on a month without a budget. Uncategorised spend opens To sort, where it's filed. */
+function SpendRow({ line, month }: { line: SpendLine; month: string }) {
+  return (
+    <li className="border-b border-divider last:border-b-0">
+      <Link href={line.category === null ? "/to-sort" : lineHref(month, line.category)} className="-mx-4 flex flex-col px-4 py-[11px] hover:bg-raised/50">
+        <LineHeading line={line} amount={<span className="font-medium">{formatPounds(line.spentMinor)}</span>} />
+      </Link>
+    </li>
+  );
+}
+
+function SpendSection({ id, title, note, lines, month }: { id: string; title: string; note?: string; lines: SpendLine[]; month: string }) {
+  return (
+    <section className="mx-5 mt-[22px]" aria-labelledby={id}>
+      <h2 id={id} className="text-base font-medium">
+        {title} {note && <span className="text-[12.5px] font-normal text-muted">{note}</span>}
+      </h2>
+      <ul className="mt-2 overflow-hidden rounded-card border border-divider bg-surface px-4 py-0.5">
+        {lines.map((l) => (
+          <SpendRow key={l.category ?? "uncategorised"} line={l} month={month} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A past month before any budget: what was spent, and where, with nothing to measure it against. */
+function Spending({ s, byId }: { s: MonthSummary; byId: Map<number, Category> }) {
+  const { lines, tracked } = spendingLines(s.categories, byId);
+  return (
+    <>
+      <div className="flex flex-col items-center px-5 pt-6 text-center">
+        <div className="text-xs text-muted">Spent in {monthName(s.month)}</div>
+        <div className="text-[46px] leading-[1.1] font-extralight tracking-[-0.035em]">{formatPounds(s.spentMinor)}</div>
+        <div className="mt-0.5 text-[11.5px] text-muted">No budget set for this month</div>
+      </div>
+      {(lines.length > 0 || tracked.length > 0) && <Pills s={s} />}
+      {lines.length > 0 && <SpendSection id="home-categories" title="Categories" lines={lines} month={s.month} />}
+      {tracked.length > 0 && <SpendSection id="home-tracked" title="Tracked" note="not in the total" lines={tracked} month={s.month} />}
+      {lines.length === 0 && tracked.length === 0 && <p className="mx-5 mt-8 text-center text-muted">No spending this month.</p>}
+    </>
+  );
+}
+
+/** ‹ › beside the title. Back stops at a month with nothing in it, where history ends; forward stops at today's month. */
+function MonthNav({ month, current, isEmpty }: { month: string; current: string; isEmpty: boolean }) {
+  const step = (label: string, to: string, disabled: boolean, icon: ReactNode) =>
+    disabled ? (
+      <span aria-hidden="true" className="grid size-11 place-items-center text-fg/80 opacity-30">
+        {icon}
+      </span>
+    ) : (
+      <Link href={homeHref(to)} aria-label={label} className="grid size-11 place-items-center text-fg/80 hover:text-fg">
+        {icon}
+      </Link>
+    );
+  return (
+    <div className="-my-1 ml-1 flex items-center" role="group" aria-label="Month">
+      {step("Previous month", addMonths(month, -1), isEmpty, <ChevronLeft size={18} />)}
+      {step("Next month", addMonths(month, 1), month >= current, <ChevronRight size={18} />)}
+    </div>
   );
 }
 
@@ -390,15 +455,18 @@ function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
   );
 }
 
-export function Home() {
-  const month = monthOf(londonToday());
+/** `month` is a past month from the route; without one, Home shows today's month. */
+export function Home({ month: routeMonth }: { month?: string }) {
+  const current = monthOf(londonToday());
+  const month = routeMonth ?? current;
+  const isCurrent = month === current;
   const summary = useSummary(month);
   const categories = useCategories();
   const accounts = useAccounts();
   const s = summary.data;
   const enabledAccounts = accounts.data?.all.filter((a) => a.importEnabled).length ?? 0;
 
-  if (s && s.overallMinor === null) {
+  if (isCurrent && s && s.overallMinor === null) {
     return (
       <>
         <header className="pt-safe px-5">
@@ -412,8 +480,9 @@ export function Home() {
 
   return (
     <TabScreen
-      title={monthName(month)}
-      titleExtra={<Freshness summary={summary} enabledAccounts={enabledAccounts} />}
+      title={`${monthName(month)}${yearSuffix(month, current)}`}
+      titleNav={<MonthNav month={month} current={current} isEmpty={s?.categories.length === 0} />}
+      titleExtra={isCurrent ? <Freshness summary={summary} enabledAccounts={enabledAccounts} /> : undefined}
       action={
         <div className="flex items-center gap-1">
           {s && s.inboxCount > 0 && <ToSortChip count={s.inboxCount} />}
@@ -422,7 +491,9 @@ export function Home() {
       }
     >
       {s && s.overallMinor !== null && s.leftMinor !== null ? (
-        <Dashboard s={{ ...s, overallMinor: s.overallMinor, leftMinor: s.leftMinor }} byId={categories.data?.byId ?? new Map()} />
+        <Dashboard s={{ ...s, overallMinor: s.overallMinor, leftMinor: s.leftMinor }} byId={categories.data?.byId ?? new Map()} isCurrent={isCurrent} />
+      ) : s ? (
+        <Spending s={s} byId={categories.data?.byId ?? new Map()} />
       ) : summary.isError ? (
         <LoadError error={summary.error} at={summary.errorUpdatedAt} onRetry={() => void summary.refetch()} retrying={summary.isFetching} />
       ) : (

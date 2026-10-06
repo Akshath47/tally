@@ -55,5 +55,32 @@ export function budgetLines(s: { miscMinor: number | null; categories: SummaryLi
 export function findLine(s: { spentMinor: number; pendingSpentMinor: number } & Parameters<typeof budgetLines>[0], byId: Map<number, { name: string }>, category: LineCategory): Line | undefined {
   if (category === "posted") return { category, name: LINE_NAMES.posted, spentMinor: s.spentMinor - s.pendingSpentMinor, pendingSpentMinor: 0, allocatedMinor: null };
   if (category === "pending") return { category, name: LINE_NAMES.pending, spentMinor: s.pendingSpentMinor, pendingSpentMinor: s.pendingSpentMinor, allocatedMinor: null };
-  return budgetLines(s, byId).find((l) => l.category === category);
+  const line = budgetLines(s, byId).find((l) => l.category === category);
+  if (line || typeof category !== "number") return line;
+  // Off the budget lines (a month without a budget, or a tracked category): just what it spent.
+  const c = s.categories.find((x) => x.categoryId === category);
+  return c && { category, name: byId.get(category)?.name ?? "Category", spentMinor: c.spentMinor, pendingSpentMinor: c.pendingSpentMinor, allocatedMinor: null };
+}
+
+/** A past month's line before any budget: a category, or Uncategorised (`null`); no pots. */
+export type SpendLine = Omit<Line, "category"> & { category: number | null; allocatedMinor: null };
+
+/**
+ * A month with no budget to measure against: what each category spent, biggest first, with
+ * Uncategorised last. Tracked categories come back apart, since they're not in the month's spend.
+ * Categories that spent nothing (an allocation only, or refunds that net to zero) are left out.
+ */
+export function spendingLines(categories: SummaryLine[], byId: Map<number, { name: string }>): { lines: SpendLine[]; tracked: SpendLine[] } {
+  const toLine = (c: SummaryLine): SpendLine => ({
+    category: c.categoryId,
+    name: c.categoryId === null ? "Uncategorised" : (byId.get(c.categoryId)?.name ?? "Category"),
+    spentMinor: c.spentMinor,
+    pendingSpentMinor: c.pendingSpentMinor,
+    allocatedMinor: null,
+  });
+  const spent = categories.filter((c) => c.spentMinor !== 0);
+  const biggestFirst = (a: SpendLine, b: SpendLine) => b.spentMinor - a.spentMinor;
+  const named = spent.filter((c) => c.categoryId !== null && c.kind !== "tracked").map(toLine).sort(biggestFirst);
+  const uncategorised = spent.filter((c) => c.categoryId === null).map(toLine);
+  return { lines: [...named, ...uncategorised], tracked: spent.filter((c) => c.kind === "tracked").map(toLine).sort(biggestFirst) };
 }

@@ -166,12 +166,14 @@ function summary(month: string): MonthSummary {
       if (t.isPending) pending -= amount;
     }
   }
+  // The budget starts this month, so past months show spending only (Home's no-budget view).
+  const hasBudget = month >= monthOf(today);
   for (const c of categories) {
     const allocation = budget.allocations.get(c.id);
-    if (c.kind === "budgeted" && !c.archived && allocation) entry(c.id).allocatedMinor = allocation;
+    if (hasBudget && c.kind === "budgeted" && !c.archived && allocation) entry(c.id).allocatedMinor = allocation;
   }
 
-  const { overallMinor: overall, allocatedMinor, miscMinor } = getBudget();
+  const { overallMinor: overall, allocatedMinor, miscMinor } = hasBudget ? getBudget() : { overallMinor: null, allocatedMinor: 0, miscMinor: null };
   const left = overall === null ? null : overall - spent;
   const days = month === monthOf(today) ? daysRemaining(today) : null;
   return {
