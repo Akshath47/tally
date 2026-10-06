@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
-import { RESOLVED_CTE, isRulablePattern, normalizePattern } from "../budget/resolve";
+import { isRulablePattern, normalizePattern } from "../budget/resolve";
 import { MATCH_TYPES } from "../db/schema";
 import { idParam, isUniqueViolation, parseBody } from "./query";
 import { checkRefs } from "./refs";
@@ -23,13 +23,16 @@ const fields = {
 
 export const ruleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
-    // Only rows a rule decides (no category override) that still count. Driven from the matched
-    // merchants, so it never resolves the unmatched ones.
+    // Only rows a rule decides (no category override) that still count: each matched merchant's
+    // transactions. Not over RESOLVED_CTE, whose join to each rule's category it doesn't need.
     const { results } = await c.env.DB.prepare(
-      `WITH ${RESOLVED_CTE},
-         counts AS (SELECT r.match_rule_id AS rule_id, count(*) AS n FROM resolved r
-                    WHERE r.match_rule_id IS NOT NULL AND r.override_category_id IS NULL AND r.vanished_at IS NULL
-                    GROUP BY r.match_rule_id)
+      `WITH counts AS (
+         SELECT m.rule_id, count(*) AS n
+         FROM merchant_matches m
+         JOIN transactions t ON t.account_id = m.account_id AND t.merchant = m.merchant
+         LEFT JOIN transaction_overrides o ON o.transaction_id = t.id
+         WHERE m.rule_id IS NOT NULL AND o.category_id IS NULL AND t.vanished_at IS NULL
+         GROUP BY m.rule_id)
        SELECT r.id, r.match_type AS matchType, r.pattern, r.account_id AS accountId, r.category_id AS categoryId,
          COALESCE(counts.n, 0) AS transactionCount
        FROM merchant_rules r LEFT JOIN counts ON counts.rule_id = r.id

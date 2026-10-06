@@ -223,7 +223,7 @@ summary's statement count (3 → 4: the inbox count is its own statement), and
 | Newest 100 transactions | | 366 | 1,000 |
 | Inbox page / merchant groups, 1,330 rows to sort | 41,257 / 34,928 | 8,000 / 5,671 | 7 per row to sort |
 | Inbox page / merchant groups, 5 merchants to sort | 41,257 / 34,928 | 62 / 43 | 500 |
-| Rule counts | 61,371 | 8,918 | 10,000 |
+| Rule counts | 61,371 | 6,448 | 10,000 |
 | Steady-state cron import | about 12.4k | about 12.4k | 5 per stored transaction |
 
 Done:
