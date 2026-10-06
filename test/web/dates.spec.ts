@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, addMonths, daysInMonth, daysRemaining, formatDayMonth, formatShortDate, londonToday, monthName } from "../../src/web/dates";
+import { addDays, addMonths, daysInMonth, daysRemaining, formatDayMonth, formatShortDate, londonToday, monthName, yearSuffix } from "../../src/web/dates";
 
 describe("londonToday", () => {
   it.each([
@@ -52,18 +52,28 @@ describe("month arithmetic", () => {
 });
 
 describe("display dates", () => {
+  const today = "2026-10-06";
+
   it.each([
     ["2026-10-15", "Thu 15 Oct"],
     ["2026-10-01", "Thu 1 Oct"],
     ["2026-03-29", "Sun 29 Mar"],
-    ["2028-02-29", "Tue 29 Feb"],
-    ["2027-01-01", "Fri 1 Jan"],
+    ["2026-01-01", "Thu 1 Jan"],
+    ["2026-12-31", "Thu 31 Dec"],
+    // Outside this year the year is shown: history goes back about two years.
+    ["2025-12-31", "Wed 31 Dec 2025"],
+    ["2024-10-15", "Tue 15 Oct 2024"],
+    ["2028-02-29", "Tue 29 Feb 2028"],
+    ["2027-01-01", "Fri 1 Jan 2027"],
   ])("%s → %s", (date, expected) => {
-    expect(formatShortDate(date)).toBe(expected);
+    expect(formatShortDate(date, today)).toBe(expected);
   });
 
-  it("formats day and month, and month names", () => {
-    expect(formatDayMonth("2026-09-03")).toBe("3 Sep");
+  it("adds the year to dates and months outside today's year", () => {
+    expect(formatDayMonth("2026-09-03", today)).toBe("3 Sep");
+    expect(formatDayMonth("2025-09-03", today)).toBe("3 Sep 2025");
+    expect(yearSuffix("2026-03", "2026-10")).toBe("");
+    expect(yearSuffix("2024-11", "2026-10")).toBe(" 2024");
     expect(monthName("2026-10")).toBe("October");
   });
 });

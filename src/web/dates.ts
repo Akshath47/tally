@@ -38,8 +38,18 @@ function weekday(date: string): number {
   return (y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4][m - 1]! + d) % 7;
 }
 
-/** "15 Oct". */
-export const formatDayMonth = (date: string) => `${Number(date.slice(8, 10))} ${monthName(monthOf(date)).slice(0, 3)}`;
+/**
+ * " 2024" for a date or month outside `today`'s year, "" within it: history goes back about two
+ * years, so a bare "15 Oct" or "October" is ambiguous. `today` may be a date or a month.
+ */
+export function yearSuffix(dateOrMonth: string, today: string = londonToday()): string {
+  const year = dateOrMonth.slice(0, 4);
+  return today.startsWith(year) ? "" : ` ${year}`;
+}
 
-/** "Thu 15 Oct". */
-export const formatShortDate = (date: string) => `${WEEKDAYS[weekday(date)]} ${formatDayMonth(date)}`;
+/** "15 Oct", or "15 Oct 2024" outside this year. */
+export const formatDayMonth = (date: string, today?: string) =>
+  `${Number(date.slice(8, 10))} ${monthName(monthOf(date)).slice(0, 3)}${yearSuffix(date, today)}`;
+
+/** "Thu 15 Oct", or "Tue 15 Oct 2024" outside this year. */
+export const formatShortDate = (date: string, today?: string) => `${WEEKDAYS[weekday(date)]} ${formatDayMonth(date, today)}`;

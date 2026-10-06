@@ -3,7 +3,7 @@ import type { Transaction } from "../api";
 import { TabScreen } from "../components/Screen";
 import { TransactionList } from "../components/TransactionList";
 import { ChevronLeft, ChevronRight } from "../components/ui";
-import { addMonths, londonToday, monthName, monthOf } from "../dates";
+import { addMonths, londonToday, monthName, monthOf, yearSuffix } from "../dates";
 import { formatPounds } from "../money";
 import { useMonthTransactions, useSummary } from "../queries";
 
@@ -29,7 +29,7 @@ export function Transactions() {
           </button>
           <span className="min-w-9 text-center" aria-live="polite">
             {monthName(month).slice(0, 3)}
-            {month.slice(0, 4) !== current.slice(0, 4) && ` ${month.slice(0, 4)}`}
+            {yearSuffix(month, current)}
           </span>
           <button type="button" aria-label="Next month" className="grid size-11 place-items-center text-fg/80 disabled:opacity-30" disabled={month >= current} onClick={() => setMonth(addMonths(month, 1))}>
             <ChevronRight size={18} />
