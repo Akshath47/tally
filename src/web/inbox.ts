@@ -8,11 +8,14 @@ type Row = { id: number; merchant: string; amountMinor: number; countedAmountMin
 type Page<T> = { transactions: T[]; total: number };
 type Group = { pattern: string; count: number; totalMinor: number };
 
+/** A row's merchant group: the pattern of the exact rule that would file it. */
+export const patternOf = (t: { merchant: string }) => normalizePattern(t.merchant);
+
 /** The rows a group's exact rule files: every inbox row with its pattern, pending ones too. */
 export const inGroup =
   (pattern: string) =>
   (t: Row): boolean =>
-    normalizePattern(t.merchant) === pattern;
+    patternOf(t) === pattern;
 
 /**
  * The loaded pages without the rows `drop` picks. `removed` is how many inbox rows were filed in
@@ -34,7 +37,7 @@ export const withoutGroup = <G extends Group>(groups: G[], pattern: string): G[]
  * and goes once empty. Its latest date and text may be stale until the next refetch.
  */
 export function withoutRow<G extends Group>(groups: G[], row: Row): G[] {
-  const pattern = normalizePattern(row.merchant);
+  const pattern = patternOf(row);
   return groups.flatMap((g) =>
     g.pattern !== pattern ? [g] : g.count <= 1 ? [] : [{ ...g, count: g.count - 1, totalMinor: g.totalMinor - (row.countedAmountMinor ?? row.amountMinor) }],
   );

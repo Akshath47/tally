@@ -6,14 +6,13 @@ import { Sheet } from "../components/Sheet";
 import { CategoryPicker, TransactionSheet } from "../components/TransactionSheet";
 import { AccountBadge, Button, ChevronDown, ChevronRight, ErrorBanner, Lock, SectionLabel, Segmented, Skeleton, Toast, type ToastState } from "../components/ui";
 import { formatDayMonth, formatShortDate } from "../dates";
-import { inGroup, withoutGroup, withoutRow, withoutRows } from "../inbox";
+import { inGroup, patternOf, withoutGroup, withoutRow, withoutRows } from "../inbox";
 import { merchantLabel } from "../format";
 import { formatUnsigned } from "../money";
 import { overrideOf } from "../overrides";
 import { pickerOrder, useAccounts, useBudget, useCategories, useInbox, useInboxMerchants } from "../queries";
 import { Link } from "../router";
 import type { Back } from "../routes";
-import { normalizePattern } from "../../worker/budget/resolve";
 import { ageText } from "../pace";
 
 // The weekly tidy-up (docs/ui-design.md, To sort). By merchant, one tap makes an exact rule that
@@ -68,7 +67,7 @@ export function ToSort({ back }: { back: Back }) {
     const rows = inbox.data?.pages.flatMap((p) => p.transactions) ?? [];
     const byPattern = new Map<string, { posted: Transaction[]; pending: number }>();
     for (const r of rows) {
-      const pattern = normalizePattern(r.merchant);
+      const pattern = patternOf(r);
       const entry = byPattern.get(pattern) ?? { posted: [], pending: 0 };
       if (r.editable) entry.posted.push(r);
       else entry.pending += 1;
@@ -94,9 +93,13 @@ export function ToSort({ back }: { back: Back }) {
    * mutation has `meta: { refetch: "none" }`, so the backlog isn't read again on every tap; the
    * inbox is marked stale again here, so it refetches on the next visit.
    */
-  const settle = async (drop: (t: Transaction) => boolean, removed: number, groups: (g: InboxMerchant[]) => InboxMerchant[]) => {
-    // A refetch already in flight would overwrite this with the rows before the filing.
-    await queryClient.cancelQueries({ queryKey: ["inbox"] });
+  const settle = (drop: (t: Transaction) => boolean, removed: number, groups: (g: InboxMerchant[]) => InboxMerchant[]) => {
+    // A refetch in flight (after an Undo, say) may or may not include this filing, and
+    // cancelling it would roll back what it restores, so refetch again instead.
+    if (queryClient.isFetching({ queryKey: ["inbox"] }) > 0) {
+      void queryClient.invalidateQueries({ queryKey: ["inbox"] });
+      return;
+    }
     queryClient.setQueryData<InboxPages>(["inbox", "list"], (d) => d && withoutRows(d, drop, removed));
     queryClient.setQueryData<{ merchants: InboxMerchant[] }>(["inbox", "merchants"], (d) => d && { merchants: groups(d.merchants) });
     void queryClient.invalidateQueries({ queryKey: ["inbox"], refetchType: "none" });
@@ -112,7 +115,7 @@ export function ToSort({ back }: { back: Back }) {
     onSuccess: ({ rule }, { group, category, count }) => {
       setFailed(null);
       // The any-account exact rule files the whole group, pending rows included.
-      void settle(inGroup(group.pattern), group.count, (gs) => withoutGroup(gs, group.pattern));
+      settle(inGroup(group.pattern), group.count, (gs) => withoutGroup(gs, group.pattern));
       setToast({
         text: `Rule added: ${group.merchant} → ${category.name}. ${count === 1 ? "Filed." : `All ${count} filed.`}`,
         actions: [{ label: "Undo", run: () => followUp.mutate(() => deleteRule(rule.id)) }],
@@ -126,7 +129,7 @@ export function ToSort({ back }: { back: Back }) {
     meta: { refetch: "none" },
     onSuccess: (_, { row, category }) => {
       setFailed(null);
-      void settle((t) => t.id === row.id, 1, (gs) => withoutRow(gs, row));
+      settle((t) => t.id === row.id, 1, (gs) => withoutRow(gs, row));
       const undo = { label: "Undo", run: () => followUp.mutate(() => putOverride(row.id, overrideOf(row))) };
       const always = {
         label: "Always",
