@@ -50,6 +50,13 @@
       "when": 1791302593752,
       "tag": "0006_merchant_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791302623611,
+      "tag": "0007_merchant_match_triggers",
+      "breakpoints": true
     }
   ]
 }
