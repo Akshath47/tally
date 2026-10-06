@@ -2,13 +2,14 @@ import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
-import { AccountBadge, ArrowUp, Button, Check, ChevronLeft, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
-import { addMonths, londonToday, monthName, monthOf, yearSuffix } from "../dates";
+import { MonthStepper } from "../components/MonthStepper";
+import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
+import { addMonths, londonToday, monthName, monthOf, monthTitle } from "../dates";
 import { formatTimestamp } from "../format";
 import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
 import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
-import { Link } from "../router";
+import { Link, navigate } from "../router";
 import { budgetLines, spendingLines, type Line, type SpendLine } from "../lines";
 import { homeHref, lineHref } from "../routes";
 
@@ -133,13 +134,41 @@ function Pills({ s }: { s: MonthSummary }) {
 }
 
 /** Taps through to the transactions that counted towards the line. */
-function CategoryRow({ line, month }: { line: Line; month: string }) {
+function LineRow({ href, children }: { href: string; children: ReactNode }) {
   return (
     <li className="border-b border-divider last:border-b-0">
-      <Link href={lineHref(month, line.category)} className="-mx-4 flex flex-col gap-2 px-4 py-[11px] hover:bg-raised/50">
-        {line.allocatedMinor === null ? <PendingLine line={line} /> : <PotLine line={line} allocatedMinor={line.allocatedMinor} />}
+      <Link href={href} className="-mx-4 flex flex-col gap-2 px-4 py-[11px] hover:bg-raised/50">
+        {children}
       </Link>
     </li>
+  );
+}
+
+function LinesCard({ id, title, note, children }: { id: string; title: string; note?: string; children: ReactNode }) {
+  return (
+    <section className="mx-5 mt-[22px]" aria-labelledby={id}>
+      <h2 id={id} className="text-base font-medium">
+        {title} {note && <span className="text-[12.5px] font-normal text-muted">{note}</span>}
+      </h2>
+      <ul className="mt-2 overflow-hidden rounded-card border border-divider bg-surface px-4 py-0.5">{children}</ul>
+    </section>
+  );
+}
+
+function SpentHeadline({ month, spentMinor }: { month: string; spentMinor: number }) {
+  return (
+    <>
+      <div className="text-xs text-muted">Spent in {monthName(month)}</div>
+      <div className="text-[46px] leading-[1.1] font-extralight tracking-[-0.035em]">{formatPounds(spentMinor)}</div>
+    </>
+  );
+}
+
+function CategoryRow({ line, month }: { line: Line; month: string }) {
+  return (
+    <LineRow href={lineHref(month, line.category)}>
+      {line.allocatedMinor === null ? <PendingLine line={line} /> : <PotLine line={line} allocatedMinor={line.allocatedMinor} />}
+    </LineRow>
   );
 }
 
@@ -223,8 +252,7 @@ function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: n
         <div className="relative size-[200px]">
           <Ring postedMinor={s.spentMinor - s.pendingSpentMinor} pendingMinor={s.pendingSpentMinor} overallMinor={s.overallMinor} />
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <div className="text-xs text-muted">Spent in {monthName(s.month)}</div>
-            <div className="text-[46px] leading-[1.1] font-extralight tracking-[-0.035em]">{formatPounds(s.spentMinor)}</div>
+            <SpentHeadline month={s.month} spentMinor={s.spentMinor} />
             <div className={`mt-0.5 text-sm ${over ? "text-over-fg" : ""}`}>
               {formatPounds(Math.abs(s.leftMinor))} {left}
             </div>
@@ -235,16 +263,11 @@ function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: n
       </div>
       <Pills s={s} />
       {lines.length > 0 && (
-        <section className="mx-5 mt-[22px]" aria-labelledby="home-categories">
-          <h2 id="home-categories" className="text-base font-medium">
-            Categories
-          </h2>
-          <ul className="mt-2 overflow-hidden rounded-card border border-divider bg-surface px-4 py-0.5">
-            {lines.map((l) => (
-              <CategoryRow key={l.category} line={l} month={s.month} />
-            ))}
-          </ul>
-        </section>
+        <LinesCard id="home-categories" title="Categories">
+          {lines.map((l) => (
+            <CategoryRow key={l.category} line={l} month={s.month} />
+          ))}
+        </LinesCard>
       )}
     </>
   );
@@ -253,64 +276,35 @@ function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: n
 /** A spending row on a month without a budget. Uncategorised spend opens To sort, where it's filed. */
 function SpendRow({ line, month }: { line: SpendLine; month: string }) {
   return (
-    <li className="border-b border-divider last:border-b-0">
-      <Link href={line.category === null ? "/to-sort" : lineHref(month, line.category)} className="-mx-4 flex flex-col px-4 py-[11px] hover:bg-raised/50">
-        <LineHeading line={line} amount={<span className="font-medium">{formatPounds(line.spentMinor)}</span>} />
-      </Link>
-    </li>
-  );
-}
-
-function SpendSection({ id, title, note, lines, month }: { id: string; title: string; note?: string; lines: SpendLine[]; month: string }) {
-  return (
-    <section className="mx-5 mt-[22px]" aria-labelledby={id}>
-      <h2 id={id} className="text-base font-medium">
-        {title} {note && <span className="text-[12.5px] font-normal text-muted">{note}</span>}
-      </h2>
-      <ul className="mt-2 overflow-hidden rounded-card border border-divider bg-surface px-4 py-0.5">
-        {lines.map((l) => (
-          <SpendRow key={l.category ?? "uncategorised"} line={l} month={month} />
-        ))}
-      </ul>
-    </section>
+    <LineRow href={line.category === null ? "/to-sort" : lineHref(month, line.category)}>
+      <LineHeading line={line} amount={<span className="font-medium">{formatPounds(line.spentMinor)}</span>} />
+    </LineRow>
   );
 }
 
 /** A past month before any budget: what was spent, and where, with nothing to measure it against. */
 function Spending({ s, byId }: { s: MonthSummary; byId: Map<number, Category> }) {
   const { lines, tracked } = spendingLines(s.categories, byId);
+  const rows = (ls: SpendLine[]) => ls.map((l) => <SpendRow key={l.category ?? "uncategorised"} line={l} month={s.month} />);
+  if (lines.length === 0 && tracked.length === 0) return <p className="mx-5 mt-8 text-center text-muted">No spending in {monthName(s.month)}.</p>;
   return (
     <>
       <div className="flex flex-col items-center px-5 pt-6 text-center">
-        <div className="text-xs text-muted">Spent in {monthName(s.month)}</div>
-        <div className="text-[46px] leading-[1.1] font-extralight tracking-[-0.035em]">{formatPounds(s.spentMinor)}</div>
+        <SpentHeadline month={s.month} spentMinor={s.spentMinor} />
         <div className="mt-0.5 text-[11.5px] text-muted">No budget set for this month</div>
       </div>
-      {(lines.length > 0 || tracked.length > 0) && <Pills s={s} />}
-      {lines.length > 0 && <SpendSection id="home-categories" title="Categories" lines={lines} month={s.month} />}
-      {tracked.length > 0 && <SpendSection id="home-tracked" title="Tracked" note="not in the total" lines={tracked} month={s.month} />}
-      {lines.length === 0 && tracked.length === 0 && <p className="mx-5 mt-8 text-center text-muted">No spending this month.</p>}
+      <Pills s={s} />
+      {lines.length > 0 && (
+        <LinesCard id="home-categories" title="Categories">
+          {rows(lines)}
+        </LinesCard>
+      )}
+      {tracked.length > 0 && (
+        <LinesCard id="home-tracked" title="Tracked" note="not in the total">
+          {rows(tracked)}
+        </LinesCard>
+      )}
     </>
-  );
-}
-
-/** ‹ › beside the title. Back stops at a month with nothing in it, where history ends; forward stops at today's month. */
-function MonthNav({ month, current, isEmpty }: { month: string; current: string; isEmpty: boolean }) {
-  const step = (label: string, to: string, disabled: boolean, icon: ReactNode) =>
-    disabled ? (
-      <span aria-hidden="true" className="grid size-11 place-items-center text-fg/80 opacity-30">
-        {icon}
-      </span>
-    ) : (
-      <Link href={homeHref(to)} aria-label={label} className="grid size-11 place-items-center text-fg/80 hover:text-fg">
-        {icon}
-      </Link>
-    );
-  return (
-    <div className="-my-1 ml-1 flex items-center" role="group" aria-label="Month">
-      {step("Previous month", addMonths(month, -1), isEmpty, <ChevronLeft size={18} />)}
-      {step("Next month", addMonths(month, 1), month >= current, <ChevronRight size={18} />)}
-    </div>
   );
 }
 
@@ -455,10 +449,8 @@ function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
   );
 }
 
-/** `month` is a past month from the route; without one, Home shows today's month. */
-export function Home({ month: routeMonth }: { month?: string }) {
+export function Home({ month }: { month: string }) {
   const current = monthOf(londonToday());
-  const month = routeMonth ?? current;
   const isCurrent = month === current;
   const summary = useSummary(month);
   const categories = useCategories();
@@ -480,8 +472,9 @@ export function Home({ month: routeMonth }: { month?: string }) {
 
   return (
     <TabScreen
-      title={`${monthName(month)}${yearSuffix(month, current)}`}
-      titleNav={<MonthNav month={month} current={current} isEmpty={s?.categories.length === 0} />}
+      title={monthTitle(month, current)}
+      // Back stops at a month with nothing in it, where the history ends.
+      titleNav={<MonthStepper className="-my-1 ml-1" month={month} current={current} prevDisabled={s?.categories.length === 0} onStep={(m) => navigate(homeHref(m))} />}
       titleExtra={isCurrent ? <Freshness summary={summary} enabledAccounts={enabledAccounts} /> : undefined}
       action={
         <div className="flex items-center gap-1">

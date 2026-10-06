@@ -47,6 +47,9 @@ export function yearSuffix(dateOrMonth: string, today: string = londonToday()): 
   return today.startsWith(year) ? "" : ` ${year}`;
 }
 
+/** "October", or "October 2024" outside this year. */
+export const monthTitle = (month: string, today?: string) => `${monthName(month)}${yearSuffix(month, today)}`;
+
 /** "15 Oct", or "15 Oct 2024" outside this year. */
 export const formatDayMonth = (date: string, today?: string) =>
   `${Number(date.slice(8, 10))} ${monthName(monthOf(date)).slice(0, 3)}${yearSuffix(date, today)}`;

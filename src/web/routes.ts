@@ -1,4 +1,4 @@
-import { londonToday, monthName, monthOf, yearSuffix } from "./dates";
+import { londonToday, monthOf, monthTitle } from "./dates";
 import { NAMED_LINES, isNamedLine } from "../worker/budget/lines";
 import type { LineCategory } from "./lines";
 
@@ -7,8 +7,8 @@ import type { LineCategory } from "./lines";
 export type Tab = "home" | "transactions" | "budget";
 
 export type Route =
-  | { screen: Tab | "toSort" | "categories" | "rules" | "accounts" | "notFound" }
-  /** Home for a month other than today's; plain `home` is the current month. */
+  | { screen: Exclude<Tab, "home"> | "toSort" | "categories" | "rules" | "accounts" | "notFound" }
+  /** Home for a month; `/` is the current one. */
   | { screen: "home"; month: string }
   | { screen: "newAccount"; accountId: number }
   | { screen: "line"; month: string; category: LineCategory };
@@ -21,8 +21,7 @@ export const TABS: { tab: Tab; href: string; label: string }[] = [
 
 export type Back = { href: string; label: string };
 
-const STATIC: Record<string, Exclude<Route["screen"], "newAccount" | "line">> = {
-  "/": "home",
+const STATIC: Record<string, Exclude<Route["screen"], "home" | "newAccount" | "line">> = {
   "/transactions": "transactions",
   "/budget": "budget",
   "/to-sort": "toSort",
@@ -38,6 +37,7 @@ const LINE_PATH = new RegExp(`^/spending/(${MONTH})/(${NAMED_LINES.join("|")}|[1
 /** `today` is the London date, for refusing a future month (the API would only 400). */
 export function parseRoute(pathname: string, today = londonToday()): Route {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (path === "/") return { screen: "home", month: monthOf(today) };
   const screen = STATIC[path];
   if (screen) return { screen };
   const review = /^\/accounts\/([1-9]\d{0,8})\/review$/.exec(path);
@@ -65,7 +65,7 @@ export function backOf(route: Route, today = londonToday()): Back {
     case "line": {
       // Back to the month the line is in; a past month's back link names it.
       const href = homeHref(route.month, today);
-      return { href, label: href === "/" ? "Home" : `${monthName(route.month)}${yearSuffix(route.month, today)}` };
+      return { href, label: href === "/" ? "Home" : monthTitle(route.month, today) };
     }
     case "categories":
     case "rules":

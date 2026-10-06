@@ -3,7 +3,6 @@ import { backOf, homeHref, lineHref, newAccountHref, parseRoute, tabOf } from ".
 
 describe("parseRoute", () => {
   it.each([
-    ["/", "home"],
     ["/transactions", "transactions"],
     ["/transactions/", "transactions"],
     ["/budget", "budget"],
@@ -39,7 +38,7 @@ describe("parseRoute", () => {
     expect(parseRoute("/months/2026-10", "2026-10-15")).toEqual({ screen: "home", month: "2026-10" });
     expect(parseRoute("/months/2026-11", "2026-10-31").screen).toBe("notFound");
     expect(parseRoute("/months/2026-13", "2026-10-15").screen).toBe("notFound");
-    expect(parseRoute("/", "2026-10-15")).toEqual({ screen: "home" });
+    expect(parseRoute("/", "2026-10-15")).toEqual({ screen: "home", month: "2026-10" });
   });
 
   it("puts the current month's Home at /", () => {
@@ -54,7 +53,6 @@ describe("parseRoute", () => {
 
 describe("navigation shape", () => {
   it("shows the tab bar only on tab screens", () => {
-    expect(tabOf({ screen: "home" })).toBe("home");
     expect(tabOf({ screen: "home", month: "2025-09" })).toBe("home");
     expect(tabOf({ screen: "budget" })).toBe("budget");
     expect(tabOf({ screen: "toSort" })).toBeNull();

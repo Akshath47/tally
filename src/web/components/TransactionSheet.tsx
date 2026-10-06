@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiErrorText, deleteOverride, putOverride, type Account, type Category, type Transaction } from "../api";
-import { formatShortDate, monthName, monthOf, yearSuffix } from "../dates";
+import { formatShortDate, monthOf, monthTitle } from "../dates";
 import { merchantLabel } from "../format";
 import { formatUnsigned, minorToInput } from "../money";
 import { buildOverride, countsAs, draftOf, isEdited, type Draft } from "../overrides";
@@ -24,8 +24,7 @@ function ReadOnlyRow({ label, value }: { label: string; value: string }) {
 
 function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: Account | undefined; category: Category | undefined; onClose: () => void }) {
   const amount = formatUnsigned(t.countedAmountMinor ?? t.amountMinor, t.currency);
-  const countedMonth = monthOf(t.countedDate ?? t.txnDate);
-  const month = `${monthName(countedMonth)}${yearSuffix(countedMonth)}`;
+  const month = monthTitle(monthOf(t.countedDate ?? t.txnDate));
   const counts = countsAs(t, category?.kind);
   const countsText = counts === "budget" ? `Yes, as ${category?.name ?? "Misc for now"}` : t.vanishedAt ? "No, it was replaced" : COUNTS_TEXT[counts];
   return (
@@ -250,7 +249,7 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
               <input id="counted-date" type="date" value={draft.date} onChange={(e) => set({ date: e.target.value })} className={`${inputClass} text-right [color-scheme:dark]`} />
               <span className="text-right text-[11.5px] text-muted">
                 Bank: {formatShortDate(t.txnDate)}
-                {newMonth && ` · now counts in ${monthName(monthOf(draft.date))}${yearSuffix(draft.date)}`}
+                {newMonth && ` · now counts in ${monthTitle(monthOf(draft.date))}`}
               </span>
             </div>
           </Field>

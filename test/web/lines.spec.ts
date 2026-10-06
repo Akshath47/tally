@@ -67,10 +67,18 @@ describe("spendingLines", () => {
 });
 
 describe("findLine", () => {
-  it("gives a category off the budget lines its plain spend, for a month without a budget or a tracked category", () => {
-    const s = { spentMinor: 3_000, pendingSpentMinor: 0, miscMinor: null, categories: [summaryLine(1, "budgeted", 3_000, 0), summaryLine(9, "tracked", 7_000, 0)] };
+  const categories = [summaryLine(1, "budgeted", 3_000, 0), summaryLine(9, "tracked", 7_000, 0)];
+
+  it("finds a category's plain spend in a month without a budget, tracked ones included", () => {
+    const s = { spentMinor: 3_000, pendingSpentMinor: 0, overallMinor: null, miscMinor: null, categories };
     expect(findLine(s, names, 1)).toEqual({ category: 1, name: "Groceries", spentMinor: 3_000, pendingSpentMinor: 0, allocatedMinor: null });
     expect(findLine(s, names, 9)).toEqual({ category: 9, name: "Shopping", spentMinor: 7_000, pendingSpentMinor: 0, allocatedMinor: null });
     expect(findLine(s, names, 2)).toBeUndefined();
+  });
+
+  it("finds only Home's pots in a month with a budget", () => {
+    const s = { spentMinor: 3_000, pendingSpentMinor: 0, overallMinor: 10_000, miscMinor: 10_000, categories };
+    expect(findLine(s, names, "misc")).toMatchObject({ spentMinor: 3_000, allocatedMinor: 10_000 });
+    expect(findLine(s, names, 9)).toBeUndefined();
   });
 });
