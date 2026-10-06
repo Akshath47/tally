@@ -153,6 +153,7 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     const inbox = (await record("GET /api/inbox?limit=100", "GET", "/api/inbox?limit=100")) as { transactions: { id: number }[] };
     await record("GET /api/inbox/merchants", "GET", "/api/inbox/merchants");
     await record("GET /api/transactions (one month, 100)", "GET", "/api/transactions?limit=100&from=2026-09-01&to=2026-09-30");
+    await record("GET /api/months/:month/transactions (a line)", "GET", "/api/months/2026-09/transactions?category=1");
     const id = inbox.transactions[0]!.id;
     await record("PUT /api/transactions/:id/override", "PUT", `/api/transactions/${id}/override`, { categoryId: 4 });
     await record("POST /api/rules", "POST", "/api/rules", { matchType: "exact", pattern: "synthetic merchant 300", categoryId: 2 });

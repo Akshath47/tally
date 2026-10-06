@@ -34,6 +34,7 @@ Synthetic ledger: 4,000 transactions, 909 distinct merchants, 150 exact and 10 c
 | `GET /api/inbox?limit=100` | 41,257 |
 | `GET /api/inbox/merchants` | 34,928 |
 | `GET /api/transactions` (one month, 100 rows) | 19,565 |
+| `GET /api/months/:month/transactions` (one Home line, added in #39) | 23,305 |
 | `PUT /api/transactions/:id/override` | 14,684 |
 | `POST /api/rules` | 3 |
 
