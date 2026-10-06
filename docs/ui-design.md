@@ -92,8 +92,8 @@ The five-second glance.
 - Pace line under the ring: "£239/week for the remaining 2.3 weeks".
 - Two pills: "Posted £1,166" and "Pending £88 · 3 charges" (taps to Transactions).
   - **Pending is a lower bound.** Lunch Flow doesn't send every pending charge, so a purchase can be missing until it posts ([lunchflow-findings.md](lunchflow-findings.md#pending)). The pending pill, the hatched bars and the pending sheet shouldn't present pending as complete, for example by saying "at least" or adding a short note that recent charges can appear late.
-- Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated". Each row taps through to its transactions (below).
-- **Category transactions** (pushed, back to Home, `/spending/:month/:category`): the rows that counted towards one line in that month, grouped by counted date (the bank date unless edited). The header repeats the line's "£spent of £allocated". Misc lists uncategorised spending plus budgeted categories with no allocation. A row opens the transaction editor.
+- Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated" and takes posted uncategorised spend. Uncategorised **pending** charges get their own last row, "Uncategorised pending", showing "at least £51" with a fully hatched bar and no allocation: they can't be filed until they post, so counting them in Misc made it look overspent. Each row taps through to its transactions (below).
+- **Category transactions** (pushed, back to Home, `/spending/:month/:category`): the rows that counted towards one line in that month, grouped by counted date (the bank date unless edited). The header repeats the line's "£spent of £allocated", or "at least £spent" for Uncategorised pending. Misc lists posted uncategorised spending plus budgeted categories with no allocation; Uncategorised pending lists the pending charges no rule categorises yet. The Pending pill above still counts every pending charge, categorised or not. A row opens the transaction editor.
 
 States:
 - **Over budget overall:** ring fully brick, "£112 over this month" in `over-text`, pace line replaced with "Budget used up with 5 days to go…".
@@ -213,7 +213,7 @@ Most of the design already matches [phase-2-spec.md](phase-2-spec.md):
 
 - Budget shape, category kinds, Misc and the allocation errors: `GET/PUT /api/budget…`, with `over_allocated` (`maxAllocatableMinor`) and `below_allocated` (`minOverallMinor`) driving the two error messages.
 - Home: `GET /api/months/:month/summary` (`spentMinor`, `pendingSpentMinor`, `leftMinor`, `perWeekMinor`, `categories[]`, `inboxCount` for the chip, `lastDataChangeAt` for freshness).
-- Category transactions: `GET /api/months/:month/transactions?category=<id>|misc`.
+- Category transactions: `GET /api/months/:month/transactions?category=<id>|misc|pending`.
 - To sort: `GET /api/inbox` and `GET /api/inbox/merchants`.
 - "Use for all <merchant>": `applyToMerchant: true` on `PUT /api/transactions/:id/override`.
 - Rules re-sorting past transactions without an override: categories resolved at read time.

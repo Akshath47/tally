@@ -155,7 +155,7 @@ The new routes sit under `/api` behind the same Access JWT middleware, CSRF, Ori
 | PUT | `/api/budget/overall` | `{amountMinor}`. Effective from the current month. |
 | PUT | `/api/budget/categories/:categoryId` | `{amountMinor}`. Effective from the current month. |
 | GET | `/api/months/:month/summary` | Everything the home screen needs (below). |
-| GET | `/api/months/:month/transactions?category=<id>\|misc` | The rows that count towards one summary line in the month; Misc is uncategorised spend plus unallocated budgeted categories. |
+| GET | `/api/months/:month/transactions?category=<id>\|misc\|pending` | The rows that count towards one Home line in the month. Misc is posted uncategorised spend plus unallocated budgeted categories; Pending is uncategorised pending charges. |
 
 **Summary response:**
 
