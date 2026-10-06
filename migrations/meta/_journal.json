@@ -43,6 +43,13 @@
       "when": 1791156662158,
       "tag": "0005_seed_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791302593752,
+      "tag": "0006_merchant_matches",
+      "breakpoints": true
     }
   ]
 }

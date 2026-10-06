@@ -145,6 +145,9 @@ export const transactions = sqliteTable(
     index("transactions_account_date_idx").on(t.accountId, t.txnDate),
     index("transactions_fingerprint_idx").on(t.fingerprint),
     index("transactions_superseded_by_idx").on(t.supersededBy),
+    // From a merchant's match to its transactions (the inbox), and a month or page by date.
+    index("transactions_account_merchant_idx").on(t.accountId, t.merchant),
+    index("transactions_txn_date_idx").on(t.txnDate),
     check("transactions_amount_minor_ck", isInteger(t.amountMinor)),
     check("transactions_txn_date_ck", isDate(t.txnDate)),
     check("transactions_is_pending_ck", isBool(t.isPending)),
@@ -253,6 +256,8 @@ export const transactionOverrides = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
+    // Rows a counted date moves into a month (src/worker/budget/resolve.ts, inMonth).
+    index("transaction_overrides_counted_date_idx").on(t.countedDate).where(sql`${t.countedDate} IS NOT NULL`),
     check("transaction_overrides_excluded_ck", isBool(t.excluded)),
     check(
       "transaction_overrides_counted_amount_minor_ck",
@@ -264,6 +269,32 @@ export const transactionOverrides = sqliteTable(
       "transaction_overrides_note_ck",
       sql`${t.note} IS NULL OR (typeof(${t.note}) = 'text' AND length(${t.note}) <= ${sql.raw(String(NOTE_MAX_LENGTH))})`,
     ),
+  ],
+);
+
+// Derived: which rule each (account, merchant) matches, so reads needn't match every merchant
+// against every rule each time (docs/stored-matches-plan.md). Every transaction has a row. Only
+// the triggers in migrations/0007_merchant_match_triggers.sql and REBUILD_MATCHES_SQL write
+// here (src/worker/budget/matches.ts); rows are never deleted.
+export const merchantMatches = sqliteTable(
+  "merchant_matches",
+  {
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    // Exactly as transactions.merchant.
+    merchant: text("merchant").notNull(),
+    // What exact rules compare against, so an exact rule's trigger can seek its merchants.
+    merchantKey: text("merchant_key")
+      .notNull()
+      .generatedAlwaysAs(sql`lower(trim("merchant"))`, { mode: "virtual" }),
+    // Null = no rule matches.
+    ruleId: integer("rule_id").references(() => merchantRules.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.accountId, t.merchant] }),
+    index("merchant_matches_rule_idx").on(t.ruleId),
+    index("merchant_matches_key_idx").on(t.merchantKey),
   ],
 );
 
