@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiErrorText, createRule, deleteRule, putOverride, type Category, type InboxMerchant, type Transaction } from "../api";
+import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { apiErrorText, createRule, deleteRule, getInbox, putOverride, type Category, type InboxMerchant, type Transaction } from "../api";
 import { LoadError, PushedScreen } from "../components/Screen";
 import { Sheet } from "../components/Sheet";
 import { CategoryPicker, TransactionSheet } from "../components/TransactionSheet";
 import { AccountBadge, Button, ChevronDown, ChevronRight, ErrorBanner, Lock, SectionLabel, Segmented, Skeleton, Toast, type ToastState } from "../components/ui";
 import { formatDayMonth, formatShortDate } from "../dates";
+import { inGroup, withoutGroup, withoutRow, withoutRows } from "../inbox";
 import { merchantLabel } from "../format";
 import { formatUnsigned } from "../money";
 import { overrideOf } from "../overrides";
@@ -19,6 +20,8 @@ import { ageText } from "../pace";
 // files the whole group and future ones; by date, one tap files just that transaction.
 
 const CHIPS = 3;
+
+type InboxPages = InfiniteData<Awaited<ReturnType<typeof getInbox>>, string | null>;
 
 /** What the picker is choosing a category for. */
 type Target = { kind: "group"; group: InboxMerchant; count: number } | { kind: "row"; row: Transaction };
@@ -85,14 +88,31 @@ export function ToSort({ back }: { back: Back }) {
     .sort((a, b) => (allocation.get(b.id) ?? 0) - (allocation.get(a.id) ?? 0))
     .slice(0, CHIPS);
 
+  const queryClient = useQueryClient();
+  /**
+   * A filing's own result, applied to the loaded inbox and groups (src/web/inbox.ts). Its
+   * mutation has `meta: { refetch: "none" }`, so the backlog isn't read again on every tap; the
+   * inbox is marked stale again here, so it refetches on the next visit.
+   */
+  const settle = async (drop: (t: Transaction) => boolean, removed: number, groups: (g: InboxMerchant[]) => InboxMerchant[]) => {
+    // A refetch already in flight would overwrite this with the rows before the filing.
+    await queryClient.cancelQueries({ queryKey: ["inbox"] });
+    queryClient.setQueryData<InboxPages>(["inbox", "list"], (d) => d && withoutRows(d, drop, removed));
+    queryClient.setQueryData<{ merchants: InboxMerchant[] }>(["inbox", "merchants"], (d) => d && { merchants: groups(d.merchants) });
+    void queryClient.invalidateQueries({ queryKey: ["inbox"], refetchType: "none" });
+  };
+
   const fail = (e: unknown) => setFailed(apiErrorText(e, {}, "Couldn't file that. Check your connection and try again."));
   // Toast actions (Undo, Always) go through a mutation too, so they refresh the screens like any write.
   const followUp = useMutation({ mutationFn: (run: () => Promise<unknown>) => run(), onSuccess: () => setFailed(null), onError: fail });
 
   const fileGroup = useMutation({
     mutationFn: ({ group, category }: { group: InboxMerchant; category: Category; count: number }) => createRule({ matchType: "exact", pattern: group.pattern, categoryId: category.id }),
+    meta: { refetch: "none" },
     onSuccess: ({ rule }, { group, category, count }) => {
       setFailed(null);
+      // The any-account exact rule files the whole group, pending rows included.
+      void settle(inGroup(group.pattern), group.count, (gs) => withoutGroup(gs, group.pattern));
       setToast({
         text: `Rule added: ${group.merchant} → ${category.name}. ${count === 1 ? "Filed." : `All ${count} filed.`}`,
         actions: [{ label: "Undo", run: () => followUp.mutate(() => deleteRule(rule.id)) }],
@@ -103,8 +123,10 @@ export function ToSort({ back }: { back: Back }) {
 
   const fileRow = useMutation({
     mutationFn: ({ row, category }: { row: Transaction; category: Category }) => putOverride(row.id, { ...overrideOf(row), categoryId: category.id }),
+    meta: { refetch: "none" },
     onSuccess: (_, { row, category }) => {
       setFailed(null);
+      void settle((t) => t.id === row.id, 1, (gs) => withoutRow(gs, row));
       const undo = { label: "Undo", run: () => followUp.mutate(() => putOverride(row.id, overrideOf(row))) };
       const always = {
         label: "Always",
