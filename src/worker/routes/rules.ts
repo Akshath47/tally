@@ -92,6 +92,7 @@ export const ruleRoutes = new Hono<AppEnv>()
   .delete("/:id", async (c) => {
     const id = idParam(c);
     if (id === null) return c.json({ error: "bad_request" }, 400);
-    const res = await c.env.DB.prepare("DELETE FROM merchant_rules WHERE id = ?1").bind(id).run();
-    return res.meta.changes === 1 ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
+    // RETURNING, not meta.changes: D1 counts the merchant matches the delete trigger re-matches too.
+    const deleted = await c.env.DB.prepare("DELETE FROM merchant_rules WHERE id = ?1 RETURNING id").bind(id).first();
+    return deleted ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
   });
