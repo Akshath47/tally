@@ -16,7 +16,7 @@ export const LINE_NAMES: Record<NamedLine, string> = { misc: "Misc", "uncategori
  * Pending figures are lower bounds: Lunch Flow doesn't send every pending charge. A plain amount
  * with any pending in it says so; a pot's bar hatches its pending part instead.
  */
-export const isLowerBound = (l: { pendingSpentMinor: number; allocatedMinor: number | null }) => l.allocatedMinor === null && l.pendingSpentMinor > 0;
+export const isLowerBound = (l: Pick<Line, "pendingSpentMinor" | "allocatedMinor">) => l.allocatedMinor === null && l.pendingSpentMinor > 0;
 
 /** `allocatedMinor` is null for a line that isn't a pot of its own. */
 export type Line = { category: LineCategory; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number | null };
