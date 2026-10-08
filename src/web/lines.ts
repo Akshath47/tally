@@ -60,9 +60,11 @@ export function findLine(
   if (category === "posted") return { category, name: LINE_NAMES.posted, spentMinor: s.spentMinor - s.pendingSpentMinor, pendingSpentMinor: 0, allocatedMinor: null };
   if (category === "pending") return { category, name: LINE_NAMES.pending, spentMinor: s.pendingSpentMinor, pendingSpentMinor: s.pendingSpentMinor, allocatedMinor: null };
   // The same lines Home shows for the month: spending only before a budget, the pots after.
-  if (s.overallMinor !== null) return budgetLines(s, byId).find((l) => l.category === category);
+  // Tracked categories show their plain spend either way.
   const { lines, tracked } = spendingLines(s.categories, byId);
-  return [...lines, ...tracked].find((l): l is SpendLine & { category: number } => l.category === category);
+  const isIt = (l: SpendLine): l is SpendLine & { category: number } => l.category === category;
+  if (s.overallMinor !== null) return budgetLines(s, byId).find((l) => l.category === category) ?? tracked.find(isIt);
+  return [...lines, ...tracked].find(isIt);
 }
 
 /** A past month's line before any budget: a category, or Uncategorised (`null`); no pots. */

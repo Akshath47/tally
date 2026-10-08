@@ -246,6 +246,7 @@ function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: n
   const over = s.leftMinor < 0;
   const left = isCurrent ? (over ? "over this month" : "left this month") : over ? "over budget" : "under budget";
   const lines = budgetLines(s, byId);
+  const { tracked } = spendingLines(s.categories, byId);
   return (
     <>
       <div className="flex flex-col items-center px-5 pt-1.5">
@@ -269,6 +270,7 @@ function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: n
           ))}
         </LinesCard>
       )}
+      <TrackedCard lines={tracked} month={s.month} />
     </>
   );
 }
@@ -282,10 +284,21 @@ function SpendRow({ line, month }: { line: SpendLine; month: string }) {
   );
 }
 
+/** Tracked categories' spend: shown, but not in the month's total. */
+function TrackedCard({ lines, month }: { lines: SpendLine[]; month: string }) {
+  if (lines.length === 0) return null;
+  return (
+    <LinesCard id="home-tracked" title="Tracked" note="not in the total">
+      {lines.map((l) => (
+        <SpendRow key={l.category} line={l} month={month} />
+      ))}
+    </LinesCard>
+  );
+}
+
 /** A past month before any budget: what was spent, and where, with nothing to measure it against. */
 function Spending({ s, byId }: { s: MonthSummary; byId: Map<number, Category> }) {
   const { lines, tracked } = spendingLines(s.categories, byId);
-  const rows = (ls: SpendLine[]) => ls.map((l) => <SpendRow key={l.category ?? "uncategorised"} line={l} month={s.month} />);
   if (lines.length === 0 && tracked.length === 0) return <p className="mx-5 mt-8 text-center text-muted">No spending in {monthName(s.month)}.</p>;
   return (
     <>
@@ -296,14 +309,12 @@ function Spending({ s, byId }: { s: MonthSummary; byId: Map<number, Category> })
       <Pills s={s} />
       {lines.length > 0 && (
         <LinesCard id="home-categories" title="Categories">
-          {rows(lines)}
+          {lines.map((l) => (
+            <SpendRow key={l.category ?? "uncategorised"} line={l} month={s.month} />
+          ))}
         </LinesCard>
       )}
-      {tracked.length > 0 && (
-        <LinesCard id="home-tracked" title="Tracked" note="not in the total">
-          {rows(tracked)}
-        </LinesCard>
-      )}
+      <TrackedCard lines={tracked} month={s.month} />
     </>
   );
 }
