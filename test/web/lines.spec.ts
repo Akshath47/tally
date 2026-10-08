@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetLines, findLine, spendingLines } from "../../src/web/lines";
+import { budgetLines, findLine, isLowerBound, spendingLines } from "../../src/web/lines";
 
 // All figures are synthetic.
 
@@ -82,5 +82,18 @@ describe("findLine", () => {
     expect(findLine(s, names, 9)).toEqual({ category: 9, name: "Shopping", spentMinor: 7_000, pendingSpentMinor: 0, allocatedMinor: null });
     // Groceries has no allocation, so it's in Misc, not a line of its own.
     expect(findLine(s, names, 1)).toBeUndefined();
+  });
+});
+
+describe("isLowerBound", () => {
+  const line = (pendingSpentMinor: number, allocatedMinor: number | null) => ({ category: 9, name: "Shopping", spentMinor: 7_000, pendingSpentMinor, allocatedMinor });
+
+  it("marks a figure with no pot as a lower bound when some of it is pending", () => {
+    expect(isLowerBound(line(2_000, null))).toBe(true);
+    expect(isLowerBound(line(0, null))).toBe(false);
+  });
+
+  it("leaves pots alone: their bars hatch the pending part instead", () => {
+    expect(isLowerBound(line(2_000, 10_000))).toBe(false);
   });
 });

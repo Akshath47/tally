@@ -12,8 +12,11 @@ export type LineCategory = number | NamedLine;
 
 export const LINE_NAMES: Record<NamedLine, string> = { misc: "Misc", "uncategorised-pending": "Uncategorised pending", posted: "Posted", pending: "Pending" };
 
-/** Pending figures are lower bounds: Lunch Flow doesn't send every pending charge. */
-export const isLowerBound = (category: LineCategory) => category === "pending" || category === "uncategorised-pending";
+/**
+ * Pending figures are lower bounds: Lunch Flow doesn't send every pending charge. A plain amount
+ * with any pending in it says so; a pot's bar hatches its pending part instead.
+ */
+export const isLowerBound = (l: { pendingSpentMinor: number; allocatedMinor: number | null }) => l.allocatedMinor === null && l.pendingSpentMinor > 0;
 
 /** `allocatedMinor` is null for a line that isn't a pot of its own. */
 export type Line = { category: LineCategory; name: string; note?: string; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number | null };
@@ -61,9 +64,9 @@ export function findLine(
   if (category === "pending") return { category, name: LINE_NAMES.pending, spentMinor: s.pendingSpentMinor, pendingSpentMinor: s.pendingSpentMinor, allocatedMinor: null };
   // The same lines Home shows for the month: spending only before a budget, the pots after.
   // Tracked categories show their plain spend either way.
-  const { lines, tracked } = spendingLines(s.categories, byId);
   const isIt = (l: SpendLine): l is SpendLine & { category: number } => l.category === category;
-  if (s.overallMinor !== null) return budgetLines(s, byId).find((l) => l.category === category) ?? tracked.find(isIt);
+  if (s.overallMinor !== null) return budgetLines(s, byId).find((l) => l.category === category) ?? spendingLines(s.categories, byId).tracked.find(isIt);
+  const { lines, tracked } = spendingLines(s.categories, byId);
   return [...lines, ...tracked].find(isIt);
 }
 

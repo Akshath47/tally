@@ -10,7 +10,7 @@ import { formatPounds, parseMoneyInput } from "../money";
 import { ageText, barState, fraction, remainingText } from "../pace";
 import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "../queries";
 import { Link, navigate } from "../router";
-import { budgetLines, spendingLines, type Line, type SpendLine } from "../lines";
+import { budgetLines, isLowerBound, spendingLines, type Line, type SpendLine } from "../lines";
 import { homeHref, lineHref } from "../routes";
 
 // The five-second glance (docs/ui-design.md, Home).
@@ -275,11 +275,19 @@ function Dashboard({ s, byId, isCurrent }: { s: MonthSummary & { overallMinor: n
   );
 }
 
-/** A spending row on a month without a budget. Uncategorised spend opens To sort, where it's filed. */
+/** A plain spending row: a category on a month without a budget, or a tracked one. Uncategorised spend opens To sort, where it's filed. */
 function SpendRow({ line, month }: { line: SpendLine; month: string }) {
   return (
     <LineRow href={line.category === null ? "/to-sort" : lineHref(month, line.category)}>
-      <LineHeading line={line} amount={<span className="font-medium">{formatPounds(line.spentMinor)}</span>} />
+      <LineHeading
+        line={line}
+        amount={
+          <>
+            {isLowerBound(line) && <span className="text-muted">at least </span>}
+            <span className="font-medium">{formatPounds(line.spentMinor)}</span>
+          </>
+        }
+      />
     </LineRow>
   );
 }
