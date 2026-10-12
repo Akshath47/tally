@@ -411,8 +411,9 @@ const ROUTES: [string, RegExp, Handler][] = [
     const id = Number(category);
     const named = category !== null && isNamedLine(category) ? LINE_FILTERS[category] : undefined;
     if (month > monthOf(today) || (!named && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
-    const inLine = named ?? ((t: Transaction) => t.categoryId === id);
-    const rows = transactions.map(resolve).filter((t) => countsIn(t, month) && inLine(t));
+    // A category's own line lists its excluded rows too, as the Worker's CATEGORY_LINE.
+    const inLine = named ? (t: Transaction) => countsIn(t, month) && named(t) : (t: Transaction) => t.categoryId === id && countsIn({ ...t, excluded: false }, month);
+    const rows = transactions.map(resolve).filter(inLine);
     return ok(page(rows, url));
   }],
 ];

@@ -58,6 +58,9 @@ const LINES = {
   ],
 } satisfies Record<NamedLine, (month: string) => [string, ...unknown[]]>;
 
+// A category's own line: COUNTS without `excluded = 0`, so its excluded rows are listed too.
+const CATEGORY_LINE = "c.kind IN ('budgeted', 'tracked') AND r.category_id = ?";
+
 const lineQuery = z.object({
   category: z.union([z.enum(NAMED_LINES), z.coerce.number().int().positive()]),
   limit: limitParam(200, 100),
@@ -127,7 +130,9 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
 })
   /**
    * The rows behind one Home line: those that count in the month (by counted date) in a
-   * category or in one of the named lines (LINES). Newest first by bank date, keyset-paged like /api/transactions.
+   * category or in one of the named lines (LINES). A budgeted or tracked category also lists its
+   * excluded rows, which don't count but would otherwise only be findable in Transactions.
+   * Newest first by bank date, keyset-paged like /api/transactions.
    */
   .get("/:month/transactions", async (c) => {
     const month = monthParam(c, londonMonth(new Date()));
@@ -135,13 +140,9 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
     if (month === null || !q.ok) return c.json({ error: "bad_request" }, 400);
     const { category, limit, cursor } = q.data;
 
+    const line: [string, ...unknown[]][] = typeof category === "number" ? [[CATEGORY_LINE, category]] : [[COUNTS], LINES[category](month)];
     const { transactions, nextCursor } = await listTransactions(c.env.DB, {
-      where: [
-        [IN_MONTH, ...inMonthBinds(month)],
-        ["r.vanished_at IS NULL"],
-        [COUNTS],
-        typeof category === "number" ? ["r.category_id = ?", category] : LINES[category](month),
-      ],
+      where: [[IN_MONTH, ...inMonthBinds(month)], ["r.vanished_at IS NULL"], ...line],
       limit,
       cursor,
       withCategory: true,
