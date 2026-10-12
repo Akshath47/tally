@@ -240,7 +240,7 @@ export const getTransactions = (params: { limit: number; accountId?: number | nu
   request<Page<Transaction>>(
     `/api/transactions${query({ limit: params.limit, account_id: params.accountId, from: params.from, to: params.to, cursor: params.cursor })}`,
   );
-/** The rows behind one Home line: those counting in `month` in a category, or in Misc. */
+/** The rows behind one Home line: those counting in `month` in a category, or in a named line. A category also lists its excluded rows. */
 export const getLineTransactions = (month: string, category: LineCategory, params: { limit: number; cursor?: string | null }) =>
   request<Page<Transaction>>(`/api/months/${month}/transactions${query({ category, limit: params.limit, cursor: params.cursor })}`);
 export const putOverride = (id: number, input: OverrideInput) => send<{ transaction: Transaction }>("PUT", `/api/transactions/${id}/override`, input);

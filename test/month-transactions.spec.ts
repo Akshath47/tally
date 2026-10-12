@@ -8,7 +8,7 @@ import { SEEDED, insertCategory, insertOverride, insertRule, ledger } from "./bu
 
 // All data is synthetic.
 
-type Txn = { id: number; amountMinor: number; countedAmountMinor: number | null; categoryId: number | null };
+type Txn = { id: number; amountMinor: number; countedAmountMinor: number | null; categoryId: number | null; excluded: boolean };
 type Page = { transactions: Txn[]; nextCursor: string | null };
 type Summary = Parameters<typeof budgetLines>[0] & { spentMinor: number; pendingSpentMinor: number };
 
@@ -18,7 +18,8 @@ const list = async (category: string | number, month = "2026-10", extra = "") =>
   return (await res.json()) as Page;
 };
 const ids = (p: Page) => p.transactions.map((t) => t.id).sort((a, b) => a - b);
-const spend = (p: Page) => p.transactions.reduce((sum, t) => sum - (t.countedAmountMinor ?? t.amountMinor), 0);
+/** What a page adds to its line: a category's excluded rows are listed but don't count. */
+const spend = (p: Page) => p.transactions.reduce((sum, t) => (t.excluded ? sum : sum - (t.countedAmountMinor ?? t.amountMinor)), 0);
 
 let accounts: readonly [number, number];
 let txn: Awaited<ReturnType<typeof ledger>>["txn"];
@@ -44,9 +45,28 @@ describe("GET /api/months/:month/transactions?category=<id>", () => {
     const pending = await grocer(-200, { isPending: true });
     await grocer(-900, { txnDate: "2026-09-30" });
     await grocer(-400, { isPending: true, vanished: true });
-    await insertOverride(await grocer(-500), { excluded: 1 });
     await txn(accounts[1], { merchant: "Cafe", amountMinor: -700 });
     expect(ids(await list(SEEDED.groceries))).toEqual([spent, refund, pending]);
+  });
+
+  it("lists the category's excluded rows too, marked excluded, by the same month rule", async () => {
+    const spent = await grocer(-1_000);
+    const excluded = await grocer(-500);
+    await insertOverride(excluded, { excluded: 1 });
+    await insertOverride(await grocer(-400, { txnDate: "2026-09-30" }), { excluded: 1 });
+    const movedIn = await grocer(-300, { txnDate: "2026-09-29" });
+    await insertOverride(movedIn, { excluded: 1, counted_date: "2026-10-01" });
+    const page = await list(SEEDED.groceries);
+    expect(ids(page)).toEqual([spent, excluded, movedIn]);
+    expect(page.transactions.filter((t) => t.excluded).map((t) => t.id).sort((a, b) => a - b)).toEqual([excluded, movedIn]);
+  });
+
+  it("lists an excluded row in a tracked category, but not in an excluded-kind one", async () => {
+    const outfit = await txn(accounts[0], { merchant: "Outfitter", amountMinor: -5_000 });
+    await insertOverride(outfit, { excluded: 1 });
+    await insertOverride(await txn(accounts[0], { merchant: "Salary", amountMinor: -100 }), { excluded: 1 });
+    expect(ids(await list(SEEDED.clothes))).toEqual([outfit]);
+    expect((await list(SEEDED.income)).transactions).toEqual([]);
   });
 
   it("files a row by its counted date and its override category", async () => {
@@ -143,6 +163,8 @@ describe("GET /api/months/:month/transactions: agrees with Home", () => {
     await grocer(250);
     await grocer(-300, { isPending: true });
     await insertOverride(await grocer(-800, { txnDate: "2026-09-28" }), { counted_date: "2026-10-02", counted_amount_minor: -600 });
+    await insertOverride(await grocer(-900), { excluded: 1 });
+    await insertOverride(await txn(accounts[0], { merchant: "Unknown shop", amountMinor: -650 }), { excluded: 1 });
     await txn(accounts[0], { merchant: "Cafe", amountMinor: -700 });
     await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -300 });
     await txn(accounts[1], { merchant: "Unknown shop", amountMinor: -450, isPending: true });
@@ -152,8 +174,14 @@ describe("GET /api/months/:month/transactions: agrees with Home", () => {
     const s = (await (await get("/api/months/2026-10/summary")).json()) as Summary;
     const lines = budgetLines(s, new Map());
     expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc", "uncategorised-pending"]);
-    for (const l of lines) expect(spend(await list(l.category)), String(l.category)).toBe(l.spentMinor);
+    for (const l of lines) {
+      const page = await list(l.category);
+      expect(spend(page), String(l.category)).toBe(l.spentMinor);
+      // Only a category's own line lists excluded rows.
+      if (typeof l.category !== "number") expect(page.transactions.some((t) => t.excluded), l.category).toBe(false);
+    }
     // The Posted and Pending pills.
+    for (const pill of ["posted", "pending"]) expect((await list(pill)).transactions.some((t) => t.excluded), pill).toBe(false);
     expect(spend(await list("posted"))).toBe(s.spentMinor - s.pendingSpentMinor);
     expect(spend(await list("pending"))).toBe(s.pendingSpentMinor);
   });

@@ -8,7 +8,8 @@ import { useCategories, useLineTransactions, useSummary } from "../queries";
 import type { Back } from "../routes";
 
 // The transactions that counted towards one Home line in a month: a category, Misc, uncategorised
-// pending charges, or a Posted or Pending pill. The figures come from the month summary, as on
+// pending charges, or a Posted or Pending pill. A category also lists its excluded rows, which the
+// list marks and leaves out of its day totals. The figures come from the month summary, as on
 // Home, so they match what was tapped: "£spent of £allocated", or the amount ("at least" for pending).
 
 /** Rows count in the month of their counted date, so they're grouped by it too. */

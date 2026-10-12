@@ -155,7 +155,7 @@ The new routes sit under `/api` behind the same Access JWT middleware, CSRF, Ori
 | PUT | `/api/budget/overall` | `{amountMinor}`. Effective from the current month. |
 | PUT | `/api/budget/categories/:categoryId` | `{amountMinor}`. Effective from the current month. |
 | GET | `/api/months/:month/summary` | Everything the home screen needs (below). |
-| GET | `/api/months/:month/transactions?category=<id>\|misc\|uncategorised-pending\|posted\|pending` | The rows that count towards one Home line or pill in the month. Misc is posted uncategorised spend plus unallocated budgeted categories; Uncategorised pending is uncategorised pending charges; Posted and Pending split the month's budget spend. |
+| GET | `/api/months/:month/transactions?category=<id>\|misc\|uncategorised-pending\|posted\|pending` | The rows that count towards one Home line or pill in the month. A budgeted or tracked category also lists its excluded rows, which don't count. Misc is posted uncategorised spend plus unallocated budgeted categories; Uncategorised pending is uncategorised pending charges; Posted and Pending split the month's budget spend. |
 
 **Summary response:**
 
