@@ -4,7 +4,7 @@ import type { AppEnv } from "../auth";
 import { effectiveAllocationSql, readBudget, sumAllocated } from "../budget/effective";
 import { NAMED_LINES, type NamedLine } from "../budget/lines";
 import { cursorParam, listTransactions } from "../budget/listing";
-import { COUNTS, INBOX, IN_MONTH, RESOLVED_CTE, inMonthBinds } from "../budget/resolve";
+import { COUNTS, COUNTS_UNLESS_EXCLUDED, INBOX, IN_MONTH, RESOLVED_CTE, inMonthBinds } from "../budget/resolve";
 import { daysInMonth, isYm, londonMonth, londonToday } from "../importer/dates";
 import { limitParam, parseQuery } from "./query";
 
@@ -58,8 +58,8 @@ const LINES = {
   ],
 } satisfies Record<NamedLine, (month: string) => [string, ...unknown[]]>;
 
-// A category's own line: COUNTS without `excluded = 0`, so its excluded rows are listed too.
-const CATEGORY_LINE = "c.kind IN ('budgeted', 'tracked') AND r.category_id = ?";
+// A category's own line lists its excluded rows too.
+const CATEGORY_LINE = `${COUNTS_UNLESS_EXCLUDED} AND r.category_id = ?`;
 
 const lineQuery = z.object({
   category: z.union([z.enum(NAMED_LINES), z.coerce.number().int().positive()]),

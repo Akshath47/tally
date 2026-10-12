@@ -117,12 +117,15 @@ function allocated() {
   return sum;
 }
 
-/** Whether a resolved row counts in `month`, as the Worker's COUNTS decides. */
-function countsIn(t: Transaction, month: string): boolean {
-  if (t.vanishedAt !== null || t.excluded || monthOf(t.countedDate ?? t.txnDate) !== month) return false;
+/** Whether a resolved row would count in `month` if it weren't excluded, as the Worker's COUNTS_UNLESS_EXCLUDED. */
+function countsUnlessExcluded(t: Transaction, month: string): boolean {
+  if (t.vanishedAt !== null || monthOf(t.countedDate ?? t.txnDate) !== month) return false;
   const kind = kindOf(t.categoryId);
   return kind === "budgeted" || kind === "tracked" || (t.categoryId === null && (t.countedAmountMinor ?? t.amountMinor) < 0);
 }
+
+/** Whether a resolved row counts in `month`, as the Worker's COUNTS decides. */
+const countsIn = (t: Transaction, month: string) => !t.excluded && countsUnlessExcluded(t, month);
 
 /** Home's Misc: posted uncategorised spend, plus budgeted categories without an allocation. */
 function inMisc(t: Transaction): boolean {
@@ -412,7 +415,7 @@ const ROUTES: [string, RegExp, Handler][] = [
     const named = category !== null && isNamedLine(category) ? LINE_FILTERS[category] : undefined;
     if (month > monthOf(today) || (!named && !(Number.isInteger(id) && id > 0))) return fail(400, "bad_request");
     // A category's own line lists its excluded rows too, as the Worker's CATEGORY_LINE.
-    const inLine = named ? (t: Transaction) => countsIn(t, month) && named(t) : (t: Transaction) => t.categoryId === id && countsIn({ ...t, excluded: false }, month);
+    const inLine = named ? (t: Transaction) => countsIn(t, month) && named(t) : (t: Transaction) => t.categoryId === id && countsUnlessExcluded(t, month);
     const rows = transactions.map(resolve).filter(inLine);
     return ok(page(rows, url));
   }],

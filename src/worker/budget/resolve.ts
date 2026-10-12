@@ -74,10 +74,16 @@ export const INBOX = `r.vanished_at IS NULL AND r.match_account_id = r.account_i
   AND r.override_category_id IS NULL AND r.excluded = 0`;
 
 /**
- * On `resolved r` joined to `categories c`: a counted row that isn't excluded counts when it's
- * budgeted or tracked, or uncategorised money out. Uncategorised money in waits in the inbox.
- * Always 0 or 1: a bare `c.kind IN (...)` is NULL for an uncategorised row. The month summary
- * and the rows behind each of its lines share it, so they always agree.
+ * On `resolved r` joined to `categories c`: whether a counted row would count if it weren't
+ * excluded. It does when it's budgeted or tracked, or uncategorised money out. Uncategorised
+ * money in waits in the inbox. Always 0 or 1: a bare `c.kind IN (...)` is NULL for an
+ * uncategorised row. A category's Home line lists its excluded rows by this.
  */
-export const COUNTS = `(r.excluded = 0 AND (COALESCE(c.kind IN ('budgeted', 'tracked'), 0)
-  OR (r.category_id IS NULL AND COALESCE(r.counted_amount_minor, r.amount_minor) < 0)))`;
+export const COUNTS_UNLESS_EXCLUDED = `(COALESCE(c.kind IN ('budgeted', 'tracked'), 0)
+  OR (r.category_id IS NULL AND COALESCE(r.counted_amount_minor, r.amount_minor) < 0))`;
+
+/**
+ * On `resolved r` joined to `categories c`: whether a counted row counts. The month summary and
+ * the rows behind each of its lines share it, so they always agree.
+ */
+export const COUNTS = `(r.excluded = 0 AND ${COUNTS_UNLESS_EXCLUDED})`;

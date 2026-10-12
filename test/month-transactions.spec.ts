@@ -174,8 +174,14 @@ describe("GET /api/months/:month/transactions: agrees with Home", () => {
     const s = (await (await get("/api/months/2026-10/summary")).json()) as Summary;
     const lines = budgetLines(s, new Map());
     expect(lines.map((l) => l.category)).toEqual([SEEDED.groceries, "misc", "uncategorised-pending"]);
-    for (const l of lines) expect(spend(await list(l.category)), String(l.category)).toBe(l.spentMinor);
+    for (const l of lines) {
+      const page = await list(l.category);
+      expect(spend(page), String(l.category)).toBe(l.spentMinor);
+      // Only a category's own line lists excluded rows.
+      if (typeof l.category !== "number") expect(page.transactions.some((t) => t.excluded), l.category).toBe(false);
+    }
     // The Posted and Pending pills.
+    for (const pill of ["posted", "pending"]) expect((await list(pill)).transactions.some((t) => t.excluded), pill).toBe(false);
     expect(spend(await list("posted"))).toBe(s.spentMinor - s.pendingSpentMinor);
     expect(spend(await list("pending"))).toBe(s.pendingSpentMinor);
   });
