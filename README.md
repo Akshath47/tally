@@ -1,8 +1,14 @@
 # Tally
 
-A mobile-first budgeting app for one person. It pulls transactions from a Revolut account and a British Airways Amex card through [Lunch Flow](https://www.lunchflow.app), sorts them into categories with merchant rules, and answers three questions: how much is left this month, am I within each category, and where did the money go.
+A mobile-first budgeting app that brings all my bank accounts together in one place.
 
-It runs on Cloudflare's free tier as one Worker (a React SPA plus a Hono API) with D1, behind Cloudflare Access.
+## Why I built it
+
+Each of my banks has its own budgeting app, and each one sees only its own money. Nothing brought every account together to track spending against one budget. The few apps that do either have a clunky UI or put the useful features behind a subscription. So I built my own.
+
+Tally pulls transactions from a Revolut account and a British Airways Amex card through [Lunch Flow](https://www.lunchflow.app), sorts them into categories with merchant rules, and answers three questions: how much is left this month, am I within each category, and where did the money go. It's quick enough for a daily glance and clean enough to keep using. Hosting runs on Cloudflare's free tier, so the only running cost is the Lunch Flow subscription that connects the banks.
+
+The stack is one Cloudflare Worker (a React SPA plus a Hono API) with D1, behind Cloudflare Access.
 
 **Status:** in daily use. Phase 1 (importer, auth, scheduled imports) and the first cut of Phase 2 (categories, rules, budgets, month summary) are done. Bills, insights and a weekly digest come next.
 
