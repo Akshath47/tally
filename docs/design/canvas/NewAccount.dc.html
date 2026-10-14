@@ -38,7 +38,7 @@ button{font:inherit;color:inherit}
 <p style="margin: 6px 20px 0; font-size: 13px; color: #8F9498; line-height: 1.5">Lunch Flow started sending a new account. Tally hasn’t imported anything from it yet, so your totals are unchanged until you decide what it is.</p>
 
 <section class="card" style="margin: 16px 16px 0; padding: 14px 16px 8px">
-<div style="display: flex; align-items: center; gap: 8px"><span class="acct amex">AMEX</span><span style="font-size: 15px; font-weight: 500">American Express ••1009</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span class="acct amex">AMEX</span><span style="font-size: 15px; font-weight: 500">American Express ••5326</span></div>
 <div style="margin-top: 10px">
 <div class="kv"><span>First seen</span><span>Thu 15 Oct</span></div>
 <div class="kv"><span>Imported</span><span>Nothing yet</span></div>
@@ -97,8 +97,8 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state;
     const olds = [
-      { id: 'amex', tag: 'AMEX', cls: 'amex', name: 'BA Amex', meta: 'No new data since 11 Oct · 342 transactions' },
-      { id: 'rev', tag: 'REV', cls: 'rev', name: 'Revolut current', meta: 'Up to date · 412 transactions' }
+      { id: 'amex', tag: 'AMEX', cls: 'amex', name: 'BA Amex', meta: 'No new data since 11 Oct · 296 transactions' },
+      { id: 'rev', tag: 'REV', cls: 'rev', name: 'Revolut current', meta: 'Up to date · 388 transactions' }
     ];
     const link = s.choice === 'link';
     const ready = s.choice === 'new' || (link && s.target);
