@@ -13,3 +13,13 @@ path = '''(^|/)\.(dev\.vars|env)(\..+)?$'''
 id = "tally-probe-snapshot"
 description = "Lunch Flow probe snapshot (real transaction data)"
 path = '''(^|/)\.probe/'''
+
+# ACCESS_AUD is the Cloudflare Access application audience tag: a public
+# identifier carried in every Access JWT, not a secret. It's a Worker secret now,
+# but older commits still have it in wrangler.jsonc and worker-configuration.d.ts,
+# and CI scans the whole history.
+[[allowlists]]
+description = "Cloudflare Access AUD tag (public identifier)"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''^\s*"?ACCESS_AUD"?\s*:''']

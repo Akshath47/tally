@@ -11,8 +11,9 @@ it("tests run with synthetic Access settings, never the real ones", () => {
   expect(env.ALLOWED_EMAIL).toBe("owner@example.com");
 });
 
-// The Vitest integration always loads .dev.vars and has no switch to skip it, so a secret
-// added there later would silently reach test code. Compares names only, never values.
+// The Vitest integration always loads .dev.vars. Wrangler passes on only names declared as vars or
+// required secrets, so this catches a new declaration that vitest.config.ts doesn't override with a
+// synthetic value. Compares names only, never values.
 it("exposes only known bindings, so new .dev.vars entries can't leak into tests", () => {
   const names = Object.keys(env).filter((name) => !name.startsWith("__VITEST_POOL_WORKERS_"));
   expect(names.sort()).toEqual(["ACCESS_AUD", "ACCESS_TEAM_DOMAIN", "ALLOWED_EMAIL", "BACKFILL_DAYS", "DB", "LUNCHFLOW_API_KEY"]);

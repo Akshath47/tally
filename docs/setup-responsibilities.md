@@ -9,6 +9,7 @@
    - Create an account and a Zero Trust org on the Free plan. The onboarding may ask for a payment method even at $0; this hasn't been verified.
 3. Run `npx wrangler login` in your own terminal.
 4. **Local dev values:** put `LUNCHFLOW_API_KEY=<dev key>`, `ALLOWED_EMAIL`, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `.dev.vars`.
+   - `ACCESS_TEAM_DOMAIN` is the full origin, `https://<team>.cloudflareaccess.com`, with no trailing slash: it's both the JWKS base URL and the JWT issuer, so any other form locks you out.
    - The agent may create the file with the variable names only.
    - The agent never reads it.
 5. **Production secrets:** run `npx wrangler secret put <NAME>` for each name under `secrets.required` in `wrangler.jsonc`, in your **own terminal**, not with the `!` prefix, so the value never reaches the agent session. `wrangler deploy` fails while one is missing.
