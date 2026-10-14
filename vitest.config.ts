@@ -8,8 +8,15 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
-      // Tests must never see the real key from .dev.vars or reach Lunch Flow.
-      miniflare: { bindings: { LUNCHFLOW_API_KEY: "test-key" } },
+      // Tests must never see the real values from .dev.vars or reach Lunch Flow.
+      miniflare: {
+        bindings: {
+          LUNCHFLOW_API_KEY: "test-key",
+          ACCESS_TEAM_DOMAIN: "https://test-team.cloudflareaccess.com",
+          ACCESS_AUD: "test-aud",
+          ALLOWED_EMAIL: "owner@example.com",
+        },
+      },
     }),
   ],
   test: {

@@ -15,14 +15,20 @@
 	// Version/preview URLs would share production bindings (incl. D1), so they stay off.
 	"workers_dev": true,
 	"preview_urls": false,
-	// Cloudflare Access (not secrets). The Worker re-verifies the Access JWT itself
-	// because Workers with static assets don't receive ctx.access.
 	"vars": {
-		"ACCESS_TEAM_DOMAIN": "https://shiny-night-8f2f.cloudflareaccess.com",
-		"ACCESS_AUD": "88e734e4706f2f8b90b1f1018b8d1b0c5ea7a817aab1a87c71b1183bac87cfb4",
-		"ALLOWED_EMAIL": "akshathyennam@gmail.com",
 		// How far back the importer backfills. Revolut serves about 2 years (docs/lunchflow-findings.md).
 		"BACKFILL_DAYS": "730"
+	},
+	// Set with `wrangler secret put` in production and in .dev.vars locally; deploy fails if one is missing.
+	// The ACCESS_* values and ALLOWED_EMAIL aren't sensitive, just kept out of this public file. The Worker
+	// re-verifies the Access JWT against them because Workers with static assets don't receive ctx.access.
+	"secrets": {
+		"required": [
+			"LUNCHFLOW_API_KEY",
+			"ACCESS_TEAM_DOMAIN",
+			"ACCESS_AUD",
+			"ALLOWED_EMAIL"
+		]
 	},
 	"observability": {
 		"enabled": true
