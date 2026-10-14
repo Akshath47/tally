@@ -1,50 +1,74 @@
 # Tally
 
-A private, mobile-first personal budgeting app. It combines transactions from a Revolut Personal UK account and a British Airways American Express UK card, which reach it through Lunch Flow's Personal REST API. Spending is tracked against configurable monthly budgets.
+A mobile-first budgeting app for one person. It pulls transactions from a Revolut account and a British Airways Amex card through [Lunch Flow](https://www.lunchflow.app), sorts them into categories with merchant rules, and answers three questions: how much is left this month, am I within each category, and where did the money go.
 
-Only one person uses it. It runs on a single Cloudflare Worker (React SPA + Hono API) with D1, behind Cloudflare Access.
+It runs on Cloudflare's free tier as one Worker (a React SPA plus a Hono API) with D1, behind Cloudflare Access.
 
-**Status:** Phase 1 is done: the importer, a minimal UI and 3-hourly scheduled imports are deployed behind Cloudflare Access ([docs/phase1-assessment.md](docs/phase1-assessment.md)). Phase 2, budgeting, is next.
+**Status:** in daily use. Phase 1 (importer, auth, scheduled imports) and the first cut of Phase 2 (categories, rules, budgets, month summary) are done. Bills, insights and a weekly digest come next.
 
-## Plan
+<p align="center">
+  <img src="docs/design/screenshots/Main.png" alt="Home: spent this month against the budget, weekly pace and category bars" width="260">
+  <img src="docs/design/screenshots/Inbox.png" alt="To sort: uncategorised transactions grouped by merchant, filed with one tap" width="260">
+  <img src="docs/design/screenshots/Budget.png" alt="Budget: one monthly figure, allocated to categories with the rest as Misc" width="260">
+</p>
+
+<p align="center"><sub>Design mocks. Every name and figure is invented.</sub></p>
+
+## What it does
+
+- **Imports on a schedule.** A cron trigger pulls both accounts every 3 hours, and an import can also be run by hand. Re-imports are idempotent, and a pending charge counts until its posted version arrives.
+- **Budgets by month.** You set one monthly figure and allocate parts of it to categories; whatever is left over is Misc. Home shows what's left, a per-week pace and a bar for each category, with posted and pending spend shown separately.
+- **Sorts with rules.** A merchant rule sets a default category, and a per-transaction override always wins. Unmatched spending lands in **To sort**, where one tap files a whole merchant and creates its rule. Changing a rule re-sorts past transactions too.
+- **Keeps history intact.** Bank data is never edited or deleted. Your edits live in a separate table, so they survive every re-sync.
+
+## How it's built
+
+| Layer | Choice |
+|---|---|
+| Frontend | React 19, Vite, Tailwind 4, TanStack Query |
+| API | Hono on Cloudflare Workers, served from the same Worker as the static assets |
+| Data | Cloudflare D1 (SQLite) with Drizzle migrations |
+| Auth | Cloudflare Access at the edge, and the Worker checks the Access JWT itself |
+| Tests | Vitest in the Workers runtime, with synthetic fixtures only |
+
+A few details that took some care:
+
+- **Money is integer minor units**, and dates are plain `YYYY-MM-DD` strings, so there's no float rounding and no UTC drift. Months and "today" are worked out in `Europe/London`.
+- **The Worker verifies `Cf-Access-Jwt-Assertion` itself** (signature, `aud`, email), because Workers with static assets don't receive `ctx.access`. If Access is ever misconfigured, the API still refuses anyone but the owner.
+- **It fits the D1 free tier.** Bulk upserts send each chunk as one `json_each` statement to stay under 50 statements per invocation. Every screen has a rows-read budget enforced in tests ([why](docs/research/d1-rows-read.md)).
+- **Category matches are stored, not recomputed.** SQLite triggers keep track of which rule each merchant matches, so a read costs what it shows rather than a scan of the whole history ([plan](docs/stored-matches-plan.md)).
+
+## Running it
+
+You'll need Node 24+, a Cloudflare account with Zero Trust (the free plan is enough) and a Lunch Flow API key.
+
+```sh
+npm install
+npm run db:migrate:local
+npm run dev          # Vite + the Worker runtime, using a local D1
+npm run check        # typecheck, lint and tests
+```
+
+Local values go in `.dev.vars`, which is gitignored: `LUNCHFLOW_API_KEY`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` and `ALLOWED_EMAIL`. In production, set the same four as Worker secrets with `wrangler secret put`; `wrangler deploy` refuses to deploy while any of them is missing. To deploy your own copy, change the D1 `database_id` in `wrangler.jsonc` and follow [docs/setup-responsibilities.md](docs/setup-responsibilities.md).
+
+## Docs
+
+Tally was planned in phases, and the docs are the record of those decisions.
 
 | Doc | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Architecture, environments, repo layout, default decisions |
-| [docs/research/platform-constraints.md](docs/research/platform-constraints.md) | Verified Lunch Flow API facts, open questions, Cloudflare free-tier limits (with sources) |
-| [docs/phase-1-plan.md](docs/phase-1-plan.md) | Ordered Phase 1 steps with deliverables and acceptance criteria |
-| [docs/schema-and-api.md](docs/schema-and-api.md) | Minimal Phase 1 D1 schema and API endpoints |
-| [docs/setup-responsibilities.md](docs/setup-responsibilities.md) | What the owner does personally vs what the agent automates |
-| [docs/estimates-and-risks.md](docs/estimates-and-risks.md) | Time estimate and main uncertainties |
-| [docs/lunchflow-findings.md](docs/lunchflow-findings.md) | Observed Lunch Flow API behaviour for the owner's accounts (P1.1) |
-| [docs/phase1-assessment.md](docs/phase1-assessment.md) | End-of-Phase-1 assessment: freshness, pending behaviour, what Phase 2 must allow for (P1.9) |
-| [docs/phase-2-outline.md](docs/phase-2-outline.md) | Phase 2 outline, kept loose so the product can evolve |
-| [docs/phase-2-spec.md](docs/phase-2-spec.md) | Phase 2 backend spec: categories, rules, overrides, budgets, summary API, reconnection |
-| [docs/ui-design.md](docs/ui-design.md) | Mobile UI design spec: dark theme tokens, navigation, every screen and state |
-| [docs/research/d1-rows-read.md](docs/research/d1-rows-read.md) | Why the first day of UI use hit 80% of D1's daily read cap, with measurements |
-| [docs/stored-matches-plan.md](docs/stored-matches-plan.md) | Stored merchant matches (P2.7): reads cost what they show, not the history |
+| [architecture.md](docs/architecture.md) | Architecture, environments and default decisions |
+| [phase-1-plan.md](docs/phase-1-plan.md) | Phase 1 steps (importer, auth, cron), each with acceptance checks |
+| [phase1-assessment.md](docs/phase1-assessment.md) | How fresh the data is, how pending charges behave, what Phase 2 had to allow for |
+| [phase-2-outline.md](docs/phase-2-outline.md) | The looser Phase 2 outline the spec grew from |
+| [phase-2-spec.md](docs/phase-2-spec.md) | Budgeting: categories, rules, overrides, budgets, month summary |
+| [schema-and-api.md](docs/schema-and-api.md) | D1 schema and API endpoints |
+| [ui-design.md](docs/ui-design.md) | Mobile UI spec: theme tokens, navigation, every screen and state |
+| [research/platform-constraints.md](docs/research/platform-constraints.md) | Verified Lunch Flow and Cloudflare free-tier facts, with sources |
+| [lunchflow-findings.md](docs/lunchflow-findings.md) | Observed Lunch Flow API behaviour |
+| [estimates-and-risks.md](docs/estimates-and-risks.md) | Original time estimate and the main risks |
+| [setup-responsibilities.md](docs/setup-responsibilities.md) | One-time setup, and which steps the owner does by hand |
 
-## Repository layout
+## Privacy
 
-```
-wrangler.jsonc  drizzle.config.ts      (created in P1.2)
-migrations/                            Drizzle-generated D1 migrations
-src/worker/index.ts                    Hono app + scheduled() handler
-src/worker/auth.ts                     Cloudflare Access JWT middleware
-src/worker/routes/                     /api/* route handlers
-src/worker/db/schema.ts                Drizzle schema
-src/worker/importer/                   client, normalize, upsert, lock, run
-src/web/                               React SPA
-scripts/probe-lunchflow.ts             P1.1 API probe (prints summaries only)
-scripts/cron-report.sql                P1.7 cron, overlap and duplicate checks (no text)
-scripts/usage-report.ts                P1.8 free-tier usage report
-scripts/check-terminations.ts          Lists runs Cloudflare stopped or imports that didn't finish
-test/                                  Vitest (workers pool), synthetic fixtures only
-docs/                                  Plan, findings, assessments
-```
-
-## Secrets
-
-- `.dev.vars` (local Lunch Flow dev key and Access settings) is gitignored and must never be read by agents or tools.
-- The production key lives only in `wrangler secret`.
-- Never commit, paste or log credentials.
+This repo holds code and docs only. Real transactions never go into commits, fixtures or logs, and logs record only counts, statuses and durations. Credentials live in Worker secrets and a gitignored `.dev.vars`, and CI runs gitleaks over the full history.
