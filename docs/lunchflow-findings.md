@@ -11,7 +11,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 ## Accounts
 
 - `GET /accounts` returned **3 accounts across 2 connections**:
-  - **Revolut** (one connection) exposes **two accounts**: the main GBP account, and a **USD currency pocket** with only 2 transactions (a one-off exchange in Jan 2025).
+  - **Revolut** (one connection) exposes **two accounts**: the main GBP account, and a **USD currency pocket** with only a couple of transactions.
   - **BA Amex** (one connection) exposes one GBP account.
 - **`currency` is missing from the accounts response**, although the docs list it. Get the currency from the balance endpoint (`balance.currency`) or from transactions instead.
 - **Revolut's `name` is the account IBAN.** The Amex `name` is the card product name, cut off at 35 characters.
@@ -26,17 +26,17 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 - **Sign convention:** negative = money out / more owed, on **both** institutions.
   - Amex purchases are negative; Amex repayments ("PAYMENT RECEIVED") are positive.
   - So no per-account sign flip is needed.
-- **Amounts** have at most 2 decimals for GBP and 1 decimal for USD (e.g. `21.6`). Revolut has 27 zero-amount transactions.
+- **Amounts** have at most 2 decimals for GBP and 1 decimal for USD (e.g. `12.5`). Revolut has some zero-amount transactions.
 - Only one `currency` per account.
 - **`date` appears to be the booking (settlement) date, not the purchase date.** In the owner's check, one Revolut card purchase was dated one day later than the Revolut app shows. Every other sampled date matched. Consequence: a purchase made late on the last day of a month can land in the next month. Run 2 confirmed it: the Revolut pending transaction was dated 2026-09-30, and its posted version is dated 2026-10-01. So a pending transaction carries the purchase date, and posting moves it to the booking date.
 
 ## Filters, history, pagination
 
-- **With no params, the endpoint returns the account's entire history.** For Revolut that was 1,098 rows in one response. `total` always equalled the array length; there is **no pagination and no truncation** at this size.
+- **With no params, the endpoint returns the account's entire history.** For Revolut that was about 1,100 rows in one response. `total` always equalled the array length; there is **no pagination and no truncation** at this size.
 - `from`/`to` work, including on a 14-day window.
 - **History depth:**
-  - **Revolut:** about **2 years** (earliest 2024-10-05). Extended history worked.
-  - **Amex:** from **2026-09-11**, which is the new card's first purchase (confirmed by the owner). So this is the full card history, not a limit.
+  - **Revolut:** about **2 years**. Extended history worked.
+  - **Amex:** from the new card's **first purchase** (confirmed by the owner). So this is the full card history, not a limit.
 
 ## Pending
 
@@ -84,7 +84,7 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 1. **Always pass `from`/`to`.** Leaving them out returns the entire history (about 1,100 rows, a few hundred KB), which costs CPU for nothing.
 2. **Get account currency from the balance endpoint.** This adds one subrequest per account per run (about 7 in total, well under 50). It also gives a balance to display.
 3. **Drop `accounts.amount_sign`.** Both institutions already use negative = money out. The normaliser can simply assert the currency and decimal places.
-4. **Don't store raw IBANs as account names.** Store a display label such as "Revolut · GBP · ••7668".
+4. **Don't store raw IBANs as account names.** Store a display label such as "Revolut · GBP · ••1234".
 5. **The Revolut USD pocket stays off** (owner decision, 2026-09-30). `accounts.import_enabled` defaults to off for non-GBP accounts, since budgets are GBP.
 6. **Pending ids are unstable (confirmed in run 2).** Keep the `vanished_at` design. In Phase 2, either don't allow edits on pending transactions, or move an edit to the posted transaction when it's matched by amount and date.
 7. **The error parser must handle `error` being either a string or an object.** Treat 403 as "bad/revoked key" (configuration problem, no retry).
@@ -96,6 +96,6 @@ This records the observed behaviour of the Lunch Flow Personal API for the owner
 - [x] Both institutions return transactions through the API.
 - [x] Sign convention recorded.
 - [x] Owner compared the sample transactions with the Revolut and Amex apps (2026-09-30). Amounts, signs and pending all match. One card purchase is dated one day later (booking date, see above).
-- [x] Amex history is complete: the card is new, and its first purchase was on 2026-09-11.
+- [x] Amex history is complete: the card is new, and the data starts at its first purchase.
 - [x] Pending support is known for each account: both Revolut and Amex return pending transactions.
 - [x] Run 2 (2026-10-02): pending → posted behaviour recorded. The id changes and the date moves to the booking date.
