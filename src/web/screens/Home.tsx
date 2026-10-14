@@ -436,7 +436,7 @@ function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
             id="first-budget"
             inputMode="decimal"
             autoComplete="off"
-            placeholder="1,800"
+            placeholder="1,500"
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="w-full bg-transparent p-0 text-[42px] font-extralight tracking-[-0.03em] outline-none placeholder:text-muted/50"
@@ -449,7 +449,7 @@ function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
           </p>
         )}
         <div className="mt-2 empty:hidden">
-          {text !== "" && !amount && <FieldError>Enter an amount in pounds, like 1,800 or 1800.50.</FieldError>}
+          {text !== "" && !amount && <FieldError>Enter an amount in pounds, like 1,500 or 1500.50.</FieldError>}
           {save.isError && <FieldError>Couldn't save the budget. Try again.</FieldError>}
         </div>
         <Button type="submit" className="mt-3.5 min-h-[52px] w-full text-[15.5px]" disabled={!amount || save.isPending}>

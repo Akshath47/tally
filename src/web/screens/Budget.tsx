@@ -76,7 +76,7 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
   // Client-side checks mirror the server's, so nothing invalid is sent.
   // Client checks block a save; a server error is shown until the next attempt but never blocks one.
   const overallClientError = (() => {
-    if (overallText.trim() !== "" && overallDraft === null) return "Enter an amount in pounds, like 1,800.";
+    if (overallText.trim() !== "" && overallDraft === null) return "Enter an amount in pounds, like 1,500.";
     if (overallDraft !== null && overallDraft <= 0) return "Set a budget above £0.";
     if (overallDraft !== null && overallDraft < budget.allocatedMinor) return belowAllocatedText(budget.allocatedMinor);
     return null;
@@ -148,7 +148,7 @@ function BudgetForm({ budget }: { budget: BudgetData }) {
             id="budget-overall"
             inputMode="decimal"
             autoComplete="off"
-            placeholder="1,800"
+            placeholder="1,500"
             value={overallText}
             aria-invalid={overallError !== null}
             aria-describedby={overallError ? "budget-overall-error" : undefined}
