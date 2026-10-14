@@ -10,7 +10,7 @@ export const SEED_ACCOUNTS = [
 ] as const;
 
 /** Lunch Flow started sending this one: awaiting review, nothing imported. */
-export const SEED_NEW_ACCOUNT = { id: 3, name: "American Express ••1009", institutionName: "American Express" } as const;
+export const SEED_NEW_ACCOUNT = { id: 3, name: "American Express ••5326", institutionName: "American Express" } as const;
 
 // Same names, kinds and order as migrations/0005_seed_categories.sql, so the ids match a
 // freshly migrated local D1 in "missing" mode.
@@ -45,7 +45,7 @@ export const SEED_RULES = [
 ] as const;
 
 /** Overall figure and allocations by category id, effective from the current month. */
-export const SEED_BUDGET = { overallMinor: 180_000, allocations: { 4: 65_000, 1: 30_000, 2: 20_000, 3: 12_000 } as Record<number, number> };
+export const SEED_BUDGET = { overallMinor: 144_000, allocations: { 4: 52_000, 1: 24_000, 2: 16_000, 3: 9_600 } as Record<number, number> };
 
 export const SEED_TRANSACTIONS: SeedTxn[] = [
   [0, 1, "Northside Pharmacy", -849, true],

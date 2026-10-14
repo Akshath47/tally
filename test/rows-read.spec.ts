@@ -86,7 +86,7 @@ async function seedLedger() {
     env.DB.prepare("INSERT INTO import_runs (trigger, started_at, finished_at, status) VALUES ('cron', ?1, ?1, 'success')").bind(now),
   ]);
   const rows = [];
-  const start = Date.parse("2024-10-05");
+  const start = Date.parse("2024-10-01");
   for (let i = 0; i < N_TXNS; i++) {
     // Zipf-ish: a few merchants dominate.
     const m = Math.floor(N_MERCHANTS * rand() ** 2.5);

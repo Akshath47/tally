@@ -133,12 +133,12 @@ button,input,textarea{font:inherit;color:inherit}
 <a href="EditorPending.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 58px; color: #E6E7E9; text-decoration: none; border-bottom: 1px solid #26292B">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8F9498" stroke-width="1.8" stroke-linecap="round" role="img" aria-label="Locked"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
 <div style="flex: 1"><div style="font-size: 14.5px">Northside Pharmacy</div><div style="font-size: 12px; color: #8F9498; display: flex; gap: 6px; align-items: center">Pending since Wed <span class="acct rev">REV</span></div></div>
-<div style="font-size: 14.5px; color: #8F9498; font-style: italic">£8.49</div>
+<div style="font-size: 14.5px; color: #8F9498; font-style: italic">£6.79</div>
 </a>
 <a href="EditorPending.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 58px; color: #E6E7E9; text-decoration: none">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8F9498" stroke-width="1.8" stroke-linecap="round" role="img" aria-label="Locked"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
 <div style="flex: 1"><div style="font-size: 14.5px">Greenleaf Florist</div><div style="font-size: 12px; color: #8F9498; display: flex; gap: 6px; align-items: center">Pending since today <span class="acct amex">AMEX</span></div></div>
-<div style="font-size: 14.5px; color: #8F9498; font-style: italic">£34.00</div>
+<div style="font-size: 14.5px; color: #8F9498; font-style: italic">£27.20</div>
 </a>
 </div>
 </div>
@@ -162,25 +162,25 @@ class Component extends DCLogic {
     prev: null,
     groups: [
       { id: 'hm', merchant: "Harlow's Market", choices: ['Groceries', 'Eating out', 'Misc'], items: [
-        { d: 'Thu 15 Oct', s: '15 Oct', a: 2360, acct: 'AMEX' },
-        { d: 'Mon 12 Oct', s: '12 Oct', a: 3115, acct: 'AMEX' },
-        { d: 'Fri 9 Oct', s: '9 Oct', a: 1240, acct: 'REV' },
-        { d: 'Sat 3 Oct', s: '3 Oct', a: 1925, acct: 'AMEX' }
+        { d: 'Thu 15 Oct', s: '15 Oct', a: 1888, acct: 'AMEX' },
+        { d: 'Mon 12 Oct', s: '12 Oct', a: 2492, acct: 'AMEX' },
+        { d: 'Fri 9 Oct', s: '9 Oct', a: 992, acct: 'REV' },
+        { d: 'Sat 3 Oct', s: '3 Oct', a: 1540, acct: 'AMEX' }
       ] },
       { id: 'cc', merchant: 'City Cabs', choices: ['Transport', 'Misc', 'Eating out'], items: [
-        { d: 'Wed 14 Oct', s: '14 Oct', a: 1420, acct: 'REV' },
-        { d: 'Sat 10 Oct', s: '10 Oct', a: 1840, acct: 'REV' },
-        { d: 'Tue 6 Oct', s: '6 Oct', a: 920, acct: 'REV' }
+        { d: 'Wed 14 Oct', s: '14 Oct', a: 1136, acct: 'REV' },
+        { d: 'Sat 10 Oct', s: '10 Oct', a: 1472, acct: 'REV' },
+        { d: 'Tue 6 Oct', s: '6 Oct', a: 736, acct: 'REV' }
       ] },
       { id: 'bb', merchant: 'Brick Lane Bagel', choices: ['Eating out', 'Groceries', 'Misc'], items: [
-        { d: 'Thu 15 Oct', s: '15 Oct', a: 640, acct: 'REV' },
-        { d: 'Fri 2 Oct', s: '2 Oct', a: 590, acct: 'AMEX' }
+        { d: 'Thu 15 Oct', s: '15 Oct', a: 512, acct: 'REV' },
+        { d: 'Fri 2 Oct', s: '2 Oct', a: 472, acct: 'AMEX' }
       ] },
       { id: 'pi', merchant: 'Paper & Ink Books', choices: ['One-offs', 'Gifts', 'Misc'], items: [
-        { d: 'Tue 13 Oct', s: '13 Oct', a: 1899, acct: 'AMEX' }
+        { d: 'Tue 13 Oct', s: '13 Oct', a: 1519, acct: 'AMEX' }
       ] },
       { id: 'rg', merchant: 'Riverside Gym', choices: ['Bills', 'Misc', 'One-offs'], items: [
-        { d: 'Mon 12 Oct', s: '12 Oct', a: 3200, acct: 'REV' }
+        { d: 'Mon 12 Oct', s: '12 Oct', a: 2560, acct: 'REV' }
       ] }
     ]
   };

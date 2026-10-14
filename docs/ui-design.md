@@ -41,7 +41,7 @@ Charcoal and sage, low saturation, nothing neon. Big numbers are thin; small tex
 | `acct-rev` | `#2E3133` bg, `#D5D7DA` text | Revolut badge |
 | `acct-amex` | `#24303A` bg, `#A8BACB` text | Amex badge |
 
-Warning colours are the same everywhere, so "near limit" and "over" always look the same. State is never shown by colour alone: there's always a text flag ("£14 left", "£12 over") as well.
+Warning colours are the same everywhere, so "near limit" and "over" always look the same. State is never shown by colour alone: there's always a text flag ("£11 left", "£10 over") as well.
 
 Pending amounts use a diagonal hatch of the bar colour, e.g. `repeating-linear-gradient(135deg, #8FA89A 0 2px, #3A4540 2px 5px)`.
 
@@ -69,7 +69,7 @@ Pending amounts use a diagonal hatch of the bar colour, e.g. `repeating-linear-g
 
 ### Money and dates
 
-- Show money as `£1,254` for budget figures and `£23.60` for transactions. Money out shows as `−£14.20` in feeds; income and refunds as `+£…`.
+- Show money as `£1,003` for budget figures and `£18.88` for transactions. Money out shows as `−£11.36` in feeds; income and refunds as `+£…`.
 - Short dates in the UI: `Thu 15 Oct`, `15 Oct`.
 - These are display rules only. Storage stays as in [architecture.md](architecture.md) (integer minor units, `YYYY-MM-DD` text).
 
@@ -88,17 +88,17 @@ Pending amounts use a diagonal hatch of the bar colour, e.g. `repeating-linear-g
 The five-second glance.
 
 - Header: month name with ‹ › beside it, freshness line ("Updated 3h ago · both accounts", sage dot), "to sort" chip when needed, settings icon. ‹ › step through past months (below); › is disabled on the current month and ‹ on a month with nothing in it, where the history ends.
-- Hollow donut of the month's budget. Solid sage = posted spend, hatched = pending. Centre: "Spent in October", the **spent** amount large, "£546 left this month", "of £1,800".
-- Pace line under the ring: "£239/week for the remaining 2.3 weeks".
-- Two pills: "Posted £1,166" and "Pending £88 · 3 charges". Each taps through to the transactions behind it (Category transactions, below): the month's posted or pending budget spend, categorised or not.
+- Hollow donut of the month's budget. Solid sage = posted spend, hatched = pending. Centre: "Spent in October", the **spent** amount large, "£437 left this month", "of £1,440".
+- Pace line under the ring: "£191/week for the remaining 2.3 weeks".
+- Two pills: "Posted £933" and "Pending £70 · 3 charges". Each taps through to the transactions behind it (Category transactions, below): the month's posted or pending budget spend, categorised or not.
   - **Pending is a lower bound.** Lunch Flow doesn't send every pending charge, so a purchase can be missing until it posts ([lunchflow-findings.md](lunchflow-findings.md#pending)). The pending pill, the hatched bars and the pending sheet shouldn't present pending as complete, for example by saying "at least" or adding a short note that recent charges can appear late.
-- Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£14 left" flag; over gets a brick "↑ £12 over" flag and a full brick bar. Misc is labelled "unallocated" and takes posted uncategorised spend. Uncategorised **pending** charges get their own last row, "Uncategorised pending", showing "at least £51" with a fully hatched bar and no allocation: they can't be filed until they post, so counting them in Misc made it look overspent. Each row taps through to its transactions (below).
-- Tracked card, under Categories when any tracked category spent this month: "Tracked · not in the total", one row per tracked category with its spend, biggest first, and no bar (there's no allocation), reading "at least £100" when some of it is pending. Tracked spend isn't budget spend, so it's not in the ring, the pills or Misc. Each row taps through to its transactions (below).
+- Categories card: one row per budgeted category plus Misc, each "£spent / £allocated" with a bar. Pending spend is hatched inside the bar. Near limit gets an amber "£11 left" flag; over gets a brick "↑ £10 over" flag and a full brick bar. Misc is labelled "unallocated" and takes posted uncategorised spend. Uncategorised **pending** charges get their own last row, "Uncategorised pending", showing "at least £41" with a fully hatched bar and no allocation: they can't be filed until they post, so counting them in Misc made it look overspent. Each row taps through to its transactions (below).
+- Tracked card, under Categories when any tracked category spent this month: "Tracked · not in the total", one row per tracked category with its spend, biggest first, and no bar (there's no allocation), reading "at least £80" when some of it is pending. Tracked spend isn't budget spend, so it's not in the ring, the pills or Misc. Each row taps through to its transactions (below).
 - **Category transactions** (pushed, back to that month's Home, `/spending/:month/:category`, where `:category` is an id, `misc`, `uncategorised-pending`, `posted` or `pending`): the rows that counted towards one line or pill in that month, grouped by counted date (the bank date unless edited). The header repeats the line's "£spent of £allocated", "£spent" for a tracked category, or "at least £spent" when that plain amount includes pending charges (always, for Uncategorised pending). A budgeted or tracked category also lists its excluded transactions for the month, marked "· excluded" and muted, so they can be found and un-excluded without going to Transactions; they don't count towards the figure. Misc lists posted uncategorised spending plus budgeted categories with no allocation; Uncategorised pending lists the pending charges no rule categorises yet. The Pending pill above still counts every pending charge, categorised or not. A row opens the transaction editor.
 
 States:
-- **Past month** (`/months/:month`; the current month stays at `/`): the same screen for that month, with no pace line and no freshness line. With a budget, the ring reads "£128 under budget" or "£112 over budget". Without one (every month before the first budget), there's no ring: "Spent in September", the amount, "No budget set for this month", the pills, then each category's spend biggest first with Uncategorised last (it opens To sort), and tracked categories in their own "Tracked · not in the total" card. Each row opens its transactions. The first-run budget prompt only shows for the current month.
-- **Over budget overall:** ring fully brick, "£112 over this month" in `over-text`, pace line replaced with "Budget used up with 5 days to go…".
+- **Past month** (`/months/:month`; the current month stays at `/`): the same screen for that month, with no pace line and no freshness line. With a budget, the ring reads "£102 under budget" or "£90 over budget". Without one (every month before the first budget), there's no ring: "Spent in September", the amount, "No budget set for this month", the pills, then each category's spend biggest first with Uncategorised last (it opens To sort), and tracked categories in their own "Tracked · not in the total" card. Each row opens its transactions. The first-run budget prompt only shows for the current month.
+- **Over budget overall:** ring fully brick, "£90 over this month" in `over-text`, pace line replaced with "Budget used up with 5 days to go…".
 - **Stale data:** amber dot on the freshness line, which names each account ("Revolut 2h ago · Amex 4 days ago"), and an amber banner: "Amex hasn't updated for 4 days, so recent card spending may be missing." with a link to Accounts.
 - **No pending:** "No pending charges" in place of the Pending pill. The Posted pill stays, so its transactions can still be opened.
 - **Loading:** skeletons for the ring centre, pills and category rows, with "Loading your budget…" in the freshness line. The shimmer stops under `prefers-reduced-motion`.
@@ -122,8 +122,8 @@ The weekly tidy-up, opened from the Home chip.
 - Title, month switcher (‹ Oct ›, next disabled for the current month).
 - Search field: "Merchant, amount or category".
 - Filter chips: All, Revolut, Amex, Pending, Edited, Category ▾.
-- Summary line: "68 transactions · £1,254 counted towards budget".
-- Grouped by day with a day total ("Today · Fri 16 Oct", "−£56.50").
+- Summary line: "61 transactions · £1,003 counted towards budget".
+- Grouped by day with a day total ("Today · Fri 16 Oct", "−£45.20").
 - Row: merchant initial tile, merchant, account badge, category, amount on the right. Markers:
   - **Pending:** clock icon + "Pending", amount italic and muted. Opens the read-only sheet.
   - **Edited:** pencil icon + "Edited" in sage, counted amount with the bank amount struck through underneath.
@@ -135,8 +135,8 @@ The weekly tidy-up, opened from the Home chip.
 
 - Header: Cancel · "Edit transaction" · Save.
 - Merchant, account badge, "Posted", "Edited" tag, counted amount (large) with "counted" under it.
-- When anything is overridden, an info box: "From the bank: £64.00 on Thu 1 Oct. Your amount and date are used instead." with **Reset**.
-- Grouped fields: Category (opens a picker) · Count in budget (switch; off = "Shown in spending, not in the budget") · Counted amount (with "Bank: £64.00") · Counted date (with "Bank: Thu 1 Oct · now counts in September") · Note.
+- When anything is overridden, an info box: "From the bank: £51.20 on Thu 1 Oct. Your amount and date are used instead." with **Reset**.
+- Grouped fields: Category (opens a picker) · Count in budget (switch; off = "Shown in spending, not in the budget") · Counted amount (with "Bank: £51.20") · Counted date (with "Bank: Thu 1 Oct · now counts in September") · Note.
 - Checkbox **"Use for all <merchant>"**, unticked by default.
   - Off: "Only this transaction changes. The 5 other Via Roma Kitchen transactions stay as they are."
   - On: "All Via Roma Kitchen transactions go to Eating out: the 5 earlier ones you haven't edited, and every new one. Ones you've edited by hand keep their category."
@@ -153,11 +153,11 @@ The weekly tidy-up, opened from the Home chip.
 Live, with autosave status in the header ("Saved · applies from October" in sage, or "Not saved · fix the allocation below" in brick).
 
 1. **Monthly budget:** one large input. Helper: "Everything you spend in a calendar month, bills included. Starts fresh on the 1st, nothing rolls over."
-2. **Allocate to categories:** a stacked bar of allocations in sage shades over a hatched track, "£1,270 of £1,800 allocated" and **"£530 unallocated (Misc)"**. One row per budgeted category with a £ input, then a read-only Misc row showing the remainder, then "+ Allocate to another category". Footnote: only budgeted categories appear here.
+2. **Allocate to categories:** a stacked bar of allocations in sage shades over a hatched track, "£1,016 of £1,440 allocated" and **"£424 unallocated (Misc)"**. One row per budgeted category with a £ input, then a read-only Misc row showing the remainder, then "+ Allocate to another category". Footnote: only budgeted categories appear here.
 
 Over-allocation (validation stays on the client and the server):
-- Editing a category past the total marks that row brick and shows: **"You can allocate at most £530 more (Transport up to £650). Allocations can't exceed your £1,800 budget."** The readout switches to "£110 over-allocated", Misc shows £0, and a marker on the bar shows where the budget ends. Nothing is saved.
-- Lowering the total below the allocations shows, under the total: "Your allocations add up to £1,270. Set at least £1,270, or lower an allocation first."
+- Editing a category past the total marks that row brick and shows: **"You can allocate at most £424 more (Transport up to £520). Allocations can't exceed your £1,440 budget."** The readout switches to "£90 over-allocated", Misc shows £0, and a marker on the bar shows where the budget ends. Nothing is saved.
+- Lowering the total below the allocations shows, under the total: "Your allocations add up to £1,016. Set at least £1,016, or lower an allocation first."
 
 ### Categories
 

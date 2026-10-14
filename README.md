@@ -45,6 +45,6 @@ docs/                                  Plan, findings, assessments
 
 ## Secrets
 
-- `.dev.vars` (local Lunch Flow dev key) is gitignored and must never be read by agents or tools.
+- `.dev.vars` (local Lunch Flow dev key and Access settings) is gitignored and must never be read by agents or tools.
 - The production key lives only in `wrangler secret`.
 - Never commit, paste or log credentials.

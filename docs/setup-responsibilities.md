@@ -8,13 +8,14 @@
 2. **Cloudflare**
    - Create an account and a Zero Trust org on the Free plan. The onboarding may ask for a payment method even at $0; this hasn't been verified.
 3. Run `npx wrangler login` in your own terminal.
-4. **Local dev key:** put `LUNCHFLOW_API_KEY=<dev key>` in `.dev.vars`.
-   - The agent may create the file with the variable name only.
+4. **Local dev values:** put `LUNCHFLOW_API_KEY=<dev key>`, `ALLOWED_EMAIL`, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `.dev.vars`.
+   - `ACCESS_TEAM_DOMAIN` is the full origin, `https://<team>.cloudflareaccess.com`, with no trailing slash: it's both the JWKS base URL and the JWT issuer, so any other form locks you out.
+   - The agent may create the file with the variable names only.
    - The agent never reads it.
-5. **Production key:** run `npx wrangler secret put LUNCHFLOW_API_KEY` in your **own terminal**, not with the `!` prefix, so the value never reaches the agent session.
+5. **Production secrets:** run `npx wrangler secret put <NAME>` for each name under `secrets.required` in `wrangler.jsonc`, in your **own terminal**, not with the `!` prefix, so the value never reaches the agent session. `wrangler deploy` fails while one is missing.
 6. **Access** (done 2026-09-30)
    - Enabled Access on the `tally` Worker with scope All traffic, the **Cloudflare account** policy and a 7-day session.
-   - Gave the agent the Access AUD tag; the team domain was read from the login redirect. Neither is secret.
+   - The Access AUD tag and the team domain (from the login redirect) aren't secret, but they're Worker secrets rather than `wrangler.jsonc` vars so the public repo doesn't name the login page.
    - Recommended: turn on 2FA for the Cloudflare account.
 7. **Analytics token:** create a scoped **Account Analytics: Read** API token for `scripts/usage-report.ts`. Add `export CLOUDFLARE_ANALYTICS_TOKEN=...` and `export CLOUDFLARE_ACCOUNT_ID=...` to your shell profile (`~/.zshrc`) yourself, never via chat. The account id isn't secret (`wrangler whoami`).
 8. **Verification**
