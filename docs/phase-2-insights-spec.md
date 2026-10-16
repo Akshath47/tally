@@ -18,7 +18,7 @@ Not wanted: recurring-charge or subscription detection, transaction search and f
 
 | Topic | Decision |
 |---|---|
-| How figures are computed | Worked out when read, in SQL, from the same month-seeking queries the month summary uses. Nothing is precomputed or cached. Categories are resolved at read time, so a rule change re-sorts history straight away, and a stored rollup would go stale. A month costs about 150 rows read. |
+| How figures are computed | Worked out when read, in SQL, from the same month-seeking queries the month summary uses. Nothing is precomputed or cached. Categories are resolved at read time, so a rule change re-sorts history straight away, and a stored rollup would go stale. A month costs a few hundred rows read. |
 | Insights | Fixed rules over those figures, in plain TypeScript. Thresholds are named constants in one module. No stored insight rows and no dismissing in v1. |
 | Analytics range | Trends and the merchant history cover **6 months**: the current month and the 5 before it. |
 | Monthly review | Completed months only. The current month's progress is covered by insights. |
@@ -88,7 +88,7 @@ One merchant's history. Returns `404` when no transaction has that key, and `400
 - `merchantKey`, `name`
 - `categoryId` and `categorySource` for a new transaction from this merchant: the matching rule's category and `rule`, or null and null when no rule matches. Per-transaction overrides don't change this.
 - `accountIds[]`: the accounts it has appeared on
-- `firstSeenDate`: the earliest counted date
+- `firstSeenDate`: the earliest counted date, or null if none of its rows count
 - `months[]`: 6 entries aligned with `/api/trends`, each with `month`, `spentMinor`, `visits`
 - `windowSpentMinor`, `windowVisits`, and `averageChargeMinor` = window spend ÷ window visits, floored (null with no visits)
 - `recent[]`: the 20 most recent transactions, newest first, in the same row shape as `GET /api/transactions`
@@ -131,6 +131,8 @@ The response is `{ asOf: 'YYYY-MM-DD', items: [...] }`. An empty list is a norma
 | `LARGE_CHARGE_MIN_MINOR` | 10000 |
 | `LARGE_CHARGE_RATIO` / `LARGE_CHARGE_MIN_HISTORY` | 3 / 3 |
 | `LARGE_CHARGE_LOOKBACK_DAYS` | 7 |
+| `LARGE_CHARGE_HISTORY_DAYS` ("the previous 6 months") | 182 |
+| `LARGE_CHARGE_MAX_CANDIDATES` (caps the reads per request) | 10 |
 | `MONTH_CHANGE_MIN_MINOR` / `MONTH_CHANGE_MIN_PCT` | 2500 / 25 |
 | `MONTH_CHANGE_SHOW_DAYS` / `MONTH_CHANGE_MAX` | 7 / 3 |
 
@@ -181,7 +183,7 @@ Done by the owner. It can start any time, since nothing else depends on it:
 
 ## Rows read and limits
 
-- Each new endpoint gets a budget in `test/rows-read.spec.ts`, measured on the existing synthetic ledger. The aim is under about 2k rows each at 4,000 transactions, since a month costs about 150.
+- Each new endpoint gets a ceiling in `test/rows-read.spec.ts`, on the existing synthetic ledger of 4,000 transactions over 2 years (about 170 a month): review 2k, trends 5k, merchant 1k, insights 6k, digest preview 8k. A few opens a day stay far below the free tier's 5M rows read a day. A ceiling that fails means a read isn't seeking; it's reported to the owner rather than raised.
 - No endpoint scans the whole history. Merchant history seeks by merchant key. Baselines and trends read only their months.
 - Every statement stays within D1's 50-statements and 100-parameters limits.
 
