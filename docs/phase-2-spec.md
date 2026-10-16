@@ -201,7 +201,7 @@ These are built in this order. Each one gets steps with **Accept when** checks i
 5. **P2.5 Budgets.** The effective-month lookup, allocation checks and the budget routes.
 6. **P2.6 Month summary.**
 
-**The first usable cut is P2.1–P2.6.** After that, each later slice gets its own short design before any code:
+**The first usable cut is P2.1–P2.6.** After that, each later slice gets its own short design before any code. Insights, stale-data warnings and the weekly digest are now designed in [phase-2-insights-spec.md](phase-2-insights-spec.md), which wins over the bullets below for those three:
 
 - **Bills.** A manual list of name, expected amount, roughly which day it's due, and a match (merchant pattern and amount tolerance). Bills count towards `allocated`. Bills not yet paid this month are taken off "left". It needs a decision on how it fits with the Bills category's allocation.
 - **Insights.** This month vs last per category, top merchants, and search and filters on `/api/transactions` (merchant text, category, amount range).
