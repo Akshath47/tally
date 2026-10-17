@@ -30,7 +30,7 @@ export function addMonths(month: string, n: number): string {
 export const monthName = (month: string) => MONTHS[splitMonth(month).m - 1]!;
 
 /** Sakamoto's day-of-week, 0 = Sunday, straight from the date's digits. */
-function weekday(date: string): number {
+export function weekday(date: string): number {
   const d = Number(date.slice(8, 10));
   const m = Number(date.slice(5, 7));
   let y = Number(date.slice(0, 4));

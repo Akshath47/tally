@@ -3,10 +3,11 @@
 // authority: this is never a reference for how the backend behaves.
 
 import { isNamedLine, type NamedLine } from "../../worker/budget/lines";
-import type { Account, Budget, Category, CategoryKind, ImportRun, InboxMerchant, MatchType, MonthSummary, OverrideInput, Rule, SummaryCategory, Transaction } from "../api";
-import { addDays, daysRemaining, londonToday, monthOf } from "../dates";
+import type { Account, Budget, Category, CategoryKind, DigestPreview, DigestStatus, ImportRun, InboxMerchant, MatchType, MerchantHistory, MonthReview, MonthSummary, OverrideInput, ReviewCategory, Rule, SummaryCategory, Transaction, TrendMonth, Trends } from "../api";
+import { addDays, addMonths, daysInMonth, daysRemaining, londonToday, monthOf, weekday } from "../dates";
+import type { Insight } from "../insights";
 import { normalizePattern as normalize } from "../../worker/budget/resolve";
-import { SEED_ACCOUNTS, SEED_BUDGET, SEED_CATEGORIES, SEED_NEW_ACCOUNT, SEED_RULES, SEED_TRANSACTIONS } from "./data";
+import { BUDGET_MONTHS_BACK, HISTORY_EXTRA, HISTORY_MONTHLY, HISTORY_SCALE, SEED_ACCOUNTS, SEED_BUDGET, SEED_CATEGORIES, SEED_LARGE_CHARGE, SEED_NEW_ACCOUNT, SEED_RULES, SEED_TRANSACTIONS, type SeedTxn } from "./data";
 
 // Only reachable through api.ts's `import.meta.env.DEV` branch. If a production build ever
 // pulls this in anyway, it fails loudly instead of serving fake data.
@@ -65,18 +66,39 @@ const categories: Category[] = SEED_CATEGORIES.map(([name, kind], i) => ({ id: i
 let nextRuleId = 1;
 const rules: RuleRow[] = SEED_RULES.map(([matchType, pattern, categoryId]) => ({ id: nextRuleId++, matchType, pattern, accountId: null, categoryId }));
 
-const transactions: BankTxn[] = SEED_TRANSACTIONS.map(([daysAgo, accountId, merchant, amountMinor, pending], i) => ({
-  id: 1000 + i,
-  accountId,
-  amountMinor,
-  currency: "GBP",
-  txnDate: addDays(today, -daysAgo),
-  merchant,
-  description: merchant.toUpperCase(),
-  isPending: pending ?? false,
-  vanishedAt: null,
-  firstSeenAt: hoursAgo(daysAgo * 24),
-})).sort((a, b) => b.txnDate.localeCompare(a.txnDate) || b.id - a.id);
+/** Seed rows as [date, account, merchant, amount, pending], dated from today. */
+type DatedSeed = [date: string, accountId: number, merchant: string, amountMinor: number, pending?: boolean];
+const fromToday = ([daysAgo, accountId, merchant, amountMinor, pending]: SeedTxn): DatedSeed => [addDays(today, -daysAgo), accountId, merchant, amountMinor, pending];
+
+/** HISTORY_* rows in the 5 months before this one, older than the dated seed so nothing doubles. */
+function historyRows(): DatedSeed[] {
+  const seedStart = addDays(today, -36);
+  const rows: DatedSeed[] = [];
+  const at = (back: number, day: number) => {
+    const month = addMonths(monthOf(today), -back);
+    return `${month}-${String(Math.min(day, daysInMonth(month))).padStart(2, "0")}`;
+  };
+  HISTORY_SCALE.forEach((pct, i) => {
+    for (const [day, accountId, merchant, amount] of HISTORY_MONTHLY) rows.push([at(i + 1, day), accountId, merchant, Math.round((amount * pct) / 100)]);
+  });
+  for (const [back, day, accountId, merchant, amount] of HISTORY_EXTRA) rows.push([at(back, day), accountId, merchant, amount]);
+  return rows.filter(([date]) => date < seedStart);
+}
+
+const transactions: BankTxn[] = [...[...SEED_TRANSACTIONS, SEED_LARGE_CHARGE].map(fromToday), ...historyRows()]
+  .map(([txnDate, accountId, merchant, amountMinor, pending], i) => ({
+    id: 1000 + i,
+    accountId,
+    amountMinor,
+    currency: "GBP",
+    txnDate,
+    merchant,
+    description: merchant.toUpperCase(),
+    isPending: pending ?? false,
+    vanishedAt: null,
+    firstSeenAt: `${txnDate}T12:00:00.000Z`,
+  }))
+  .sort((a, b) => b.txnDate.localeCompare(a.txnDate) || b.id - a.id);
 
 const overrides = new Map<number, Override>();
 const budget = { overallMinor: SEED_BUDGET.overallMinor as number | null, allocations: new Map(Object.entries(SEED_BUDGET.allocations).map(([id, v]) => [Number(id), v])) };
@@ -169,8 +191,8 @@ function summary(month: string): MonthSummary {
       if (t.isPending) pending -= amount;
     }
   }
-  // The budget starts this month, so past months show spending only (Home's no-budget view).
-  const hasBudget = month >= monthOf(today);
+  // The budget took effect a few months back, so older months show spending only (Home's no-budget view).
+  const hasBudget = hasBudgetIn(month);
   for (const c of categories) {
     const allocation = budget.allocations.get(c.id);
     if (hasBudget && c.kind === "budgeted" && !c.archived && allocation) entry(c.id).allocatedMinor = allocation;
@@ -197,6 +219,10 @@ function summary(month: string): MonthSummary {
   };
 }
 
+function hasBudgetIn(month: string) {
+  return budget.overallMinor !== null && month >= addMonths(monthOf(today), -BUDGET_MONTHS_BACK);
+}
+
 function getBudget(): Budget {
   const overall = budget.overallMinor;
   const allocatedMinor = allocated();
@@ -212,6 +238,265 @@ function getBudget(): Budget {
         const allocatedMinor = budget.allocations.get(c.id) ?? 0;
         return { categoryId: c.id, allocatedMinor, maxAllocatableMinor: misc === null ? null : misc + allocatedMinor };
       }),
+  };
+}
+
+// --- Insights, analytics and the digest (docs/phase-2-insights-spec.md) -----------------------
+
+/** Positive = spend, as the insights routes report it. */
+const spendOf = (t: Transaction) => -(t.countedAmountMinor ?? t.amountMinor);
+const countedDate = (t: Transaction) => t.countedDate ?? t.txnDate;
+const day = (date: string) => Number(date.slice(8, 10));
+
+type Spend = { categoryId: number | null; kind: CategoryKind | null; spentMinor: number; pendingSpentMinor: number };
+
+/** Spending per category in `month`, optionally only on days 1 to `upToDay`. Excluded rows and categories never appear. */
+function spendByCategory(month: string, upToDay = 31): Map<number | null, Spend> {
+  const out = new Map<number | null, Spend>();
+  for (const t of transactions.map(resolve)) {
+    if (!countsIn(t, month) || day(countedDate(t)) > upToDay) continue;
+    const e = out.get(t.categoryId) ?? { categoryId: t.categoryId, kind: kindOf(t.categoryId), spentMinor: 0, pendingSpentMinor: 0 };
+    e.spentMinor += spendOf(t);
+    if (t.isPending) e.pendingSpentMinor += spendOf(t);
+    out.set(t.categoryId, e);
+  }
+  return out;
+}
+
+/** Budget spend (budgeted and uncategorised) and tracked spend across the categories. */
+function totals(spend: Map<number | null, Spend>) {
+  let spent = 0;
+  let pending = 0;
+  let tracked = 0;
+  for (const e of spend.values()) {
+    if (e.kind === "tracked") tracked += e.spentMinor;
+    else {
+      spent += e.spentMinor;
+      pending += e.pendingSpentMinor;
+    }
+  }
+  return { spentMinor: spent, pendingSpentMinor: pending, trackedMinor: tracked };
+}
+
+/** Whether any counted transaction falls in `month`. */
+const hasData = (month: string) => transactions.some((t) => countsIn(resolve(t), month));
+
+const allocationOf = (categoryId: number, month: string) => {
+  const c = findCategory(categoryId);
+  return hasBudgetIn(month) && c?.kind === "budgeted" && !c.archived ? (budget.allocations.get(categoryId) ?? 0) : 0;
+};
+
+function review(month: string): MonthReview {
+  const previousMonth = addMonths(month, -1);
+  const now = spendByCategory(month);
+  const before = spendByCategory(previousMonth);
+  const hasPrevious = hasData(previousMonth);
+  const ids = new Set<number | null>([...now.keys(), ...(hasPrevious ? before.keys() : [])]);
+  for (const c of categories) if (allocationOf(c.id, month) > 0) ids.add(c.id);
+  const categoriesOut: ReviewCategory[] = [...ids].map((id) => {
+    const spentMinor = now.get(id)?.spentMinor ?? 0;
+    const previousSpentMinor = hasPrevious ? (before.get(id)?.spentMinor ?? 0) : 0;
+    const allocation = id === null ? 0 : allocationOf(id, month);
+    return { categoryId: id, kind: kindOf(id), spentMinor, previousSpentMinor, changeMinor: spentMinor - previousSpentMinor, allocatedMinor: allocation > 0 ? allocation : null, over: allocation > 0 && spentMinor > allocation };
+  });
+  const merchants = new Map<string, { merchantKey: string; name: string; spentMinor: number; visits: number; latest: string }>();
+  for (const t of transactions.map(resolve)) {
+    if (!countsIn(t, month)) continue;
+    const key = normalize(t.merchant);
+    const m = merchants.get(key) ?? { merchantKey: key, name: t.merchant, spentMinor: 0, visits: 0, latest: t.txnDate };
+    m.spentMinor += spendOf(t);
+    if (spendOf(t) > 0) m.visits += 1;
+    if (t.txnDate > m.latest) Object.assign(m, { latest: t.txnDate, name: t.merchant });
+    merchants.set(key, m);
+  }
+  const totalsOf = (m: string, spend: Map<number | null, Spend>) => {
+    const { spentMinor, trackedMinor } = totals(spend);
+    return { spentMinor, trackedMinor, overallMinor: hasBudgetIn(m) ? budget.overallMinor : null };
+  };
+  return {
+    month,
+    previousMonth,
+    totals: totalsOf(month, now),
+    previousTotals: hasPrevious ? totalsOf(previousMonth, before) : { spentMinor: 0, trackedMinor: 0, overallMinor: null },
+    categories: categoriesOut,
+    topMerchants: [...merchants.values()]
+      .filter((m) => m.spentMinor > 0)
+      .sort((a, b) => b.spentMinor - a.spentMinor)
+      .slice(0, 5)
+      .map(({ merchantKey, name, spentMinor, visits }) => ({ merchantKey, name, spentMinor, visits })),
+    hasPrevious,
+  };
+}
+
+const windowMonths = () => [5, 4, 3, 2, 1, 0].map((n) => addMonths(monthOf(today), -n));
+
+function trends(): Trends {
+  const months = windowMonths();
+  const spends = months.map((m) => spendByCategory(m));
+  const monthsOut: TrendMonth[] = months.map((month, i) => ({
+    month,
+    partial: i === months.length - 1,
+    ...totals(spends[i]!),
+    overallMinor: hasBudgetIn(month) ? budget.overallMinor : null,
+    hasData: hasData(month),
+  }));
+  const ids = new Set<number | null>(spends.flatMap((s) => [...s.keys()]));
+  return {
+    months: monthsOut,
+    categories: [...ids].map((id) => {
+      const series = spends.map((s) => s.get(id)?.spentMinor ?? 0);
+      const completed = series.slice(0, -1).filter((_, i) => monthsOut[i]!.hasData);
+      return { categoryId: id, kind: kindOf(id), series, averageMinor: completed.length ? Math.floor(completed.reduce((a, b) => a + b, 0) / completed.length) : null };
+    }),
+  };
+}
+
+function merchant(key: string): MerchantHistory | null {
+  const rows = transactions.filter((t) => normalize(t.merchant) === key).map(resolve);
+  if (rows.length === 0) return null;
+  const latest = rows[0]!;
+  const rule = matchRule(latest);
+  const months = windowMonths();
+  const counting = rows.filter((t) => months.some((m) => countsIn(t, m)));
+  const perMonth = months.map((month) => {
+    const inMonth = rows.filter((t) => countsIn(t, month));
+    return { month, spentMinor: inMonth.reduce((a, t) => a + spendOf(t), 0), visits: inMonth.filter((t) => spendOf(t) > 0).length };
+  });
+  const windowSpentMinor = perMonth.reduce((a, m) => a + m.spentMinor, 0);
+  const windowVisits = perMonth.reduce((a, m) => a + m.visits, 0);
+  const dates = counting.map(countedDate).sort();
+  return {
+    merchantKey: key,
+    name: latest.merchant,
+    categoryId: rule?.categoryId ?? null,
+    categorySource: rule ? "rule" : null,
+    accountIds: [...new Set(rows.map((t) => t.accountId))],
+    firstSeenDate: dates[0] ?? null,
+    months: perMonth,
+    windowSpentMinor,
+    windowVisits,
+    averageChargeMinor: windowVisits ? Math.floor(windowSpentMinor / windowVisits) : null,
+    recent: rows.slice(0, 20),
+  };
+}
+
+/** The spec's rules, simplified where the screens can't tell; `asOf` lets a scenario pretend it's another day. */
+function insights(asOf: string): Insight[] {
+  const month = monthOf(asOf);
+  const dom = day(asOf);
+  const dim = daysInMonth(month);
+  const s = summary(month);
+  const items: Insight[] = [];
+  const paced = new Set<number | null>();
+
+  for (const a of accounts) {
+    const days = a.importEnabled && a.lastDataChangeAt ? Math.floor((Date.now() - Date.parse(a.lastDataChangeAt)) / 86_400_000) : 0;
+    if (days >= 4) items.push({ id: `stale:${a.id}`, type: "stale_account", severity: "warn", accountId: a.id, staleDays: days });
+  }
+
+  const pace = (categoryId: number | null, spent: number, allocated: number) => {
+    if (allocated <= 0) return;
+    const projected = Math.floor((spent * dim) / dom);
+    const id = `pace:${categoryId === null ? "overall" : `category:${categoryId}`}:${month}`;
+    if (spent > allocated) items.push({ id, type: "pace", severity: "over", state: "over", categoryId, spentMinor: spent, allocatedMinor: allocated, projectedMinor: projected });
+    else if (dom >= 8 && projected > allocated) items.push({ id, type: "pace", severity: "warn", state: "projected_over", categoryId, spentMinor: spent, allocatedMinor: allocated, projectedMinor: projected });
+    else return;
+    paced.add(categoryId);
+  };
+  if (s.overallMinor !== null) pace(null, s.spentMinor, s.overallMinor);
+  for (const c of s.categories) if (c.categoryId !== null) pace(c.categoryId, c.spentMinor, c.allocatedMinor);
+
+  if (dom >= 8) {
+    const now = spendByCategory(month, dom);
+    const past = [1, 2, 3].map((n) => addMonths(month, -n)).filter(hasData).map((m) => spendByCategory(m, Math.min(dom, daysInMonth(m))));
+    if (past.length >= 2) {
+      for (const e of now.values()) {
+        if (paced.has(e.categoryId)) continue;
+        const baseline = Math.max(0, Math.floor(past.reduce((a, p) => a + (p.get(e.categoryId)?.spentMinor ?? 0), 0) / past.length));
+        if (e.spentMinor * 2 >= baseline * 3 && e.spentMinor - baseline >= 3_000)
+          items.push({ id: `unusual:${e.categoryId}:${month}`, type: "unusual_category", severity: "warn", categoryId: e.categoryId, spentMinor: e.spentMinor, baselineMinor: baseline });
+      }
+    }
+  }
+
+  const resolved = transactions.map(resolve);
+  for (const t of resolved) {
+    const date = countedDate(t);
+    if (date > asOf || date < addDays(asOf, -6) || !countsIn(t, monthOf(date)) || spendOf(t) < 10_000) continue;
+    const key = normalize(t.merchant);
+    const earlier = resolved.filter((e) => e.id !== t.id && normalize(e.merchant) === key && countedDate(e) < date && countedDate(e) >= addDays(date, -182) && countsIn(e, monthOf(countedDate(e))));
+    const sum = earlier.reduce((a, e) => a + spendOf(e), 0);
+    const isNew = earlier.length === 0;
+    if (!isNew && !(earlier.length >= 3 && spendOf(t) * earlier.length >= 3 * sum)) continue;
+    items.push({ id: `charge:${t.id}`, type: "large_charge", severity: "info", transactionId: t.id, merchantKey: key, name: t.merchant, spentMinor: spendOf(t), merchantAverageMinor: isNew ? null : Math.floor(sum / earlier.length), countedDate: date, isPending: t.isPending });
+  }
+
+  if (dom <= 7) {
+    const last = addMonths(month, -1);
+    const now = spendByCategory(last);
+    const before = spendByCategory(addMonths(last, -1));
+    const changes = [...new Set([...now.keys(), ...before.keys()])]
+      .map((id) => ({ id, spent: now.get(id)?.spentMinor ?? 0, prev: before.get(id)?.spentMinor ?? 0 }))
+      .filter((c) => Math.abs(c.spent - c.prev) >= 2_500 && (c.prev === 0 || Math.abs(c.spent - c.prev) * 100 >= 25 * c.prev))
+      .sort((a, b) => Math.abs(b.spent - b.prev) - Math.abs(a.spent - a.prev))
+      .slice(0, 3);
+    for (const c of changes)
+      items.push({ id: `change:${c.id}:${last}`, type: "month_change", severity: "info", categoryId: c.id, month: last, spentMinor: c.spent, previousSpentMinor: c.prev, changeMinor: c.spent - c.prev });
+  }
+
+  const rank = (i: Insight) =>
+    i.type === "stale_account" ? 0 : i.type === "pace" ? (i.state === "over" ? 1 : 2) : i.type === "unusual_category" ? 3 : i.type === "large_charge" ? 4 : 5;
+  const size = (i: Insight) =>
+    i.type === "pace" ? (i.state === "over" ? i.spentMinor - i.allocatedMinor : i.projectedMinor - i.allocatedMinor) : i.type === "unusual_category" ? i.spentMinor - i.baselineMinor : i.type === "large_charge" ? i.spentMinor : i.type === "month_change" ? Math.abs(i.changeMinor) : 0;
+  return items.sort((a, b) => rank(a) - rank(b) || size(b) - size(a));
+}
+
+/** Monday of `date`'s week. */
+const mondayOf = (date: string) => addDays(date, -((weekday(date) + 6) % 7));
+
+let lastSend: DigestPreview["lastSend"] = { weekStart: addDays(mondayOf(today), -7), status: "sent", sentAt: `${addDays(mondayOf(today), -1)}T17:00:00.000Z` };
+
+function digestPreview(asOf: string): DigestPreview {
+  const weekStart = mondayOf(today);
+  const resolved = transactions.map(resolve);
+  const days = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const date = addDays(weekStart, i);
+    let spentMinor = 0;
+    let pendingSpentMinor = 0;
+    for (const t of resolved) {
+      if (countedDate(t) !== date || !countsIn(t, monthOf(date)) || !isBudgetSpend(t)) continue;
+      spentMinor += spendOf(t);
+      if (t.isPending) pendingSpentMinor += spendOf(t);
+    }
+    return { date, spentMinor, pendingSpentMinor };
+  });
+  const s = summary(monthOf(today));
+  const dom = day(today);
+  const dim = daysInMonth(monthOf(today));
+  const status = (spent: number, allocated: number): DigestStatus =>
+    spent > allocated ? "over" : dom >= 8 && Math.floor((spent * dim) / dom) > allocated ? "projected_over" : spent * 10 >= allocated * 9 ? "near" : "ok";
+  const allocatedLines = s.categories.filter((c) => c.categoryId !== null && c.allocatedMinor > 0);
+  const miscSpent = s.categories.filter((c) => c.categoryId === null || (c.kind === "budgeted" && c.allocatedMinor === 0)).reduce((a, c) => a + c.spentMinor, 0);
+  return {
+    weekStart,
+    weekEnd: today,
+    weekSpentMinor: days.reduce((a, d) => a + d.spentMinor, 0),
+    weekPendingSpentMinor: days.reduce((a, d) => a + d.pendingSpentMinor, 0),
+    spansMonths: monthOf(weekStart) !== monthOf(today),
+    days,
+    month: { spentMinor: s.spentMinor, pendingSpentMinor: s.pendingSpentMinor, overallMinor: s.overallMinor, leftMinor: s.leftMinor, perWeekMinor: s.perWeekMinor, daysRemaining: s.daysRemaining ?? 1 },
+    categories:
+      s.overallMinor === null
+        ? []
+        : [
+            ...allocatedLines.map((c) => ({ categoryId: c.categoryId, spentMinor: c.spentMinor, allocatedMinor: c.allocatedMinor, status: status(c.spentMinor, c.allocatedMinor) })),
+            ...(s.miscMinor ? [{ categoryId: null, spentMinor: miscSpent, allocatedMinor: s.miscMinor, status: status(miscSpent, s.miscMinor) }] : []),
+          ],
+    insights: insights(asOf),
+    inboxCount: s.inboxCount,
+    staleAccountIds: insights(asOf).flatMap((i) => (i.type === "stale_account" ? [i.accountId] : [])),
+    lastDataChangeAt: s.lastDataChangeAt,
+    lastSend,
   };
 }
 
@@ -419,12 +704,32 @@ const ROUTES: [string, RegExp, Handler][] = [
     const rows = transactions.map(resolve).filter(inLine);
     return ok(page(rows, url));
   }],
+
+  ["GET", /^\/api\/months\/(\d{4}-(?:0[1-9]|1[0-2]))\/review$/, (m) => (m[1]! >= monthOf(today) ? fail(400, "bad_request") : ok(review(m[1]!)))],
+  ["GET", /^\/api\/trends$/, () => ok(trends())],
+  ["GET", /^\/api\/merchants$/, (_m, url) => {
+    const key = url.searchParams.get("key") ?? "";
+    if (!key || key.length > 200) return fail(400, "bad_request");
+    const history = merchant(key);
+    return history ? ok(history) : fail(404, "not_found");
+  }],
+  ["GET", /^\/api\/insights$/, () => ok({ asOf, items: scenario === "insights-calm" ? [] : insights(asOf) })],
+  ["GET", /^\/api\/digest\/preview$/, () => {
+    const preview = digestPreview(asOf);
+    return ok(scenario === "insights-calm" ? { ...preview, insights: [] } : preview);
+  }],
+  ["POST", /^\/api\/digest\/send$/, () => {
+    lastSend = { weekStart: mondayOf(today), status: "sent", sentAt: new Date().toISOString() };
+    return ok({ status: "sent" });
+  }],
 ];
 
 /**
  * Screen states to review, picked with `?mock=<scenario>` on any URL and kept for the tab:
  * "firstrun" (no budget yet), "over" (spent past the budget), "error" (the summary fails),
- * "slow" (5 s latency, to see loading states).
+ * "slow" (5 s latency, to see loading states). Insights: "insights-calm" (nothing stands out),
+ * "insights-early" (the 3rd of the month: month changes only), "insights-new" (the first month,
+ * no budget), "digest-failed" (last Sunday's email didn't send), "insights-error".
  */
 const scenario = (() => {
   const fromUrl = new URLSearchParams(window.location.search).get("mock");
@@ -439,6 +744,22 @@ if (scenario === "firstrun") {
   budget.overallMinor = null;
   budget.allocations.clear();
 }
+if (scenario === "insights-new") {
+  budget.overallMinor = null;
+  budget.allocations.clear();
+  const start = `${monthOf(today)}-01`;
+  for (let i = transactions.length - 1; i >= 0; i--) if (transactions[i]!.txnDate < start) transactions.splice(i, 1);
+  lastSend = null;
+}
+if (scenario === "insights-calm") {
+  budget.overallMinor = 400_000;
+  budget.allocations = new Map([[4, 60_000], [1, 50_000], [2, 40_000], [3, 20_000]]);
+  const i = transactions.findIndex((t) => t.merchant === SEED_LARGE_CHARGE[2]);
+  if (i >= 0) transactions.splice(i, 1);
+}
+if (scenario === "digest-failed") lastSend = { weekStart: addDays(mondayOf(today), -7), status: "failed", sentAt: null };
+/** The day insights are worked out for: a scenario can pretend it's early in the month. */
+const asOf = scenario === "insights-early" ? `${monthOf(today)}-03` : today;
 if (scenario === "over") {
   budget.overallMinor = 20_000;
   budget.allocations = new Map([[4, 5_000], [1, 6_000], [2, 3_000], [3, 4_000]]);
@@ -453,7 +774,8 @@ export function handle(path: string, init: RequestInit | undefined): Promise<Res
     const match = routeMethod === method ? pattern.exec(url.pathname) : null;
     if (!match) continue;
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Body) : {};
-    reply = scenario === "error" && url.pathname.endsWith("/summary") ? fail(500, "internal") : handler(match, url, body);
+    const failing = (scenario === "error" && url.pathname.endsWith("/summary")) || (scenario === "insights-error" && /^\/api\/(insights|digest)/.test(url.pathname));
+    reply = failing ? fail(500, "internal") : handler(match, url, body);
     break;
   }
   // Serialised, so the screens never hold references into the mock's state.
