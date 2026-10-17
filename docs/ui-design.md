@@ -229,4 +229,4 @@ None. Four earlier differences were settled on 2026-10-04 in the spec's favour: 
 ## Open questions
 
 - Whether "Use for all" should also be offered when editing a rule's category from Categories, or only from the editor and To sort.
-- How long a stale account waits before the warning shows. The design uses 4 days, matching the example.
+- Settled: a stale account warns after 4 days without new data (phase-2-insights-spec.md).
