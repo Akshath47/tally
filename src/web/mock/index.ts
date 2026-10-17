@@ -753,7 +753,7 @@ if (scenario === "insights-new") {
 }
 if (scenario === "insights-calm") {
   budget.overallMinor = 400_000;
-  budget.allocations = new Map([[4, 60_000], [1, 50_000], [2, 40_000], [3, 20_000]]);
+  budget.allocations = new Map([[4, 80_000], [1, 50_000], [2, 40_000], [3, 20_000]]);
   const i = transactions.findIndex((t) => t.merchant === SEED_LARGE_CHARGE[2]);
   if (i >= 0) transactions.splice(i, 1);
 }

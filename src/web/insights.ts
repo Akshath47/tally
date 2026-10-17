@@ -150,3 +150,18 @@ export function weekRange(weekStart: string, today: string): string {
   const end = formatShortDate(sunday, today);
   return monthOf(weekStart) === monthOf(sunday) ? `${start.replace(/ \w{3}( \d{4})?$/, "")} – ${end}` : `${start} – ${end}`;
 }
+
+const londonClock = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** An ISO timestamp as London's "Sun 11 Oct, 18:00". */
+export function londonDayTime(iso: string, today: string): string {
+  const p = Object.fromEntries(londonClock.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return `${formatShortDate(`${p.year}-${p.month}-${p.day}`, today)}, ${p.hour}:${p.minute}`;
+}
+
+/** The days of the week before `today`'s month began: "Includes 3 days of September". */
+export function daysOfPreviousMonth(weekStart: string, today: string): number {
+  let n = 0;
+  for (let d = weekStart; d <= today && monthOf(d) !== monthOf(today); d = addDays(d, 1)) n += 1;
+  return n;
+}

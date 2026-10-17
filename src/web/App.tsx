@@ -7,6 +7,7 @@ import { Accounts } from "./screens/Accounts";
 import { Budget } from "./screens/Budget";
 import { Categories, Rules } from "./screens/Categories";
 import { Home } from "./screens/Home";
+import { Insights } from "./screens/Insights";
 import { LineTransactions } from "./screens/LineTransactions";
 import { NewAccount } from "./screens/NewAccount";
 import { ToSort } from "./screens/ToSort";
@@ -18,6 +19,8 @@ function Screen({ route }: { route: Route }) {
       return <Home month={route.month} />;
     case "transactions":
       return <Transactions />;
+    case "insights":
+      return <Insights />;
     case "budget":
       return <Budget />;
     case "toSort":

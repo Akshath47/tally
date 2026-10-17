@@ -79,3 +79,17 @@ describe("how the tab shows them", () => {
     expect(weekRange("2026-09-28", "2026-10-02")).toBe("Mon 28 Sep – Sun 4 Oct");
   });
 });
+
+describe("week card helpers", () => {
+  it("formats a send time in London, across the clock change", async () => {
+    const { londonDayTime } = await import("../../src/web/insights");
+    expect(londonDayTime("2026-10-11T17:00:00Z", "2026-10-16")).toBe("Sun 11 Oct, 18:00");
+    expect(londonDayTime("2026-11-08T18:00:00Z", "2026-11-10")).toBe("Sun 8 Nov, 18:00");
+  });
+
+  it("counts the week's days from the previous month", async () => {
+    const { daysOfPreviousMonth } = await import("../../src/web/insights");
+    expect(daysOfPreviousMonth("2026-09-28", "2026-10-02")).toBe(3);
+    expect(daysOfPreviousMonth("2026-10-12", "2026-10-16")).toBe(0);
+  });
+});
