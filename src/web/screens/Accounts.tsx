@@ -5,8 +5,8 @@ import { LoadError, PushedScreen } from "../components/Screen";
 import { AccountBadge, Button, ChevronRight, Skeleton } from "../components/ui";
 import { formatShortDate } from "../dates";
 import { formatTimestamp } from "../format";
-import { ageText } from "../pace";
 import { useAccounts } from "../queries";
+import { freshnessAge } from "../stale";
 import { Link } from "../router";
 import { newAccountHref, type Back } from "../routes";
 
@@ -87,7 +87,7 @@ function AccountCard({ account }: { account: Account }) {
           </a>
         </div>
       )}
-      <Detail label="Last updated" value={updated ? `${ageText(updated)} · ${formatTimestamp(updated)}` : "Never"} />
+      <Detail label="Last updated" value={updated ? `${freshnessAge(account)} · ${formatTimestamp(updated)}` : "Never"} />
       <Detail label="Newest transaction" value={account.newestTxnDate ? formatShortDate(account.newestTxnDate) : "None yet"} />
       {!account.backfillComplete && account.importEnabled && <Detail label="History" value="Still importing" />}
     </li>

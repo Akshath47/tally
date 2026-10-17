@@ -51,13 +51,15 @@ function Freshness({ summary, accounts }: { summary: ReturnType<typeof useSummar
   } else if (summary.isError) {
     dot = "bg-over";
     text = summary.data ? `Couldn't refresh · last loaded ${formatTimestamp(new Date(summary.dataUpdatedAt).toISOString())}` : "Couldn't refresh";
-  } else if (summary.data.staleAccountIds.length > 0) {
-    dot = "bg-warn";
-    text = perAccountFreshness(accounts);
   } else {
     const at = summary.data.lastDataChangeAt;
     const scope = enabledAccounts === 2 ? " · both accounts" : enabledAccounts > 2 ? ` · ${enabledAccounts} accounts` : "";
     text = at ? `Updated ${ageText(at)}${scope}` : "Not imported yet";
+    if (summary.data.staleAccountIds.length > 0) {
+      dot = "bg-warn";
+      // Per-account ages need the accounts list; until it loads, keep the overall line.
+      text = perAccountFreshness(accounts) || text;
+    }
   }
   return (
     <Link href="/accounts" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted hover:text-fg" role={summary.isPending ? "status" : undefined}>
@@ -68,12 +70,12 @@ function Freshness({ summary, accounts }: { summary: ReturnType<typeof useSummar
 }
 
 /** The amber stale-data banner (docs/ui-design.md, Home → Stale data). */
-function StaleBanner({ stale }: { stale: Account[] }) {
+function StaleBanner({ staleIds, accounts }: { staleIds: number[]; accounts: Account[] }) {
   return (
     <Link href="/accounts" className="mx-4 mt-3 flex items-start gap-2 rounded-input bg-warn-tint px-3 py-2.5 text-[13px] leading-normal text-warn-fg">
       <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warn" aria-hidden="true" />
       <span>
-        {staleBannerText(stale)} <span className="underline">Accounts</span>
+        {staleBannerText(staleIds, accounts)} <span className="underline">Accounts</span>
       </span>
     </Link>
   );
@@ -493,7 +495,6 @@ export function Home({ month }: { month: string }) {
   const accounts = useAccounts();
   const s = summary.data;
   const allAccounts = accounts.data?.all ?? [];
-  const stale = allAccounts.filter((a) => s?.staleAccountIds.includes(a.id));
 
   if (isCurrent && s && s.overallMinor === null) {
     return (
@@ -520,7 +521,7 @@ export function Home({ month }: { month: string }) {
         </div>
       }
     >
-      {isCurrent && stale.length > 0 && <StaleBanner stale={stale} />}
+      {isCurrent && s && s.staleAccountIds.length > 0 && <StaleBanner staleIds={s.staleAccountIds} accounts={allAccounts} />}
       {s && s.overallMinor !== null && s.leftMinor !== null ? (
         <Dashboard s={{ ...s, overallMinor: s.overallMinor, leftMinor: s.leftMinor }} byId={categories.data?.byId ?? new Map()} isCurrent={isCurrent} />
       ) : s ? (
