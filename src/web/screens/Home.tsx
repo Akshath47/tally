@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
+import { ApiError, putOverallBudget, type Account, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
 import { MonthStepper } from "../components/MonthStepper";
 import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
@@ -12,6 +12,7 @@ import { useAccounts, useCategories, usePreviousSummaries, useSummary } from "..
 import { Link, navigate } from "../router";
 import { budgetLines, isLowerBound, spendingLines, type Line, type SpendLine } from "../lines";
 import { homeHref, lineHref } from "../routes";
+import { perAccountFreshness, staleBannerText } from "../stale";
 
 // The five-second glance (docs/ui-design.md, Home).
 
@@ -41,7 +42,8 @@ function SettingsLink() {
 }
 
 /** "Updated 3h ago · both accounts", or the loading / failed line. */
-function Freshness({ summary, enabledAccounts }: { summary: ReturnType<typeof useSummary>; enabledAccounts: number }) {
+function Freshness({ summary, accounts }: { summary: ReturnType<typeof useSummary>; accounts: Account[] }) {
+  const enabledAccounts = accounts.filter((a) => a.importEnabled).length;
   let dot = "bg-accent";
   let text: string;
   if (summary.isPending) {
@@ -49,6 +51,9 @@ function Freshness({ summary, enabledAccounts }: { summary: ReturnType<typeof us
   } else if (summary.isError) {
     dot = "bg-over";
     text = summary.data ? `Couldn't refresh · last loaded ${formatTimestamp(new Date(summary.dataUpdatedAt).toISOString())}` : "Couldn't refresh";
+  } else if (summary.data.staleAccountIds.length > 0) {
+    dot = "bg-warn";
+    text = perAccountFreshness(accounts);
   } else {
     const at = summary.data.lastDataChangeAt;
     const scope = enabledAccounts === 2 ? " · both accounts" : enabledAccounts > 2 ? ` · ${enabledAccounts} accounts` : "";
@@ -58,6 +63,18 @@ function Freshness({ summary, enabledAccounts }: { summary: ReturnType<typeof us
     <Link href="/accounts" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted hover:text-fg" role={summary.isPending ? "status" : undefined}>
       {summary.isPending ? <Spinner size={12} /> : <span className={`size-1.5 shrink-0 rounded-full ${dot}`} aria-hidden="true" />}
       {text}
+    </Link>
+  );
+}
+
+/** The amber stale-data banner (docs/ui-design.md, Home → Stale data). */
+function StaleBanner({ stale }: { stale: Account[] }) {
+  return (
+    <Link href="/accounts" className="mx-4 mt-3 flex items-start gap-2 rounded-input bg-warn-tint px-3 py-2.5 text-[13px] leading-normal text-warn-fg">
+      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warn" aria-hidden="true" />
+      <span>
+        {staleBannerText(stale)} <span className="underline">Accounts</span>
+      </span>
     </Link>
   );
 }
@@ -475,7 +492,8 @@ export function Home({ month }: { month: string }) {
   const categories = useCategories();
   const accounts = useAccounts();
   const s = summary.data;
-  const enabledAccounts = accounts.data?.all.filter((a) => a.importEnabled).length ?? 0;
+  const allAccounts = accounts.data?.all ?? [];
+  const stale = allAccounts.filter((a) => s?.staleAccountIds.includes(a.id));
 
   if (isCurrent && s && s.overallMinor === null) {
     return (
@@ -494,7 +512,7 @@ export function Home({ month }: { month: string }) {
       title={monthTitle(month, current)}
       // Back stops at a month with nothing in it, where the history ends.
       titleNav={<MonthStepper className="-my-1 ml-1" month={month} current={current} prevDisabled={s?.categories.length === 0} onStep={(m) => navigate(homeHref(m))} />}
-      titleExtra={isCurrent ? <Freshness summary={summary} enabledAccounts={enabledAccounts} /> : undefined}
+      titleExtra={isCurrent ? <Freshness summary={summary} accounts={allAccounts} /> : undefined}
       action={
         <div className="flex items-center gap-1">
           {s && s.inboxCount > 0 && <ToSortChip count={s.inboxCount} />}
@@ -502,6 +520,7 @@ export function Home({ month }: { month: string }) {
         </div>
       }
     >
+      {isCurrent && stale.length > 0 && <StaleBanner stale={stale} />}
       {s && s.overallMinor !== null && s.leftMinor !== null ? (
         <Dashboard s={{ ...s, overallMinor: s.overallMinor, leftMinor: s.leftMinor }} byId={categories.data?.byId ?? new Map()} isCurrent={isCurrent} />
       ) : s ? (

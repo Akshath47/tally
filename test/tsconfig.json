@@ -5,5 +5,5 @@
     "lib": ["ES2024"],
     "types": ["@cloudflare/vitest-plugin/types"]
   },
-  "include": ["./**/*.ts", "../src/worker", "../src/web/format.ts", "../src/web/dates.ts", "../src/web/routes.ts", "../src/web/lines.ts", "../src/web/money.ts", "../src/web/pace.ts", "../src/web/overrides.ts", "../src/web/inbox.ts", "../scripts/usage-report/report.ts", "../scripts/check-terminations/problems.ts", "../worker-configuration.d.ts"]
+  "include": ["./**/*.ts", "../src/worker", "../src/web/format.ts", "../src/web/dates.ts", "../src/web/routes.ts", "../src/web/lines.ts", "../src/web/money.ts", "../src/web/pace.ts", "../src/web/overrides.ts", "../src/web/inbox.ts", "../src/web/stale.ts", "../scripts/usage-report/report.ts", "../scripts/check-terminations/problems.ts", "../worker-configuration.d.ts"]
 }
