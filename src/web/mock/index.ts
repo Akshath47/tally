@@ -82,7 +82,9 @@ function historyRows(): DatedSeed[] {
     for (const [day, accountId, merchant, amount] of HISTORY_MONTHLY) rows.push([at(i + 1, day), accountId, merchant, Math.round((amount * pct) / 100)]);
   });
   for (const [back, day, accountId, merchant, amount] of HISTORY_EXTRA) rows.push([at(back, day), accountId, merchant, amount]);
-  return rows.filter(([date]) => date < seedStart);
+  // The dated seed reaches back into last month; a merchant it already has there isn't repeated.
+  const seeded = new Set(SEED_TRANSACTIONS.map(fromToday).map(([date, , merchant]) => `${monthOf(date)}|${merchant}`));
+  return rows.filter(([date, , merchant]) => date < seedStart && !seeded.has(`${monthOf(date)}|${merchant}`));
 }
 
 const transactions: BankTxn[] = [...[...SEED_TRANSACTIONS, SEED_LARGE_CHARGE].map(fromToday), ...historyRows()]
