@@ -8,7 +8,7 @@ import { formatUnsigned, minorToInput } from "../money";
 import { buildOverride, countsAs, draftOf, isEdited, type Draft } from "../overrides";
 import { KINDS, pickerOrder, useAccounts, useCategories } from "../queries";
 import { Link } from "../router";
-import { merchantHref } from "../routes";
+import { isMerchantKey, merchantHref } from "../routes";
 import { Sheet } from "./Sheet";
 import { AccountBadge, ChevronLeft, ChevronRight, ErrorBanner, FieldError, Info, Lock, Pencil, SectionLabel, inputClass } from "./ui";
 
@@ -25,20 +25,19 @@ function ReadOnlyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** "All from <merchant>": its history across both accounts, unless that's where the sheet was opened. */
+/** "All from <merchant>": its history across both accounts. */
 function MerchantLink({ t }: { t: Transaction }) {
   const key = patternOf(t);
-  const href = merchantHref(key);
-  if (!key || key.length > 200 || window.location.pathname === href) return null;
+  if (!isMerchantKey(key)) return null;
   return (
-    <Link href={href} className="inline-flex min-h-11 items-center justify-center gap-1 self-center text-[13.5px] text-accent-fg">
+    <Link href={merchantHref(key)} className="inline-flex min-h-11 items-center justify-center gap-1 self-center text-[13.5px] text-accent-fg">
       <span className="max-w-[260px] truncate">All from {merchantLabel(t)}</span>
       <ChevronRight size={14} />
     </Link>
   );
 }
 
-function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: Account | undefined; category: Category | undefined; onClose: () => void }) {
+function ReadOnly({ t, account, category, onClose, merchantLink }: { t: Transaction; account: Account | undefined; category: Category | undefined; onClose: () => void; merchantLink: boolean }) {
   const amount = formatUnsigned(t.countedAmountMinor ?? t.amountMinor, t.currency);
   const month = monthTitle(monthOf(t.countedDate ?? t.txnDate));
   const counts = countsAs(t, category?.kind);
@@ -71,7 +70,7 @@ function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: 
         <ReadOnlyRow label="Amount" value={amount} />
         <ReadOnlyRow label="Date" value={formatShortDate(t.txnDate)} />
       </div>
-      <MerchantLink t={t} />
+      {merchantLink && <MerchantLink t={t} />}
       <button type="button" className="mt-2 min-h-[52px] rounded-button border border-line bg-raised text-[15.5px] font-medium" onClick={onClose}>
         Close
       </button>
@@ -137,13 +136,14 @@ export function CategoryPicker({ current, categories, onPick, onBack }: { curren
   );
 }
 
-function Editor({ t, account, categories, byId, onClose, onSaved }: {
+function Editor({ t, account, categories, byId, onClose, onSaved, merchantLink }: {
   t: Transaction;
   account: Account | undefined;
   categories: Category[];
   byId: Map<number, Category>;
   onClose: () => void;
   onSaved?: (t: Transaction) => void;
+  merchantLink: boolean;
 }) {
   const bankAmount = formatUnsigned(t.amountMinor, t.currency);
   const [draft, setDraft] = useState<Draft>(() => draftOf(t, minorToInput(t.countedAmountMinor ?? t.amountMinor)));
@@ -304,14 +304,17 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
             {reset.isPending ? "Resetting…" : "Reset all changes to bank values"}
           </button>
         )}
-        <MerchantLink t={t} />
+        {merchantLink && <MerchantLink t={t} />}
       </div>
     </>
   );
 }
 
-/** Opens the editor for an editable row, or the read-only sheet for a pending or replaced one. */
-export function TransactionSheet({ txn, onClose, onSaved }: { txn: Transaction | null; onClose: () => void; onSaved?: (t: Transaction) => void }) {
+/**
+ * Opens the editor for an editable row, or the read-only sheet for a pending or replaced one.
+ * `merchantLink` is false where the sheet is opened from that merchant's own screen.
+ */
+export function TransactionSheet({ txn, onClose, onSaved, merchantLink = true }: { txn: Transaction | null; onClose: () => void; onSaved?: (t: Transaction) => void; merchantLink?: boolean }) {
   const accounts = useAccounts();
   const categories = useCategories();
   const byId = categories.data?.byId ?? new Map<number, Category>();
@@ -327,9 +330,10 @@ export function TransactionSheet({ txn, onClose, onSaved }: { txn: Transaction |
             byId={byId}
             onClose={onClose}
             onSaved={onSaved}
+            merchantLink={merchantLink}
           />
         ) : (
-          <ReadOnly t={txn} account={accounts.data?.byId.get(txn.accountId)} category={txn.categoryId === null ? undefined : byId.get(txn.categoryId)} onClose={onClose} />
+          <ReadOnly t={txn} account={accounts.data?.byId.get(txn.accountId)} category={txn.categoryId === null ? undefined : byId.get(txn.categoryId)} onClose={onClose} merchantLink={merchantLink} />
         ))}
     </Sheet>
   );

@@ -1,16 +1,17 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { getMerchant, sendDigest, type DigestPreview, type Transaction } from "../api";
+import { sendDigest, type DigestPreview, type Transaction } from "../api";
 import { TabScreen } from "../components/Screen";
 import { ScreenError } from "../components/ScreenError";
 import { ToSortChip } from "../components/ToSortChip";
 import { TransactionSheet } from "../components/TransactionSheet";
-import { ArrowUp, Check, ChevronRight, Clock, Flag, Skeleton, Spinner, Warning } from "../components/ui";
+import { ArrowUp, Check, ChevronRight, Clock, Flag, SectionLabel, Skeleton, Spinner, Warning, cardClass as card } from "../components/ui";
 import { addDays, addMonths, daysInMonth, londonToday, monthName, monthOf } from "../dates";
 import { daysOfPreviousMonth, iconOf, insightWords, isMonthChangeOnly, londonDayTime, targetOf, toneOf, weekRange, type Insight, type InsightIcon, type Names, type Tone } from "../insights";
+import { categoryName } from "../lines";
 import { formatPounds } from "../money";
 import { ageText, fraction } from "../pace";
-import { useAccounts, useCategories, useDigestPreview, useInsights, useSummary } from "../queries";
+import { merchantQuery, useAccounts, useCategories, useDigestPreview, useSummary } from "../queries";
 import { Link, navigate } from "../router";
 import { TRENDS_HREF, lineHref, merchantHref, reviewHref } from "../routes";
 
@@ -18,21 +19,18 @@ import { TRENDS_HREF, lineHref, merchantHref, reviewHref } from "../routes";
 // and the way into the Monthly review and Trends. Figures come from the digest preview and the
 // insights, so the tab and the Sunday email say the same thing.
 
-const card = "rounded-card border border-divider bg-surface";
+const CALENDAR = (
+  <>
+    <rect x="4" y="5" width="16" height="15" rx="2" />
+    <path d="M4 10h16M9 3v4M15 3v4" />
+  </>
+);
 
 /** "Updated 3h ago · both accounts", amber when an account is stale. */
 function Freshness({ preview, failed }: { preview: DigestPreview | undefined; failed: boolean }) {
   const accounts = useAccounts();
   const enabled = accounts.data?.all.filter((a) => a.importEnabled).length ?? 0;
-  if (failed) {
-    return (
-      <Link href="/accounts" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted hover:text-fg">
-        <span className="size-1.5 shrink-0 rounded-full bg-over" aria-hidden="true" />
-        Couldn't refresh
-      </Link>
-    );
-  }
-  if (!preview) {
+  if (!preview && !failed) {
     return (
       <span role="status" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted">
         <Spinner size={12} />
@@ -40,12 +38,12 @@ function Freshness({ preview, failed }: { preview: DigestPreview | undefined; fa
       </span>
     );
   }
-  const stale = preview.staleAccountIds.length > 0;
+  const stale = !failed && (preview?.staleAccountIds.length ?? 0) > 0;
   const scope = enabled === 2 ? " · both accounts" : enabled > 2 ? ` · ${enabled} accounts` : "";
-  const text = preview.lastDataChangeAt ? `Updated ${ageText(preview.lastDataChangeAt)}${scope}` : "Not imported yet";
+  const text = failed ? "Couldn't refresh" : preview?.lastDataChangeAt ? `Updated ${ageText(preview.lastDataChangeAt)}${scope}` : "Not imported yet";
   return (
     <Link href="/accounts" className="inline-flex min-h-[30px] items-center gap-1.5 text-[12.5px] text-muted hover:text-fg">
-      <span className={`size-1.5 shrink-0 rounded-full ${stale ? "bg-warn" : "bg-accent"}`} aria-hidden="true" />
+      <span className={`size-1.5 shrink-0 rounded-full ${failed ? "bg-over" : stale ? "bg-warn" : "bg-accent"}`} aria-hidden="true" />
       {text}
       {stale && <span className="text-warn-fg">· an account is stale</span>}
     </Link>
@@ -135,9 +133,7 @@ function ThisWeek({ p, names, today }: { p: DigestPreview; names: Names; today: 
   return (
     <section className={`mx-4 mt-3 px-4 pt-4 pb-1.5 ${card}`} aria-labelledby="week-h">
       <div className="flex items-baseline justify-between">
-        <h2 id="week-h" className="text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
-          This week
-        </h2>
+        <SectionLabel id="week-h">This week</SectionLabel>
         <span className="text-[12.5px] text-muted">
           {weekRange(p.weekStart, today)}
           {soFar && " · so far"}
@@ -307,7 +303,7 @@ function WorthALook({ items, names, asOf }: { items: Insight[]; names: Names; as
   // charge is within the last week, so it's in its merchant's 20 most recent.
   const openCharge = async (transactionId: number, merchantKey: string) => {
     try {
-      const m = await qc.fetchQuery({ queryKey: ["merchant", merchantKey], queryFn: () => getMerchant(merchantKey) });
+      const m = await qc.fetchQuery(merchantQuery(merchantKey));
       const t = m.recent.find((r) => r.id === transactionId);
       if (t) setOpen(t);
       else navigate(merchantHref(merchantKey));
@@ -321,9 +317,7 @@ function WorthALook({ items, names, asOf }: { items: Insight[]; names: Names; as
       {items.length > 0 ? (
         <section aria-labelledby="look-h">
           <div className="mx-5 mt-6 mb-2 flex items-baseline justify-between">
-            <h2 id="look-h" className="text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase">
-              Worth a look
-            </h2>
+            <SectionLabel id="look-h">Worth a look</SectionLabel>
             <span className="text-xs text-muted">{isMonthChangeOnly(items) ? `${monthName(lastMonth)} vs ${monthName(addMonths(lastMonth, -1))}` : `${items.length} this month`}</span>
           </div>
           <ul className="mx-4 flex flex-col gap-2">
@@ -388,8 +382,7 @@ function Entries({ today }: { today: string }) {
       {!hasLast && (
         <p className="mx-5 mt-5 flex items-start gap-2 text-[12.5px] leading-normal text-muted">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className="mt-0.5 shrink-0">
-            <rect x="4" y="5" width="16" height="15" rx="2" />
-            <path d="M4 10h16M9 3v4M15 3v4" />
+            {CALENDAR}
           </svg>
           Monthly reviews and comparisons start once there's a full previous month. Your first one will be {monthName(month)}'s, from 1 {monthName(addMonths(month, 1))}.
         </p>
@@ -400,12 +393,7 @@ function Entries({ today }: { today: string }) {
             href={reviewHref(last)}
             title={`${monthName(last)} review`}
             subtitle={`Compared with ${monthName(addMonths(last, -1))}`}
-            icon={
-              <>
-                <rect x="4" y="5" width="16" height="15" rx="2" />
-                <path d="M4 10h16M9 3v4M15 3v4" />
-              </>
-            }
+            icon={CALENDAR}
           />
         )}
         <Entry href={TRENDS_HREF} title="Trends" subtitle="Last 6 months" icon={<path d="M6 19v-6M10 19V9M14 19v-8M18 19V6" />} />
@@ -446,38 +434,26 @@ function Loading() {
 export function Insights() {
   const today = londonToday();
   const preview = useDigestPreview();
-  const insights = useInsights();
-  const categories = useCategories();
-  const accounts = useAccounts();
-  const failed = preview.isError ? preview : insights.isError ? insights : null;
-
-  const names: Names = {
-    category: (id) => (id === null ? "Misc" : (categories.data?.byId.get(id)?.name ?? "Category")),
-    account: (id) => accounts.data?.byId.get(id)?.name ?? "An account",
-  };
-  // The insights' own words call uncategorised spend "Uncategorised"; the week card's null line is Misc.
-  const insightNames: Names = { ...names, category: (id) => (id === null ? "Uncategorised" : names.category(id)) };
+  const byId = useCategories().data?.byId;
+  const accounts = useAccounts().data?.byId;
+  const account = (id: number) => accounts?.get(id)?.name ?? "An account";
+  // The week card's uncategorised line is Misc; the insights' own words call it Uncategorised.
+  const names: Names = { category: (id) => categoryName(id, byId, "Misc"), account };
+  const insightNames: Names = { category: (id) => categoryName(id, byId), account };
+  const p = preview.data;
 
   return (
-    <TabScreen title="Insights" titleExtra={<Freshness preview={preview.data} failed={failed !== null} />}>
-      {preview.data && insights.data ? (
+    <TabScreen title="Insights" titleExtra={<Freshness preview={p} failed={preview.isError} />}>
+      {p ? (
         <>
-          <ThisWeek p={preview.data} names={names} today={today} />
-          <WorthALook items={insights.data.items} names={insightNames} asOf={insights.data.asOf} />
+          <ThisWeek p={p} names={names} today={today} />
+          {/* The preview carries the same insights as GET /api/insights, worked out for its weekEnd (today). */}
+          <WorthALook items={p.insights} names={insightNames} asOf={p.weekEnd} />
           <Entries today={today} />
         </>
-      ) : failed ? (
+      ) : preview.isError ? (
         // Only when there's nothing to show: a failed background refetch keeps the figures.
-        <ScreenError
-          what="insights"
-          error={failed.error}
-          at={failed.errorUpdatedAt}
-          onRetry={() => {
-            void preview.refetch();
-            void insights.refetch();
-          }}
-          retrying={preview.isFetching || insights.isFetching}
-        />
+        <ScreenError what="insights" error={preview.error} at={preview.errorUpdatedAt} onRetry={() => void preview.refetch()} retrying={preview.isFetching} />
       ) : (
         <Loading />
       )}

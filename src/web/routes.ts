@@ -44,10 +44,13 @@ const REVIEW_PATH = new RegExp(`^/insights/review/(${MONTH})$`);
 const LINE_PATH = new RegExp(`^/spending/(${MONTH})/(${NAMED_LINES.join("|")}|[1-9]\\d{0,8})$`);
 
 /** A merchant key from its URL segment, or null when it's malformed or empty (the API would 400). */
+/** Whether a merchant key can be routed: GET /api/merchants refuses an empty one or one over 200 characters. */
+export const isMerchantKey = (key: string) => key.length > 0 && key.length <= 200;
+
 function decodeKey(segment: string): string | null {
   try {
     const key = decodeURIComponent(segment);
-    return key.length > 0 && key.length <= 200 ? key : null;
+    return isMerchantKey(key) ? key : null;
   } catch {
     return null;
   }
@@ -83,6 +86,8 @@ export const homeHref = (month: string, today = londonToday()) => (month === mon
 /** A Home line's transactions in `month` (YYYY-MM). */
 export const lineHref = (month: string, category: LineCategory) => `/spending/${month}/${category}`;
 
+/** A category's transactions in `month`; uncategorised spend has no line of its own, so it opens To sort. */
+export const categoryHref = (month: string, categoryId: number | null) => (categoryId === null ? "/to-sort" : lineHref(month, categoryId));
 /** A completed month's review. */
 export const reviewHref = (month: string) => `/insights/review/${month}`;
 export const TRENDS_HREF = "/insights/trends";

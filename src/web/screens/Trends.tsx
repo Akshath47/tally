@@ -1,27 +1,24 @@
 import type { TrendCategory, TrendMonth, Trends as TrendsData } from "../api";
 import { PushedScreen } from "../components/Screen";
 import { ScreenError } from "../components/ScreenError";
-import { Skeleton } from "../components/ui";
+import { SectionLabel, Skeleton, cardClass as card } from "../components/ui";
 import { londonToday, monthName, monthOf } from "../dates";
 import { ordinal } from "../insights";
+import { categoryName } from "../lines";
 import { formatPounds } from "../money";
 import { fraction } from "../pace";
 import { useCategories, useTrends } from "../queries";
 import { Link } from "../router";
-import { homeHref, lineHref, type Back } from "../routes";
+import { categoryHref, homeHref, type Back } from "../routes";
 
 // Six months: this one and the 5 before (docs/insights-ui-brief.md, Screen 3). Budget spend per
 // month with the budget marked, the current month part-way, then each category's shape.
 
-const card = "rounded-card border border-divider bg-surface";
-const label = "text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase";
 const short = (month: string) => monthName(month).slice(0, 3);
 
-/** Mean of the completed months with data, floored; null when there are none. */
-function average(months: TrendMonth[]): number | null {
-  const done = months.filter((m) => !m.partial && m.hasData);
-  return done.length ? Math.floor(done.reduce((a, m) => a + m.spentMinor, 0) / done.length) : null;
-}
+/** The completed months with data, which the average and the category shapes are over. */
+const completed = (months: TrendMonth[]) => months.filter((m) => !m.partial && m.hasData);
+const isOver = (m: TrendMonth) => m.overallMinor !== null && m.spentMinor > m.overallMinor;
 
 function MonthColumn({ m, max, today }: { m: TrendMonth; max: number; today: string }) {
   const name = monthName(m.month);
@@ -64,21 +61,19 @@ function MonthColumn({ m, max, today }: { m: TrendMonth; max: number; today: str
   );
 }
 
-function TotalChart({ t, today }: { t: TrendsData; today: string }) {
+function TotalChart({ t, done, today }: { t: TrendsData; done: TrendMonth[]; today: string }) {
   const months = t.months;
-  const current = months[months.length - 1]!;
-  const budget = [...months].reverse().find((m) => m.overallMinor !== null)?.overallMinor ?? null;
+  const current = months.at(-1)!;
+  const budget = months.findLast((m) => m.overallMinor !== null)?.overallMinor ?? null;
   const max = Math.max(1, ...months.map((m) => Math.max(m.spentMinor, m.overallMinor ?? 0)));
-  const avg = average(months);
-  const done = months.filter((m) => !m.partial && m.hasData);
+  // Floored mean of the completed months with data.
+  const avg = done.length ? Math.floor(done.reduce((a, m) => a + m.spentMinor, 0) / done.length) : null;
   const firstWithData = months.find((m) => m.hasData);
 
   return (
     <section className={`mx-4 mt-4 px-4 pt-4 pb-3.5 ${card}`} aria-labelledby="total-h">
       <div className="flex items-baseline justify-between">
-        <h2 id="total-h" className={label}>
-          Budget spend
-        </h2>
+        <SectionLabel id="total-h">Budget spend</SectionLabel>
         {budget !== null && (
           <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted">
             <span className="w-3.5 border-t border-dashed border-fg/60" aria-hidden="true" />
@@ -95,7 +90,7 @@ function TotalChart({ t, today }: { t: TrendsData; today: string }) {
             {formatPounds(avg)} <span className="text-sm font-normal tracking-normal text-muted">/ month</span>
           </div>
           <div className="mt-0.5 text-xs text-muted">
-            over {done.length === 1 ? monthName(done[0]!.month) : `${monthName(done[0]!.month)} to ${monthName(done[done.length - 1]!.month)}`}, the completed {done.length === 1 ? "month" : "months"}
+            over {done.length === 1 ? monthName(done[0]!.month) : `${monthName(done[0]!.month)} to ${monthName(done.at(-1)!.month)}`}, the completed {done.length === 1 ? "month" : "months"}
           </div>
         </div>
       )}
@@ -108,7 +103,7 @@ function TotalChart({ t, today }: { t: TrendsData; today: string }) {
         </div>
         <div className="mt-2 grid grid-cols-6 gap-2.5 text-center text-[11.5px] leading-snug text-muted" aria-hidden="true">
           {months.map((m) => {
-            const over = m.overallMinor !== null && m.spentMinor > m.overallMinor && !m.partial;
+            const over = isOver(m) && !m.partial;
             return (
               <span key={m.month} className={m.partial ? "font-medium text-fg" : over ? "text-over-fg" : ""}>
                 {short(m.month)}
@@ -143,12 +138,12 @@ function Spark({ series }: { series: number[] }) {
 function CategoryRows({ rows, months, today, name, withShape }: { rows: TrendCategory[]; months: TrendMonth[]; today: string; name: (id: number | null) => string; withShape: boolean }) {
   const current = monthOf(today);
   return rows.map((c) => {
-    const now = c.series[c.series.length - 1] ?? 0;
+    const now = c.series.at(-1) ?? 0;
     const shape = c.series.map((v, i) => `${monthName(months[i]!.month)} ${formatPounds(v)}`).join(", ");
     return (
       <li key={c.categoryId ?? "uncategorised"} className="border-b border-divider last:border-b-0">
         <Link
-          href={c.categoryId === null ? "/to-sort" : lineHref(current, c.categoryId)}
+          href={categoryHref(current, c.categoryId)}
           aria-label={withShape ? `${name(c.categoryId)}: ${shape}${c.averageMinor !== null ? `, average ${formatPounds(c.averageMinor)}` : ""}` : undefined}
           className={`flex items-center gap-3 ${withShape ? "min-h-16 py-2" : "min-h-[52px]"}`}
         >
@@ -169,19 +164,21 @@ function CategoryRows({ rows, months, today, name, withShape }: { rows: TrendCat
 
 function Body({ t, today }: { t: TrendsData; today: string }) {
   const byId = useCategories().data?.byId;
-  const name = (id: number | null) => (id === null ? "Uncategorised" : (byId?.get(id)?.name ?? "Category"));
-  const withShape = average(t.months) !== null;
+  const name = (id: number | null) => categoryName(id, byId);
   const months = t.months;
+  const done = completed(months);
+  const lastDone = done.at(-1);
+  const withShape = lastDone !== undefined;
   // Biggest by average (or by this month before there's one), Uncategorised last.
-  const order = (a: TrendCategory, b: TrendCategory) =>
-    (a.categoryId === null ? 1 : 0) - (b.categoryId === null ? 1 : 0) || (b.averageMinor ?? b.series[5] ?? 0) - (a.averageMinor ?? a.series[5] ?? 0);
-  const spending = t.categories.filter((c) => c.kind !== "tracked" && c.series.some((v) => v !== 0)).sort(order);
-  const tracked = t.categories.filter((c) => c.kind === "tracked" && c.series.some((v) => v !== 0)).sort(order);
-  const lastDone = [...months].reverse().find((m) => !m.partial && m.hasData);
+  const size = (c: TrendCategory) => c.averageMinor ?? c.series.at(-1) ?? 0;
+  const order = (a: TrendCategory, b: TrendCategory) => (a.categoryId === null ? 1 : 0) - (b.categoryId === null ? 1 : 0) || size(b) - size(a);
+  const shown = t.categories.filter((c) => c.series.some((v) => v !== 0)).sort(order);
+  const spending = shown.filter((c) => c.kind !== "tracked");
+  const tracked = shown.filter((c) => c.kind === "tracked");
 
   return (
     <>
-      <TotalChart t={t} today={today} />
+      <TotalChart t={t} done={done} today={today} />
       {lastDone && lastDone.trackedMinor > 0 && (
         <p className="mx-5 mt-2.5 text-[12.5px] text-muted">
           Tracked spend isn't in these totals · {formatPounds(lastDone.trackedMinor)} in {monthName(lastDone.month)}
@@ -191,7 +188,7 @@ function Body({ t, today }: { t: TrendsData; today: string }) {
       {spending.length > 0 && (
         <section className="mt-6">
           <div className="mx-5 mb-2 flex items-baseline justify-between">
-            <h2 className={label}>{withShape ? "By category" : `By category · ${monthName(monthOf(today))} so far`}</h2>
+            <SectionLabel>{withShape ? "By category" : `By category · ${monthName(monthOf(today))} so far`}</SectionLabel>
             {withShape && (
               <span className="inline-flex gap-3 text-[11.5px] text-muted">
                 <span className="inline-flex items-center gap-[5px]">
@@ -213,7 +210,9 @@ function Body({ t, today }: { t: TrendsData; today: string }) {
 
       {tracked.length > 0 && (
         <section className="mt-5">
-          <h2 className={`mx-5 mb-2 ${label}`}>Tracked · not in the total</h2>
+          <div className="mx-5 mb-2">
+            <SectionLabel>Tracked · not in the total</SectionLabel>
+          </div>
           <ul className="mx-4 rounded-card border border-dashed border-line px-4">
             <CategoryRows rows={tracked} months={months} today={today} name={name} withShape={withShape} />
           </ul>

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { ApiError, type MerchantHistory, type Transaction } from "../api";
 import { ScreenError } from "../components/ScreenError";
 import { TransactionSheet } from "../components/TransactionSheet";
-import { AccountBadge, ChevronRight, Clock, Pencil, Skeleton } from "../components/ui";
+import { AccountBadge, ChevronRight, Clock, Pencil, SectionLabel, Skeleton, cardClass as card } from "../components/ui";
 import { formatDayMonth, formatShortDate, londonToday, monthName } from "../dates";
+import { visitsText } from "../lines";
 import { formatPounds, formatSigned, formatUnsigned } from "../money";
 import { countsAs, isEdited } from "../overrides";
 import { fraction } from "../pace";
@@ -14,8 +15,6 @@ import type { Back } from "../routes";
 // One merchant across both accounts (docs/insights-ui-brief.md, Screen 4): its rule, six months
 // aligned with Trends, and its last 20 transactions. The name is bank text: untrusted, truncated.
 
-const card = "rounded-card border border-divider bg-surface";
-const label = "text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase";
 const counted = (t: Transaction) => t.countedAmountMinor ?? t.amountMinor;
 
 function Header({ m }: { m: MerchantHistory }) {
@@ -60,9 +59,9 @@ function RuleTag({ m }: { m: MerchantHistory }) {
 }
 
 function Figures({ m }: { m: MerchantHistory }) {
-  const fig = (value: string, caption: string) => (
+  const fig = (value: string, caption: string, note = false) => (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[22px] font-extralight tracking-[-0.02em]">{value}</span>
+      <span className={note ? "pt-1 text-[14.5px] font-medium" : "text-[22px] font-extralight tracking-[-0.02em]"}>{value}</span>
       <span className="text-[11.5px] text-muted">{caption}</span>
     </div>
   );
@@ -70,19 +69,11 @@ function Figures({ m }: { m: MerchantHistory }) {
     <div className={`mx-4 mt-[18px] grid grid-cols-3 gap-2.5 p-4 ${card}`}>
       {fig(formatPounds(m.windowSpentMinor), "in 6 months")}
       {fig(String(m.windowVisits), m.windowVisits === 1 ? "visit" : "visits")}
-      {m.windowVisits > 1 && m.averageChargeMinor !== null ? (
-        fig(formatUnsigned(m.averageChargeMinor, "GBP"), "average")
-      ) : m.windowVisits === 0 ? (
-        <div className="flex flex-col gap-0.5">
-          <span className="pt-1 text-[14.5px] font-medium">No visits</span>
-          <span className="text-[11.5px] text-muted">in the last 6 months</span>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-0.5">
-          <span className="pt-1 text-[14.5px] font-medium">First visit</span>
-          <span className="text-[11.5px] text-muted">no average yet</span>
-        </div>
-      )}
+      {m.windowVisits > 1 && m.averageChargeMinor !== null
+        ? fig(formatUnsigned(m.averageChargeMinor, "GBP"), "average")
+        : m.windowVisits === 0
+          ? fig("No visits", "in the last 6 months", true)
+          : fig("First visit", "no average yet", true)}
     </div>
   );
 }
@@ -90,13 +81,11 @@ function Figures({ m }: { m: MerchantHistory }) {
 function History({ m }: { m: MerchantHistory }) {
   const max = Math.max(1, ...m.months.map((x) => x.spentMinor));
   const last = m.months.length - 1;
-  const describe = m.months.map((x, i) => `${monthName(x.month)}${i === last ? " so far" : ""} ${formatPounds(x.spentMinor)}, ${x.visits === 1 ? "1 visit" : `${x.visits} visits`}`).join("; ");
+  const describe = m.months.map((x, i) => `${monthName(x.month)}${i === last ? " so far" : ""} ${formatPounds(x.spentMinor)}, ${visitsText(x.visits)}`).join("; ");
   return (
     <section className={`mx-4 mt-2.5 p-4 ${card}`} aria-labelledby="hist-h">
       <div className="flex items-baseline justify-between">
-        <h2 id="hist-h" className={label}>
-          Per month
-        </h2>
+        <SectionLabel id="hist-h">Per month</SectionLabel>
         <span className="text-[11.5px] text-muted">Same months as Trends</span>
       </div>
       <div role="img" aria-label={describe} className="mt-3.5 grid h-[120px] grid-cols-6 items-end gap-2.5">
@@ -117,7 +106,7 @@ function History({ m }: { m: MerchantHistory }) {
                 <br />
                 <span className="text-fg">{formatPounds(x.spentMinor)}</span>
                 <br />
-                {i === last && m.months.slice(0, last).some((p) => p.visits > 0) ? "so far" : x.visits === 1 ? "1 visit" : `${x.visits} visits`}
+                {i === last && m.months.slice(0, last).some((p) => p.visits > 0) ? "so far" : visitsText(x.visits)}
               </>
             )}
           </span>
@@ -135,7 +124,7 @@ function Recent({ rows }: { rows: Transaction[] }) {
   return (
     <section className="mt-6">
       <div className="mx-5 mb-2 flex items-baseline justify-between">
-        <h2 className={label}>Recent</h2>
+        <SectionLabel>Recent</SectionLabel>
         {rows.length === 20 && <span className="text-[11.5px] text-muted">Last 20</span>}
       </div>
       <ul className={`mx-4 overflow-hidden ${card}`}>
@@ -175,7 +164,7 @@ function Recent({ rows }: { rows: Transaction[] }) {
           );
         })}
       </ul>
-      <TransactionSheet txn={open} onClose={() => setOpen(null)} />
+      <TransactionSheet txn={open} onClose={() => setOpen(null)} merchantLink={false} />
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQueries, useQuery, type InfiniteData } from "@tanstack/react-query";
-import { getAccounts, getBudget, getCategories, getDigestPreview, getInbox, getInboxMerchants, getInsights, getLineTransactions, getMerchant, getMonthSummary, getReview, getRules, getTransactions, getTrends, type Account, type Category, type CategoryKind } from "./api";
+import { getAccounts, getBudget, getCategories, getDigestPreview, getInbox, getInboxMerchants, getLineTransactions, getMerchant, getMonthSummary, getReview, getRules, getTransactions, getTrends, type Account, type Category, type CategoryKind } from "./api";
 import type { LineCategory } from "./lines";
 import { addMonths, daysInMonth } from "./dates";
 
@@ -66,11 +66,15 @@ export const usePreviousSummaries = (month: string) => useQueries({ queries: [1,
 
 // Insights (P2.9–P2.11).
 
-export const useInsights = () => useQuery({ queryKey: ["insights"], queryFn: getInsights });
+// The preview carries the same insights as GET /api/insights, so the tab reads them from it.
 export const useDigestPreview = () => useQuery({ queryKey: ["digest", "preview"], queryFn: getDigestPreview });
-export const useReview = (month: string) => useQuery({ queryKey: ["review", month], queryFn: () => getReview(month) });
-export const useTrends = () => useQuery({ queryKey: ["trends"], queryFn: getTrends });
-export const useMerchant = (key: string) => useQuery({ queryKey: ["merchant", key], queryFn: () => getMerchant(key) });
+// These only change after a write or an import, and both already refresh everything (main.tsx,
+// ImportWatcher), so they don't go stale on a timer; each read costs D1 rows.
+export const useReview = (month: string) => useQuery({ queryKey: ["review", month], queryFn: () => getReview(month), staleTime: Infinity });
+export const useTrends = () => useQuery({ queryKey: ["trends"], queryFn: getTrends, staleTime: Infinity });
+/** Shared by the Merchant screen and the Insights tab's large-charge tap, so one warms the other. */
+export const merchantQuery = (key: string) => ({ queryKey: ["merchant", key], queryFn: () => getMerchant(key), staleTime: Infinity });
+export const useMerchant = (key: string) => useQuery(merchantQuery(key));
 
 /** Active categories in picker order: by kind, then name. */
 export function pickerOrder(categories: Category[]): Category[] {

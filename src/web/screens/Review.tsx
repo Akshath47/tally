@@ -3,20 +3,18 @@ import type { MonthReview, ReviewCategory } from "../api";
 import { MonthStepper } from "../components/MonthStepper";
 import { PushedScreen } from "../components/Screen";
 import { ScreenError } from "../components/ScreenError";
-import { Flag, Skeleton } from "../components/ui";
+import { Flag, SectionLabel, Skeleton, cardClass as card } from "../components/ui";
 import { addMonths, londonToday, monthName, monthOf, monthTitle } from "../dates";
+import { categoryName, visitsText } from "../lines";
 import { formatPounds } from "../money";
 import { fraction } from "../pace";
 import { useCategories, useReview } from "../queries";
 import { Link, navigate } from "../router";
-import { lineHref, merchantHref, reviewHref, type Back } from "../routes";
+import { categoryHref, merchantHref, reviewHref, type Back } from "../routes";
 
 // A completed month against the one before (docs/insights-ui-brief.md, Screen 2). Budgeted
 // categories first, then Uncategorised, then tracked categories, which aren't in the total.
 
-const card = "rounded-card border border-divider bg-surface";
-const label = "text-[11.5px] font-medium tracking-[0.08em] text-muted uppercase";
-const MINUS = "−";
 
 function Tile({ month, totals, previous }: { month: string; totals: MonthReview["totals"]; previous?: boolean }) {
   const { spentMinor, overallMinor } = totals;
@@ -41,14 +39,14 @@ function Tile({ month, totals, previous }: { month: string; totals: MonthReview[
 /** "+£45" in amber when spending went up, "−£20" in sage when it went down, nothing when unchanged. */
 function Change({ minor }: { minor: number }) {
   if (minor === 0) return <span className="w-[62px]" />;
-  return <span className={`w-[62px] text-right text-[12.5px] ${minor > 0 ? "text-warn-fg" : "text-accent-fg"}`}>{minor > 0 ? `+${formatPounds(minor)}` : `${MINUS}${formatPounds(-minor)}`}</span>;
+  return <span className={`w-[62px] text-right text-[12.5px] ${minor > 0 ? "text-warn-fg" : "text-accent-fg"}`}>{minor > 0 ? `+${formatPounds(minor)}` : formatPounds(minor)}</span>;
 }
 
 function CategoryRow({ c, name, month, max, hasPrevious, muted }: { c: ReviewCategory; name: string; month: string; max: number; hasPrevious: boolean; muted?: boolean }) {
   const over = c.over && c.allocatedMinor !== null;
   return (
     <li className="border-b border-divider last:border-b-0">
-      <Link href={c.categoryId === null ? "/to-sort" : lineHref(month, c.categoryId)} className="-mx-4 flex flex-col gap-1.5 px-4 py-[11px] hover:bg-raised/50">
+      <Link href={categoryHref(month, c.categoryId)} className="-mx-4 flex flex-col gap-1.5 px-4 py-[11px] hover:bg-raised/50">
         <span className="flex items-baseline text-[14.5px]">
           <span className={c.categoryId === null ? "text-fg/80" : ""}>{name}</span>
           {over && (
@@ -70,7 +68,7 @@ function Section({ title, note, legend, dashed, children }: { title: string; not
   return (
     <section className="mt-[22px]">
       <div className="mx-5 mb-2 flex items-baseline justify-between">
-        <h2 className={label}>{title}</h2>
+        <SectionLabel>{title}</SectionLabel>
         {legend ?? (note && <span className="text-[11.5px] text-muted">{note}</span>)}
       </div>
       <ul className={`mx-4 px-4 py-0.5 ${dashed ? "rounded-card border border-dashed border-line" : card}`}>{children}</ul>
@@ -95,15 +93,17 @@ function Legend({ month, previous }: { month: string; previous: string }) {
 
 function Body({ r }: { r: MonthReview }) {
   const byId = useCategories().data?.byId;
-  const nameOf = (id: number | null) => (id === null ? "Uncategorised" : (byId?.get(id)?.name ?? "Category"));
+  const nameOf = (id: number | null) => categoryName(id, byId);
+  const active = (c: ReviewCategory) => c.spentMinor !== 0 || c.previousSpentMinor !== 0;
   const spending = r.categories.filter((c) => c.kind !== "tracked");
-  const tracked = r.categories.filter((c) => c.kind === "tracked" && (c.spentMinor !== 0 || c.previousSpentMinor !== 0));
+  const tracked = r.categories.filter((c) => c.kind === "tracked" && active(c));
   // Biggest first, Uncategorised last; categories with nothing in either month are left out.
-  const budgeted = spending.filter((c) => c.categoryId !== null && (c.spentMinor !== 0 || c.previousSpentMinor !== 0 || c.allocatedMinor !== null)).sort((a, b) => b.spentMinor - a.spentMinor);
-  const uncategorised = spending.find((c) => c.categoryId === null && (c.spentMinor !== 0 || c.previousSpentMinor !== 0));
+  const budgeted = spending.filter((c) => c.categoryId !== null && (active(c) || c.allocatedMinor !== null)).sort((a, b) => b.spentMinor - a.spentMinor);
+  const uncategorised = spending.find((c) => c.categoryId === null && active(c));
   const rows = uncategorised ? [...budgeted, uncategorised] : budgeted;
   const maxOf = (list: ReviewCategory[]) => Math.max(1, ...list.flatMap((c) => [c.spentMinor, r.hasPrevious ? c.previousSpentMinor : 0]));
   const max = maxOf(rows);
+  const trackedMax = maxOf(tracked);
 
   return (
     <>
@@ -132,7 +132,7 @@ function Body({ r }: { r: MonthReview }) {
         <>
           <Section title="Tracked" note="not in the total" dashed>
             {tracked.map((c) => (
-              <CategoryRow key={c.categoryId} c={c} name={nameOf(c.categoryId)} month={r.month} max={maxOf(tracked)} hasPrevious={r.hasPrevious} muted />
+              <CategoryRow key={c.categoryId} c={c} name={nameOf(c.categoryId)} month={r.month} max={trackedMax} hasPrevious={r.hasPrevious} muted />
             ))}
           </Section>
           <p className="mx-5 mt-2 text-[12.5px] text-muted">
@@ -144,7 +144,9 @@ function Body({ r }: { r: MonthReview }) {
 
       {r.topMerchants.length > 0 && (
         <section className="mt-6">
-          <h2 className={`mx-5 mb-2 ${label}`}>Top merchants</h2>
+          <div className="mx-5 mb-2">
+            <SectionLabel>Top merchants</SectionLabel>
+          </div>
           <ol className={`mx-4 px-4 ${card}`}>
             {r.topMerchants.map((m, i) => (
               <li key={m.merchantKey} className="border-b border-divider last:border-b-0">
@@ -154,7 +156,7 @@ function Body({ r }: { r: MonthReview }) {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{m.name}</span>
-                    <span className="block text-[11.5px] text-muted">{m.visits === 1 ? "1 visit" : `${m.visits} visits`}</span>
+                    <span className="block text-[11.5px] text-muted">{visitsText(m.visits)}</span>
                   </span>
                   <span>{formatPounds(m.spentMinor)}</span>
                 </Link>

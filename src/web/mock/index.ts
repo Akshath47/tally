@@ -473,7 +473,7 @@ function digestPreview(asOf: string): DigestPreview {
     return { date, spentMinor, pendingSpentMinor };
   });
   const s = summary(monthOf(today));
-  const dom = day(today);
+  const dom = day(asOf);
   const dim = daysInMonth(monthOf(today));
   const status = (spent: number, allocated: number): DigestStatus =>
     spent > allocated ? "over" : dom >= 8 && Math.floor((spent * dim) / dom) > allocated ? "projected_over" : spent * 10 >= allocated * 9 ? "near" : "ok";
@@ -481,7 +481,8 @@ function digestPreview(asOf: string): DigestPreview {
   const miscSpent = s.categories.filter((c) => c.categoryId === null || (c.kind === "budgeted" && c.allocatedMinor === 0)).reduce((a, c) => a + c.spentMinor, 0);
   return {
     weekStart,
-    weekEnd: today,
+    // Today, or the day a scenario pretends it is; the tab works out insights for this date.
+    weekEnd: asOf,
     weekSpentMinor: days.reduce((a, d) => a + d.spentMinor, 0),
     weekPendingSpentMinor: days.reduce((a, d) => a + d.pendingSpentMinor, 0),
     spansMonths: monthOf(weekStart) !== monthOf(today),
