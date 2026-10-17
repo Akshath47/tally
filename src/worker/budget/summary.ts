@@ -1,6 +1,7 @@
 import { daysInMonth, londonMonth, londonToday } from "../importer/dates";
 import { readBudget, sumAllocated } from "./effective";
 import { COUNTS, INBOX, IN_MONTH, RESOLVED_CTE, inMonthBinds } from "./resolve";
+import { ENABLED_FRESHNESS_SQL, latestChange, staleIds, type AccountFreshness } from "./stale";
 
 // Everything the home screen needs for one month (docs/phase-2-spec.md, "What a transaction
 // counts as" and "Budget figures for a month"). Spend is positive = money out, so a refund is
@@ -35,7 +36,7 @@ export async function readMonthSummary(db: D1Database, month: string, now: Date)
     readBudget(db, month),
     db.prepare(MONTH_SQL).bind(...inMonthBinds(month)).all<Group>(),
     db.prepare(INBOX_COUNT_SQL).first<{ n: number }>(),
-    db.prepare("SELECT max(last_data_change_at) AS at FROM accounts WHERE import_enabled = 1").first<{ at: string | null }>(),
+    db.prepare(ENABLED_FRESHNESS_SQL).all<AccountFreshness>(),
   ]);
 
   // Every category with a counting row this month, or an allocation above 0.
@@ -82,7 +83,9 @@ export async function readMonthSummary(db: D1Database, month: string, now: Date)
     categories,
     trackedMinor,
     inboxCount: inbox?.n ?? 0,
-    lastDataChangeAt: freshness?.at ?? null,
+    lastDataChangeAt: latestChange(freshness.results),
+    // Stale warnings are about now, so only the current month carries them.
+    staleAccountIds: month === current ? staleIds(freshness.results, now) : [],
   };
 }
 
