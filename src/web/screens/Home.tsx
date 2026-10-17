@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ApiError, putOverallBudget, type Category, type MonthSummary } from "../api";
+import { putOverallBudget, type Category, type MonthSummary } from "../api";
 import { TabScreen } from "../components/Screen";
+import { ScreenError } from "../components/ScreenError";
+import { ToSortChip } from "../components/ToSortChip";
 import { MonthStepper } from "../components/MonthStepper";
-import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Refresh, Skeleton, Spinner } from "../components/ui";
+import { AccountBadge, ArrowUp, Button, Check, ChevronRight, FieldError, Flag, Skeleton, Spinner } from "../components/ui";
 import { addMonths, londonToday, monthName, monthOf, monthTitle } from "../dates";
 import { formatTimestamp } from "../format";
 import { formatPounds, parseMoneyInput } from "../money";
@@ -17,17 +19,6 @@ import { homeHref, lineHref } from "../routes";
 
 const RING_R = 88;
 const RING_C = 2 * Math.PI * RING_R;
-
-function ToSortChip({ count }: { count: number }) {
-  return (
-    <Link href="/to-sort" className="flex min-h-11 items-center" aria-label={`${count} to sort`}>
-      <span className="inline-flex h-9 items-center gap-[7px] rounded-full border border-accent/35 bg-accent-tint px-[13px] text-[13px] font-medium text-accent-fg">
-        <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-[5px] text-[10.5px] font-semibold text-on-accent">{count}</span>
-        to sort
-      </span>
-    </Link>
-  );
-}
 
 function SettingsLink() {
   return (
@@ -361,30 +352,6 @@ function Loading() {
   );
 }
 
-function LoadError({ error, at, onRetry, retrying }: { error: unknown; at: number; onRetry: () => void; retrying: boolean }) {
-  const status = error instanceof ApiError ? error.status : null;
-  return (
-    <div role="alert" className="mx-6 mt-[110px] flex flex-col items-center gap-2.5 text-center">
-      <span className="grid size-16 place-items-center rounded-full border border-over/40 bg-over-tint text-over-fg">
-        <Refresh size={26} />
-      </span>
-      <h2 className="mt-2 text-[22px] font-light">Tally couldn't load your budget</h2>
-      <p className="text-[13.5px] leading-normal text-muted">
-        {status ? "The server didn't respond." : "Tally couldn't reach the server."} Your data is safe and nothing was changed. Check your connection and try again.
-      </p>
-      <Button className="mt-2.5 min-h-[50px] px-7" onClick={onRetry} disabled={retrying}>
-        {retrying ? "Trying…" : "Try again"}
-      </Button>
-      <Link href="/accounts" className="inline-flex min-h-11 items-center text-[13.5px] text-accent-fg">
-        Check account status
-      </Link>
-      <div className="text-[11.5px] text-subtle">
-        {status ? `Error ${status}` : "No connection"} · {formatTimestamp(new Date(at).toISOString())}
-      </div>
-    </div>
-  );
-}
-
 function FirstRun({ s, month }: { s: MonthSummary; month: string }) {
   const accounts = useAccounts();
   const [lastMonth, monthBefore] = usePreviousSummaries(month);
@@ -507,7 +474,7 @@ export function Home({ month }: { month: string }) {
       ) : s ? (
         <Spending s={s} byId={categories.data?.byId ?? new Map()} />
       ) : summary.isError ? (
-        <LoadError error={summary.error} at={summary.errorUpdatedAt} onRetry={() => void summary.refetch()} retrying={summary.isFetching} />
+        <ScreenError what="your budget" error={summary.error} at={summary.errorUpdatedAt} onRetry={() => void summary.refetch()} retrying={summary.isFetching} />
       ) : (
         <Loading />
       )}
