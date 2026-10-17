@@ -35,6 +35,9 @@
   --color-accent: #8fa89a;
   --color-accent-fg: #a9c0b3;
   --color-accent-tint: #222a26;
+  /* Charts: completed months (a dimmed sage) and the previous month in comparisons (grey). */
+  --color-past: #5b6a62;
+  --color-previous: #4a4e52;
   --color-on-accent: #121513;
 
   --color-warn: #c9a26a;
