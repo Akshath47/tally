@@ -348,9 +348,9 @@ export type DigestPreview = {
   spansMonths: boolean;
   /**
    * Monday to Sunday, budget spend per counted day; days after today are 0. Not in the spec yet:
-   * the Insights tab's week chart needs it (docs/insights-plan.md, P2.12).
+   * the Insights tab's week chart needs it (docs/insights-plan.md, P2.12), and hides without it.
    */
-  days: { date: string; spentMinor: number; pendingSpentMinor: number }[];
+  days?: { date: string; spentMinor: number; pendingSpentMinor: number }[];
   month: { spentMinor: number; pendingSpentMinor: number; overallMinor: number | null; leftMinor: number | null; perWeekMinor: number | null; daysRemaining: number };
   /** Each allocated budgeted category, plus Misc (categoryId null). */
   categories: { categoryId: number | null; spentMinor: number; allocatedMinor: number; status: DigestStatus }[];

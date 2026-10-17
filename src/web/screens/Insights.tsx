@@ -53,7 +53,7 @@ function Freshness({ preview, failed }: { preview: DigestPreview | undefined; fa
 }
 
 /** Monday to Sunday, posted spend solid and pending hatched on top; days to come are empty. */
-function WeekChart({ days, today }: { days: DigestPreview["days"]; today: string }) {
+function WeekChart({ days, today }: { days: NonNullable<DigestPreview["days"]>; today: string }) {
   const max = Math.max(1, ...days.map((d) => d.spentMinor));
   const label = days
     .filter((d) => d.date <= today)
@@ -152,7 +152,7 @@ function ThisWeek({ p, names, today }: { p: DigestPreview; names: Names; today: 
             </div>
           )}
         </div>
-        {p.days.length === 7 && p.weekSpentMinor > 0 && <WeekChart days={p.days} today={today} />}
+        {p.days?.length === 7 && p.weekSpentMinor > 0 && <WeekChart days={p.days} today={today} />}
       </div>
 
       {m.overallMinor !== null && m.leftMinor !== null ? (
