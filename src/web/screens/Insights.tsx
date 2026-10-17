@@ -10,7 +10,7 @@ import { addDays, addMonths, daysInMonth, londonToday, monthName, monthOf } from
 import { daysOfPreviousMonth, iconOf, insightWords, isMonthChangeOnly, londonDayTime, targetOf, toneOf, weekRange, type Insight, type InsightIcon, type Names, type Tone } from "../insights";
 import { formatPounds } from "../money";
 import { ageText, fraction } from "../pace";
-import { useAccounts, useCategories, useDigestPreview, useInsights, useTrends } from "../queries";
+import { useAccounts, useCategories, useDigestPreview, useInsights, useSummary } from "../queries";
 import { Link, navigate } from "../router";
 import { TRENDS_HREF, lineHref, merchantHref, reviewHref } from "../routes";
 
@@ -79,6 +79,7 @@ function WeekChart({ days, today }: { days: NonNullable<DigestPreview["days"]>; 
 }
 
 /** A flagged category: Over, On course to go over, or Near limit (the brief's copy). */
+/** `today` is the preview's own (its weekEnd), so the projection matches the server's status. */
 function CategoryFlag({ c, today }: { c: DigestPreview["categories"][number]; today: string }) {
   if (c.status === "over")
     return (
@@ -98,13 +99,15 @@ function CategoryFlag({ c, today }: { c: DigestPreview["categories"][number]; to
 const STATUS_ORDER = { over: 0, projected_over: 1, near: 2, ok: 3 } as const;
 
 function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; today: string }) {
-  const send = useMutation({ mutationFn: sendDigest });
-  if (lastSend?.status === "failed" && !send.isSuccess) {
+  // Sending changes no data, so nothing needs refetching (main.tsx).
+  const send = useMutation({ mutationFn: sendDigest, meta: { refetch: "none" } });
+  const sent = send.data?.status === "sent";
+  if (lastSend?.status === "failed" && !sent) {
     return (
       <span className="flex basis-full items-center justify-between gap-2 text-[11.5px] text-muted">
         <span className="inline-flex items-center gap-1.5">
           <Warning size={14} className="shrink-0 text-warn-fg" />
-          {send.isError ? "Still couldn't send it. Try again later." : "Last Sunday's email didn't send"}
+          {send.isError || send.data?.status === "failed" ? "Still couldn't send it. Try again later." : "Last Sunday's email didn't send"}
         </span>
         <button type="button" className="min-h-11 px-1 text-[13.5px] font-medium text-accent-fg disabled:opacity-50" disabled={send.isPending} onClick={() => send.mutate()}>
           {send.isPending ? "Sending…" : "Send now"}
@@ -112,7 +115,7 @@ function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; t
       </span>
     );
   }
-  if (send.isSuccess) return <span className="text-[11.5px] text-muted">Weekly email · sent just now</span>;
+  if (sent) return <span className="text-[11.5px] text-muted">Weekly email · sent just now</span>;
   if (!lastSend?.sentAt) return <span className="text-[11.5px] text-muted">Weekly email goes out Sundays at 18:00</span>;
   return (
     <span className="text-[11.5px] leading-snug text-muted">
@@ -184,7 +187,7 @@ function ThisWeek({ p, names, today }: { p: DigestPreview; names: Names; today: 
                 <li key={c.categoryId ?? "misc"}>
                   <Link href={lineHref(month, c.categoryId ?? "misc")} className="-mx-4 flex min-h-11 items-center gap-2 border-t border-divider px-4 text-sm hover:bg-raised/50">
                     <span>{names.category(c.categoryId)}</span>
-                    <CategoryFlag c={c} today={today} />
+                    <CategoryFlag c={c} today={p.weekEnd} />
                     <span className="ml-auto">
                       <span className={`font-medium ${c.status === "over" ? "text-over-fg" : ""}`}>{formatPounds(c.spentMinor)}</span>{" "}
                       <span className="text-muted">/ {formatPounds(c.allocatedMinor)}</span>
@@ -374,11 +377,12 @@ function Entry({ href, title, subtitle, icon }: { href: string; title: string; s
 
 /** Monthly review (when there's a completed month to review) and Trends. */
 function Entries({ today }: { today: string }) {
-  const trends = useTrends();
   const month = monthOf(today);
   const last = addMonths(month, -1);
-  // Until Trends loads, assume there's history: it's the usual case, and the row just links on.
-  const hasLast = trends.data?.months.find((m) => m.month === last)?.hasData ?? true;
+  // Last month's summary (cheap, and shared with Home) says whether there's a month to review.
+  // Until it loads, assume there is: it's the usual case, and the row just links on.
+  const summary = useSummary(last);
+  const hasLast = summary.data ? summary.data.spentMinor !== 0 || summary.data.trackedMinor !== 0 || summary.data.categories.some((c) => c.spentMinor !== 0) : true;
   return (
     <>
       {!hasLast && (
@@ -456,7 +460,14 @@ export function Insights() {
 
   return (
     <TabScreen title="Insights" titleExtra={<Freshness preview={preview.data} failed={failed !== null} />}>
-      {failed ? (
+      {preview.data && insights.data ? (
+        <>
+          <ThisWeek p={preview.data} names={names} today={today} />
+          <WorthALook items={insights.data.items} names={insightNames} asOf={insights.data.asOf} />
+          <Entries today={today} />
+        </>
+      ) : failed ? (
+        // Only when there's nothing to show: a failed background refetch keeps the figures.
         <ScreenError
           what="insights"
           error={failed.error}
@@ -467,12 +478,6 @@ export function Insights() {
           }}
           retrying={preview.isFetching || insights.isFetching}
         />
-      ) : preview.data && insights.data ? (
-        <>
-          <ThisWeek p={preview.data} names={names} today={today} />
-          <WorthALook items={insights.data.items} names={insightNames} asOf={insights.data.asOf} />
-          <Entries today={today} />
-        </>
       ) : (
         <Loading />
       )}

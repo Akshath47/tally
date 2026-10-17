@@ -67,7 +67,7 @@ describe("insights routes", () => {
   });
 
   it("round-trips merchant keys with URL-special characters", () => {
-    for (const key of ["via roma kitchen", "50% off & more", "a/b", "café #1?"]) {
+    for (const key of ["via roma kitchen", "50% off & more", "a/b", "café #1?", ".", "..", "a.b"]) {
       expect(parseRoute(merchantHref(key), today)).toEqual({ screen: "merchant", key });
     }
     expect(parseRoute(merchantHref("x".repeat(201)), today).screen).toBe("notFound");
@@ -85,6 +85,7 @@ describe("insights routes", () => {
     expect(backOf(merchant, today, "/insights/review/2026-09")).toEqual({ href: "/insights/review/2026-09", label: "September review" });
     expect(backOf(merchant, today, "/transactions")).toEqual({ href: "/transactions", label: "Transactions" });
     expect(backOf(merchant, today, "/")).toEqual({ href: "/", label: "Home" });
+    expect(backOf(merchant, today, "/to-sort")).toEqual({ href: "/to-sort", label: "To sort" });
     expect(backOf(merchant, today, null)).toEqual({ href: "/insights", label: "Insights" });
     expect(backOf(merchant, today, "/nope")).toEqual({ href: "/insights", label: "Insights" });
   });

@@ -72,6 +72,11 @@ function Figures({ m }: { m: MerchantHistory }) {
       {fig(String(m.windowVisits), m.windowVisits === 1 ? "visit" : "visits")}
       {m.windowVisits > 1 && m.averageChargeMinor !== null ? (
         fig(formatUnsigned(m.averageChargeMinor, "GBP"), "average")
+      ) : m.windowVisits === 0 ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="pt-1 text-[14.5px] font-medium">No visits</span>
+          <span className="text-[11.5px] text-muted">in the last 6 months</span>
+        </div>
       ) : (
         <div className="flex flex-col gap-0.5">
           <span className="pt-1 text-[14.5px] font-medium">First visit</span>

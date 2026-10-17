@@ -70,8 +70,7 @@ export const useInsights = () => useQuery({ queryKey: ["insights"], queryFn: get
 export const useDigestPreview = () => useQuery({ queryKey: ["digest", "preview"], queryFn: getDigestPreview });
 export const useReview = (month: string) => useQuery({ queryKey: ["review", month], queryFn: () => getReview(month) });
 export const useTrends = () => useQuery({ queryKey: ["trends"], queryFn: getTrends });
-/** One merchant's history; `enabled` lets a screen fetch it only when needed (a large charge's tap). */
-export const useMerchant = (key: string, enabled = true) => useQuery({ queryKey: ["merchant", key], queryFn: () => getMerchant(key), enabled });
+export const useMerchant = (key: string) => useQuery({ queryKey: ["merchant", key], queryFn: () => getMerchant(key) });
 
 /** Active categories in picker order: by kind, then name. */
 export function pickerOrder(categories: Category[]): Category[] {

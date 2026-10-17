@@ -87,7 +87,7 @@ export const lineHref = (month: string, category: LineCategory) => `/spending/${
 export const reviewHref = (month: string) => `/insights/review/${month}`;
 export const TRENDS_HREF = "/insights/trends";
 /** A merchant's screen; the key is encoded, so `%`, `&` and `/` survive the URL. */
-export const merchantHref = (key: string) => `/merchants/${encodeURIComponent(key)}`;
+export const merchantHref = (key: string) => `/merchants/${encodeURIComponent(key).replace(/\./g, "%2E")}`;
 
 /** The tab a route belongs to, or null for a pushed screen (no tab bar). */
 export const tabOf = (route: Route): Tab | null => TABS.find((t) => t.tab === route.screen)?.tab ?? null;
@@ -106,7 +106,19 @@ function labelOf(path: string, today: string): string | null {
       return "Trends";
     case "review":
       return `${monthName(route.month)} review`;
+    case "toSort":
+      return "To sort";
+    case "budget":
+      return "Budget";
+    case "accounts":
+      return "Accounts";
+    case "categories":
+      return "Categories";
+    case "rules":
+      return "Merchant rules";
     case "line":
+    case "newAccount":
+    case "merchant":
       return "Back";
     default:
       return null;

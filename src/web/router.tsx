@@ -24,10 +24,11 @@ export const usePathname = () => useSyncExternalStore(subscribe, () => window.lo
 /** The path the current entry was pushed from, if it was pushed in this tab. */
 export const navFrom = () => (window.history.state as NavState)?.from ?? null;
 
-export function navigate(href: string, { replace = false } = {}) {
+/** `keepFrom` replaces the entry but keeps where it was opened from, for a screen stepping through itself. */
+export function navigate(href: string, { replace = false, keepFrom = false } = {}) {
   const from = window.location.pathname;
   if (href === from) return;
-  const state: NavState = { from };
+  const state: NavState = keepFrom ? ((window.history.state as NavState) ?? { from }) : { from };
   if (replace) window.history.replaceState(state, "", href);
   else window.history.pushState(state, "", href);
   window.scrollTo(0, 0);

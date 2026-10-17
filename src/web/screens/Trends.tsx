@@ -44,7 +44,9 @@ function MonthColumn({ m, max, today }: { m: TrendMonth; max: number; today: str
       : `${name}: ${formatPounds(m.spentMinor)}${overall !== null ? ` of ${formatPounds(overall)}` : ""}`;
   const pct = (minor: number) => `${fraction(Math.max(0, minor), max) * 100}%`;
   return (
-    <Link href={homeHref(m.month, today)} aria-label={describe} className="flex h-full flex-col justify-end gap-[2px] rounded-lg hover:brightness-115">
+    <Link href={homeHref(m.month, today)} aria-label={describe} className="relative flex h-full flex-col justify-end gap-[2px] rounded-lg hover:brightness-115">
+      {/* Each month's own budget, so a change of budget is drawn where it happened. */}
+      {overall !== null && <span className="pointer-events-none absolute -inset-x-1 z-10 border-t border-dashed border-fg/60" style={{ bottom: pct(overall) }} aria-hidden="true" />}
       {m.partial ? (
         <>
           {m.pendingSpentMinor > 0 && <span className="hatch block rounded-t-[5px]" style={{ height: pct(m.pendingSpentMinor) }} />}
@@ -79,7 +81,7 @@ function TotalChart({ t, today }: { t: TrendsData; today: string }) {
         </h2>
         {budget !== null && (
           <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted">
-            <span className="w-3.5 border-t border-dashed border-subtle" aria-hidden="true" />
+            <span className="w-3.5 border-t border-dashed border-fg/60" aria-hidden="true" />
             Budget {formatPounds(budget)}
           </span>
         )}
@@ -99,8 +101,7 @@ function TotalChart({ t, today }: { t: TrendsData; today: string }) {
       )}
 
       <div className="mt-[18px]">
-        <div className="relative grid h-[190px] grid-cols-6 items-end gap-2.5">
-          {budget !== null && <div className="pointer-events-none absolute -inset-x-1 border-t border-dashed border-subtle" style={{ bottom: `${fraction(budget, max) * 100}%` }} aria-hidden="true" />}
+        <div className="grid h-[190px] grid-cols-6 items-end gap-2.5">
           {months.map((m) => (
             <MonthColumn key={m.month} m={m} max={max} today={today} />
           ))}
@@ -147,7 +148,7 @@ function CategoryRows({ rows, months, today, name, withShape }: { rows: TrendCat
     return (
       <li key={c.categoryId ?? "uncategorised"} className="border-b border-divider last:border-b-0">
         <Link
-          href={lineHref(current, c.categoryId ?? "misc")}
+          href={c.categoryId === null ? "/to-sort" : lineHref(current, c.categoryId)}
           aria-label={withShape ? `${name(c.categoryId)}: ${shape}${c.averageMinor !== null ? `, average ${formatPounds(c.averageMinor)}` : ""}` : undefined}
           className={`flex items-center gap-3 ${withShape ? "min-h-16 py-2" : "min-h-[52px]"}`}
         >

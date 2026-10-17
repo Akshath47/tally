@@ -1,6 +1,7 @@
 import { addDays, addMonths, formatShortDate, monthName, monthOf } from "./dates";
 import { formatMoney } from "./format";
 import { formatPounds } from "./money";
+import { lineHref, reviewHref } from "./routes";
 
 // Insights (docs/phase-2-insights-spec.md): what each one says, and how the Insights tab shows it.
 //
@@ -125,7 +126,7 @@ export type InsightTarget = { href: string } | { transactionId: number; merchant
  */
 export function targetOf(item: Insight, today: string): InsightTarget {
   const month = monthOf(today);
-  const category = (id: number | null) => (id === null ? "/to-sort" : `/spending/${month}/${id}`);
+  const category = (id: number | null) => (id === null ? "/to-sort" : lineHref(month, id));
   switch (item.type) {
     case "stale_account":
       return { href: "/accounts" };
@@ -136,7 +137,7 @@ export function targetOf(item: Insight, today: string): InsightTarget {
     case "large_charge":
       return { transactionId: item.transactionId, merchantKey: item.merchantKey };
     case "month_change":
-      return { href: `/insights/review/${item.month}` };
+      return { href: reviewHref(item.month) };
   }
 }
 

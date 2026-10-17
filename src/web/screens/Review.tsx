@@ -48,7 +48,7 @@ function CategoryRow({ c, name, month, max, hasPrevious, muted }: { c: ReviewCat
   const over = c.over && c.allocatedMinor !== null;
   return (
     <li className="border-b border-divider last:border-b-0">
-      <Link href={lineHref(month, c.categoryId ?? "misc")} className="-mx-4 flex flex-col gap-1.5 px-4 py-[11px] hover:bg-raised/50">
+      <Link href={c.categoryId === null ? "/to-sort" : lineHref(month, c.categoryId)} className="-mx-4 flex flex-col gap-1.5 px-4 py-[11px] hover:bg-raised/50">
         <span className="flex items-baseline text-[14.5px]">
           <span className={c.categoryId === null ? "text-fg/80" : ""}>{name}</span>
           {over && (
@@ -200,7 +200,7 @@ export function Review({ back, month }: { back: Back; month: string }) {
       back={back}
       title={`${monthTitle(month)} review`}
       action={
-        <MonthStepper month={month} current={lastCompleted} prevDisabled={r ? !r.hasPrevious : true} onStep={(m) => navigate(reviewHref(m), { replace: true })}>
+        <MonthStepper month={month} current={lastCompleted} prevDisabled={r ? !r.hasPrevious : true} onStep={(m) => navigate(reviewHref(m), { replace: true, keepFrom: true })}>
           <span className="min-w-[34px] text-center text-sm">{monthName(month).slice(0, 3)}</span>
         </MonthStepper>
       }
