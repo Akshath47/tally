@@ -3,9 +3,12 @@ import { useMutation } from "@tanstack/react-query";
 import { apiErrorText, deleteOverride, putOverride, type Account, type Category, type Transaction } from "../api";
 import { formatShortDate, monthOf, monthTitle } from "../dates";
 import { merchantLabel } from "../format";
+import { patternOf } from "../inbox";
 import { formatUnsigned, minorToInput } from "../money";
 import { buildOverride, countsAs, draftOf, isEdited, type Draft } from "../overrides";
 import { KINDS, pickerOrder, useAccounts, useCategories } from "../queries";
+import { Link } from "../router";
+import { merchantHref } from "../routes";
 import { Sheet } from "./Sheet";
 import { AccountBadge, ChevronLeft, ChevronRight, ErrorBanner, FieldError, Info, Lock, Pencil, SectionLabel, inputClass } from "./ui";
 
@@ -19,6 +22,19 @@ function ReadOnlyRow({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <span className="text-right text-muted">{value}</span>
     </div>
+  );
+}
+
+/** "All from <merchant>": its history across both accounts, unless that's where the sheet was opened. */
+function MerchantLink({ t }: { t: Transaction }) {
+  const key = patternOf(t);
+  const href = merchantHref(key);
+  if (!key || key.length > 200 || window.location.pathname === href) return null;
+  return (
+    <Link href={href} className="inline-flex min-h-11 items-center justify-center gap-1 self-center text-[13.5px] text-accent-fg">
+      <span className="max-w-[260px] truncate">All from {merchantLabel(t)}</span>
+      <ChevronRight size={14} />
+    </Link>
   );
 }
 
@@ -55,7 +71,8 @@ function ReadOnly({ t, account, category, onClose }: { t: Transaction; account: 
         <ReadOnlyRow label="Amount" value={amount} />
         <ReadOnlyRow label="Date" value={formatShortDate(t.txnDate)} />
       </div>
-      <button type="button" className="mt-4 min-h-[52px] rounded-button border border-line bg-raised text-[15.5px] font-medium" onClick={onClose}>
+      <MerchantLink t={t} />
+      <button type="button" className="mt-2 min-h-[52px] rounded-button border border-line bg-raised text-[15.5px] font-medium" onClick={onClose}>
         Close
       </button>
     </div>
@@ -287,6 +304,7 @@ function Editor({ t, account, categories, byId, onClose, onSaved }: {
             {reset.isPending ? "Resetting…" : "Reset all changes to bank values"}
           </button>
         )}
+        <MerchantLink t={t} />
       </div>
     </>
   );
