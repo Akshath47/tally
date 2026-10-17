@@ -40,6 +40,8 @@ Charcoal and sage, low saturation, nothing neon. Big numbers are thin; small tex
 | `over-text` / `over-tint` | `#D6968E` / `#2E2120` | Over flag, error text |
 | `acct-rev` | `#2E3133` bg, `#D5D7DA` text | Revolut badge |
 | `acct-amex` | `#24303A` bg, `#A8BACB` text | Amex badge |
+| `past` | `#5B6A62` | Charts: completed months (Trends, Merchant) |
+| `previous` | `#4A4E52` | Charts: the previous month in comparisons (Monthly review, Trends shapes) |
 
 Warning colours are the same everywhere, so "near limit" and "over" always look the same. State is never shown by colour alone: there's always a text flag ("£11 left", "£10 over") as well.
 
@@ -75,9 +77,10 @@ Pending amounts use a diagonal hatch of the bar colour, e.g. `repeating-linear-g
 
 ## Navigation
 
-- **Three tabs: Home, Transactions, Budget.** No Inbox tab.
+- **Four tabs: Home, Transactions, Insights, Budget.** No Inbox tab. Insights was added for the insights slices ([phase-2-insights-spec.md](phase-2-insights-spec.md)).
 - **"To sort" is reachable only from Home.** Home shows an "11 to sort" chip (count of uncategorised posted transactions) next to the settings icon. The chip appears only when the count is above zero. With nothing to sort there's no chip and no way into the screen.
-- Pushed screens (back link, no tab bar): To sort, Categories, Merchant rules, Accounts, New account found, Monthly review.
+- Pushed screens (back link, no tab bar): To sort, Categories, Merchant rules, Accounts, New account found, Monthly review (`/insights/review/:month`), Trends (`/insights/trends`) and Merchant (`/merchants/:key`).
+- Merchant's back link returns to wherever it was opened from: Insights, a review, Transactions or Home.
 - Home's settings icon goes to Categories. The freshness line goes to Accounts. "September review" goes to Monthly review.
 - The transaction editor and the pending view are bottom sheets over Transactions.
 
@@ -192,12 +195,37 @@ Over-allocation (validation stays on the client and the server):
   - **It's a new account:** keep it separate. Tally imports its full history and it starts counting; anything without a rule goes to To sort.
 - The confirm button names the action ("Link to BA Amex" / "Add as a new account"). A done screen confirms what happened; after a link it suggests checking the last week in Transactions for doubles.
 
-### Monthly review (later slice)
+### Insights (tab)
 
-- "September review · Compared with August".
-- Two tiles: this month's spend vs budget, last month's.
-- Per category: paired bars (sage = this month, grey = last month), the amount and the change (amber when up, sage when down). Over-budget categories get a flag.
-- A line for tracked categories, then top 5 merchants with visit counts.
+What each element shows and opens is in [insights-ui-brief.md](insights-ui-brief.md); the designs are on the canvas's Insights rows. In short:
+
+- Header: title and the same freshness line as Home, amber when an account is stale.
+- **This week** card (from `GET /api/digest/preview`, so it matches the Sunday email): "Mon 12 – Sun 18 Oct · so far", the week's spend large ("at least" with pending, a note when the week includes days of last month), a Monday-to-Sunday bar chart with pending hatched, the month line with left and pace, flagged categories only (Over, "on course for £X over", "£X left") or "All categories on track", the weekly email's status ("last sent", "goes out Sundays at 18:00", or "didn't send" with **Send now**) and the "to sort" chip.
+- **Worth a look**: the ranked insights, one card each with a toned icon, the shared headline and supporting line, and the brief's tap target. A large charge opens its transaction sheet and has an "All from <merchant>" link.
+- Entry rows: "<Month> review · Compared with <month>" (only once there's a completed month) and "Trends · Last 6 months".
+- States: nothing stands out, early in the month ("Projections start on the 8th…"), first month (a note in place of the review row), no budget (spend only, with a link to Budget), loading and error.
+
+### Monthly review
+
+- Back to Insights; a month stepper over completed months (back stops at the first month of history).
+- "September review · Compared with August", or "Your first full month in Tally".
+- Two tiles: this month's spend against its budget ("£60 under", "£72 over" or "No budget") and last month's, or "Nothing to compare with yet".
+- By category: budgeted categories biggest first, then Uncategorised, each with paired bars (sage = this month, grey = last month), the amount and the change (amber when up, sage when down). Over-budget categories get a flag. A row opens that category's transactions for the month.
+- Tracked categories in a dashed card, "Tracked · not in the total: £180 (August £95)", then the top 5 merchants with visits, each opening Merchant.
+
+### Trends
+
+- Budget spend for six months with the budget as a dashed line, over-budget parts in brick, the current month hatched where pending, and months before history drawn as "no data". A month opens on Home.
+- "Average £1,410 / month" over completed months with data, or "Average after your first full month".
+- Each spending category with avg, a six-bar shape and this month so far; tracked categories in a dashed card.
+
+### Merchant
+
+- Initial tile, name (untrusted, truncated), account badges and "First seen 3 Mar".
+- The rule's category ("Eating out · rule") or "No rule · goes to To sort", opening Merchant rules.
+- "£412 in 6 months · 23 visits · £17.91 average", or "First visit" with one visit.
+- Six months aligned with Trends, with visits per month, then the last 20 transactions, each opening the editor or the pending sheet.
+- Not found: "No transactions from this merchant" with a back link.
 
 ## Behaviour rules agreed in the design session
 
@@ -220,7 +248,7 @@ Most of the design already matches [phase-2-spec.md](phase-2-spec.md):
 - "Use for all <merchant>": `applyToMerchant: true` on `PUT /api/transactions/:id/override`.
 - Rules re-sorting past transactions without an override: categories resolved at read time.
 - New account found: `GET /api/accounts`, `POST /api/accounts/:id/link` and `…/enable` (P2.1).
-- Transactions search and filters, stale-data warnings and Monthly review are later slices in the spec (Insights, Stale-data warnings).
+- Insights, Monthly review, Trends and Merchant: `GET /api/digest/preview`, `GET /api/insights`, `GET /api/months/:month/review`, `GET /api/trends`, `GET /api/merchants?key=` and `POST /api/digest/send` ([phase-2-insights-spec.md](phase-2-insights-spec.md)). Insight wording comes from the shared `insightWords`.
 
 ## Differences from the backend spec
 
@@ -229,4 +257,3 @@ None. Four earlier differences were settled on 2026-10-04 in the spec's favour: 
 ## Open questions
 
 - Whether "Use for all" should also be offered when editing a rule's category from Categories, or only from the editor and To sort.
-- How long a stale account waits before the warning shows. The design uses 4 days, matching the example.

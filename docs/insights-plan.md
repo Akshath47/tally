@@ -3059,6 +3059,8 @@ Built from the owner's designs (the Insights rows of the design canvas, briefed 
 
 - `insightWords` and `type Insight` belong to P2.10 (`src/worker/insights/wording.ts`, `rules.ts`). Until P2.10 merges, `src/web/insights.ts` holds a copy of both, taken verbatim from P2.10 Task 4 apart from using the web formatters. When P2.10 lands, that file becomes a re-export of the worker modules and its copy is deleted, so the app and the email can't drift.
 - P2.8's own web task (Home and Accounts stale states, `stale` fields on `Account` and `MonthSummary`) stays with P2.8. The Insights header takes stale accounts from the digest preview's `staleAccountIds`, so this slice doesn't touch those types.
+- **One gap for P2.11:** the design's "This week" card has a Monday-to-Sunday bar chart, which needs per-day figures the spec's digest preview doesn't have. The UI reads `days: { date, spentMinor, pendingSpentMinor }[]` (7 entries, Monday first, budget spend by counted date, 0 after today) from `GET /api/digest/preview`. Until P2.11 adds it, the mock provides it and the card hides the chart when it's missing.
+- The design's Monthly review shows a Misc row, but `GET /api/months/:month/review` returns categories and Uncategorised, not a Misc pot. The screen follows the brief's order (budgeted categories, Uncategorised, tracked) rather than inventing Misc client-side.
 - No Worker code, migrations or Worker tests change here.
 
 **Files:**
