@@ -6,7 +6,7 @@ import { isNamedLine, type NamedLine } from "../../worker/budget/lines";
 import type { Account, Budget, Category, CategoryKind, ImportRun, InboxMerchant, MatchType, MonthSummary, OverrideInput, Rule, SummaryCategory, Transaction } from "../api";
 import { addDays, daysRemaining, londonToday, monthOf } from "../dates";
 import { normalizePattern as normalize } from "../../worker/budget/resolve";
-import { isStale, staleDays } from "../../worker/budget/stale";
+import { latestChange, staleIds, withStale } from "../../worker/budget/stale";
 import { SEED_ACCOUNTS, SEED_BUDGET, SEED_CATEGORIES, SEED_NEW_ACCOUNT, SEED_RULES, SEED_TRANSACTIONS } from "./data";
 
 // Only reachable through api.ts's `import.meta.env.DEV` branch. If a production build ever
@@ -147,13 +147,8 @@ const LINE_FILTERS: Record<NamedLine, (t: Transaction) => boolean> = {
   pending: (t) => isBudgetSpend(t) && t.isPending,
 };
 
-/** Stale flags as the Worker computes them (docs/phase-2-insights-spec.md). */
-function withStale(a: Account): Account {
-  const days = a.importEnabled ? staleDays(a.lastDataChangeAt, new Date()) : null;
-  return { ...a, stale: isStale(days), staleDays: days };
-}
-
 function summary(month: string): MonthSummary {
+  const enabled = accounts.filter((a) => a.importEnabled);
   const byCategory = new Map<number | null, SummaryCategory>();
   const entry = (categoryId: number | null) => {
     let e = byCategory.get(categoryId);
@@ -202,8 +197,8 @@ function summary(month: string): MonthSummary {
     categories: [...byCategory.values()].sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity)),
     trackedMinor: tracked,
     inboxCount: resolved.filter(isInbox).length,
-    lastDataChangeAt: accounts.filter((a) => a.importEnabled).reduce<string | null>((max, a) => (a.lastDataChangeAt && (!max || a.lastDataChangeAt > max) ? a.lastDataChangeAt : max), null),
-    staleAccountIds: month === monthOf(today) ? accounts.map(withStale).filter((a) => a.stale).map((a) => a.id) : [],
+    lastDataChangeAt: latestChange(enabled),
+    staleAccountIds: month === monthOf(today) ? staleIds(enabled, new Date()) : [],
   };
 }
 
@@ -266,7 +261,7 @@ function upsertMerchantRule(merchant: string, categoryId: number) {
 
 /** [method, path pattern, handler]. */
 const ROUTES: [string, RegExp, Handler][] = [
-  ["GET", /^\/api\/accounts$/, () => ok({ accounts: accounts.filter((a) => a.importEnabled || a.needsReview).map(withStale) })],
+  ["GET", /^\/api\/accounts$/, () => ok({ accounts: accounts.filter((a) => a.importEnabled || a.needsReview).map((a) => withStale(a, new Date())) })],
   ["POST", /^\/api\/accounts\/(\d+)\/enable$/, (m) => {
     const a = accounts.find((x) => x.id === Number(m[1]));
     if (!a) return fail(404, "not_found");

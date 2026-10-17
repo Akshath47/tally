@@ -56,7 +56,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function AccountCard({ account }: { account: Account }) {
   const failing = account.lastImportError !== null;
-  const stale = account.importEnabled && !failing && account.stale;
+  const stale = !failing && account.stale;
   const status = !account.importEnabled
     ? { text: "Not imported", dot: "bg-muted", tone: "text-muted" }
     : failing

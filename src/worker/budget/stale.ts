@@ -19,6 +19,12 @@ export function staleDays(lastDataChangeAt: string | null, now: Date): number | 
 
 export const isStale = (days: number | null) => days !== null && days >= STALE_AFTER_DAYS;
 
+/** `account` with its stale flags. Only enabled accounts can be stale: a disabled one isn't expected to change. */
+export function withStale<T extends { importEnabled: boolean; lastDataChangeAt: string | null }>(account: T, now: Date) {
+  const days = account.importEnabled ? staleDays(account.lastDataChangeAt, now) : null;
+  return { ...account, stale: isStale(days), staleDays: days };
+}
+
 /** Ids of the stale accounts among `rows`. */
 export const staleIds = (rows: AccountFreshness[], now: Date) => rows.filter((r) => isStale(staleDays(r.lastDataChangeAt, now))).map((r) => r.id);
 
