@@ -21,6 +21,9 @@ function subscribe(listener: () => void) {
 
 export const usePathname = () => useSyncExternalStore(subscribe, () => window.location.pathname);
 
+/** The path the current entry was pushed from, if it was pushed in this tab. */
+export const navFrom = () => (window.history.state as NavState)?.from ?? null;
+
 export function navigate(href: string, { replace = false } = {}) {
   const from = window.location.pathname;
   if (href === from) return;
