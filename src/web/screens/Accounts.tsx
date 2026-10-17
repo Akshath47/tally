@@ -5,12 +5,12 @@ import { LoadError, PushedScreen } from "../components/Screen";
 import { AccountBadge, Button, ChevronRight, Skeleton } from "../components/ui";
 import { formatShortDate } from "../dates";
 import { formatTimestamp } from "../format";
-import { ageText } from "../pace";
 import { useAccounts } from "../queries";
+import { freshnessAge } from "../stale";
 import { Link } from "../router";
 import { newAccountHref, type Back } from "../routes";
 
-// Account status (docs/ui-design.md, Accounts). Stale-data warnings are a later backend slice.
+// Account status (docs/ui-design.md, Accounts). Stale accounts come from the Worker's `stale` flag (docs/phase-2-insights-spec.md).
 
 const RUN_TEXT: Partial<Record<RunStatus, string>> = { success: "done", partial: "some accounts failed", failed: "failed" };
 
@@ -56,14 +56,17 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function AccountCard({ account }: { account: Account }) {
   const failing = account.lastImportError !== null;
+  const stale = !failing && account.stale;
   const status = !account.importEnabled
     ? { text: "Not imported", dot: "bg-muted", tone: "text-muted" }
     : failing
       ? { text: "Import failing", dot: "bg-over", tone: "text-over-fg" }
-      : { text: "Up to date", dot: "bg-accent", tone: "text-accent-fg" };
+      : stale
+        ? { text: "No new data", dot: "bg-warn", tone: "text-warn-fg" }
+        : { text: "Up to date", dot: "bg-accent", tone: "text-accent-fg" };
   const updated = account.lastDataChangeAt;
   return (
-    <li className={`rounded-card border bg-surface px-4 pt-3.5 pb-1 ${failing ? "border-over/40" : "border-divider"}`}>
+    <li className={`rounded-card border bg-surface px-4 pt-3.5 pb-1 ${failing ? "border-over/40" : stale ? "border-warn/40" : "border-divider"}`}>
       <div className="flex items-center gap-2.5 pb-2.5">
         <AccountBadge account={account} />
         <span className="min-w-0 flex-1 truncate font-medium">{account.name}</span>
@@ -73,7 +76,18 @@ function AccountCard({ account }: { account: Account }) {
         </span>
       </div>
       {failing && <p className="mb-2.5 rounded-input bg-over-tint px-3 py-2.5 text-[13px] leading-normal text-over-fg">Last import failed: {account.lastImportError}</p>}
-      <Detail label="Last updated" value={updated ? `${ageText(updated)} · ${formatTimestamp(updated)}` : "Never"} />
+      {stale && (
+        <div className="mb-2.5 rounded-input bg-warn-tint px-3 py-2.5 text-[13px] leading-normal text-warn-fg">
+          <p>
+            No new data for {account.staleDays} days, so Tally's totals may be missing recent spending. If the bank connection has dropped,
+            reconnect it in Lunch Flow.
+          </p>
+          <a className="mt-1.5 inline-block underline" href="https://www.lunchflow.app" target="_blank" rel="noreferrer">
+            Open Lunch Flow
+          </a>
+        </div>
+      )}
+      <Detail label="Last updated" value={updated ? `${freshnessAge(account)} · ${formatTimestamp(updated)}` : "Never"} />
       <Detail label="Newest transaction" value={account.newestTxnDate ? formatShortDate(account.newestTxnDate) : "None yet"} />
       {!account.backfillComplete && account.importEnabled && <Detail label="History" value="Still importing" />}
     </li>

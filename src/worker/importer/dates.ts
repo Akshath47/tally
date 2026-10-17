@@ -51,3 +51,11 @@ export function daysInMonth(month: string): number {
   // Day 0 of the next month is this month's last day.
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
 }
+
+/** Whole days from `from` to `to`, both YYYY-MM-DD; negative when `to` is earlier. */
+export function daysBetween(from: string, to: string): number {
+  const a = parts(from);
+  const b = parts(to);
+  if (!a || !b || !isYmd(from) || !isYmd(to)) throw new Error("daysBetween: not a YYYY-MM-DD date");
+  return (Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000;
+}
