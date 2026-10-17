@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQueries, useQuery, type InfiniteData } from "@tanstack/react-query";
-import { getAccounts, getBudget, getCategories, getInbox, getInboxMerchants, getLineTransactions, getMonthSummary, getRules, getTransactions, type Account, type Category, type CategoryKind } from "./api";
+import { getAccounts, getBudget, getCategories, getDigestPreview, getInbox, getInboxMerchants, getInsights, getLineTransactions, getMerchant, getMonthSummary, getReview, getRules, getTransactions, getTrends, type Account, type Category, type CategoryKind } from "./api";
 import type { LineCategory } from "./lines";
 import { addMonths, daysInMonth } from "./dates";
 
@@ -63,6 +63,15 @@ export const useLineTransactions = (month: string, category: LineCategory) =>
 
 /** The summaries of the two months before `month`, sharing the cache with useSummary. */
 export const usePreviousSummaries = (month: string) => useQueries({ queries: [1, 2].map((n) => summaryQuery(addMonths(month, -n))) });
+
+// Insights (P2.9–P2.11).
+
+export const useInsights = () => useQuery({ queryKey: ["insights"], queryFn: getInsights });
+export const useDigestPreview = () => useQuery({ queryKey: ["digest", "preview"], queryFn: getDigestPreview });
+export const useReview = (month: string) => useQuery({ queryKey: ["review", month], queryFn: () => getReview(month) });
+export const useTrends = () => useQuery({ queryKey: ["trends"], queryFn: getTrends });
+/** One merchant's history; `enabled` lets a screen fetch it only when needed (a large charge's tap). */
+export const useMerchant = (key: string, enabled = true) => useQuery({ queryKey: ["merchant", key], queryFn: () => getMerchant(key), enabled });
 
 /** Active categories in picker order: by kind, then name. */
 export function pickerOrder(categories: Category[]): Category[] {
