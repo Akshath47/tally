@@ -208,7 +208,7 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
 
   // Last, since it adds rows. Mid-September, with the ledger's last months as the baseline, and
   // the most large-charge candidates it looks at, each at a busy merchant with a long history.
-  it("keeps insights to their months and candidates, at their worst", async () => {
+  it("keeps insights and the digest to their months and candidates, at their worst", async () => {
     await env.DB.prepare(
       `INSERT INTO transactions (account_id, provider_txn_id, amount_minor, provider_amount, currency, txn_date, merchant, description,
          is_pending, fingerprint, first_seen_at, last_seen_at, updated_at, first_import_run_id)
@@ -224,6 +224,10 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
       console.log(`GET /api/insights (worst case)`.padEnd(50), String(insights.rowsRead).padStart(6));
       expect((insights.json as { items: { type: string }[] }).items.some((i) => i.type === "large_charge")).toBe(true);
       expect(insights.rowsRead).toBeLessThan(6_000);
+      // The digest is the summary, the week's spend and the insights together.
+      const digest = await measure("GET", "/api/digest/preview");
+      console.log(`GET /api/digest/preview (worst case)`.padEnd(50), String(digest.rowsRead).padStart(6));
+      expect(digest.rowsRead).toBeLessThan(8_000);
     } finally {
       vi.useRealTimers();
     }
