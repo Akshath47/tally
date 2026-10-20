@@ -50,32 +50,6 @@ function Freshness({ preview, failed }: { preview: DigestPreview | undefined; fa
   );
 }
 
-/** Monday to Sunday, posted spend solid and pending hatched on top; days to come are empty. */
-function WeekChart({ days, today }: { days: NonNullable<DigestPreview["days"]>; today: string }) {
-  const max = Math.max(1, ...days.map((d) => d.spentMinor));
-  const label = days
-    .filter((d) => d.date <= today)
-    .map((d) => `${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][days.indexOf(d)]} ${formatPounds(d.spentMinor)}${d.pendingSpentMinor > 0 ? ` including ${formatPounds(d.pendingSpentMinor)} pending` : ""}`)
-    .join(", ");
-  return (
-    <div role="img" aria-label={`Spend by day: ${label}`} className="grid w-[168px] shrink-0 grid-cols-7 gap-[5px]">
-      {days.map((d, i) => {
-        const posted = Math.max(0, d.spentMinor - d.pendingSpentMinor);
-        const pending = Math.max(0, d.pendingSpentMinor);
-        return (
-          <div key={d.date} className={`flex flex-col items-center gap-[5px] text-[10.5px] ${d.date === today ? "text-fg" : "text-subtle"}`}>
-            <div className="flex h-[46px] w-full flex-col justify-end gap-[2px] overflow-hidden rounded-[4px] bg-raised/70">
-              {d.date <= today && pending > 0 && <div className="hatch w-full rounded-t-[3px]" style={{ height: `${fraction(pending, max) * 100}%` }} />}
-              {d.date <= today && posted > 0 && <div className="w-full bg-accent" style={{ height: `${fraction(posted, max) * 100}%` }} />}
-            </div>
-            <span aria-hidden="true">{"MTWTFSS"[i]}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /** A flagged category: Over, On course to go over, or Near limit (the brief's copy). */
 /** `today` is the preview's own (its weekEnd), so the projection matches the server's status. */
 function CategoryFlag({ c, today }: { c: DigestPreview["categories"][number]; today: string }) {
@@ -99,13 +73,13 @@ const STATUS_ORDER = { over: 0, projected_over: 1, near: 2, ok: 3 } as const;
 function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; today: string }) {
   // Sending changes no data, so nothing needs refetching (main.tsx).
   const send = useMutation({ mutationFn: sendDigest, meta: { refetch: "none" } });
-  const sent = send.data?.status === "sent";
+  const sent = send.isSuccess;
   if (lastSend?.status === "failed" && !sent) {
     return (
       <span className="flex basis-full items-center justify-between gap-2 text-[11.5px] text-muted">
         <span className="inline-flex items-center gap-1.5">
           <Warning size={14} className="shrink-0 text-warn-fg" />
-          {send.isError || send.data?.status === "failed" ? "Still couldn't send it. Try again later." : "Last Sunday's email didn't send"}
+          {send.isError ? "Still couldn't send it. Try again later." : "Last Sunday's email didn't send"}
         </span>
         <button type="button" className="min-h-11 px-1 text-[13.5px] font-medium text-accent-fg disabled:opacity-50" disabled={send.isPending} onClick={() => send.mutate()}>
           {send.isPending ? "Sending…" : "Send now"}
@@ -114,6 +88,7 @@ function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; t
     );
   }
   if (sent) return <span className="text-[11.5px] text-muted">Weekly email · sent just now</span>;
+  if (lastSend?.status === "sending") return <span className="text-[11.5px] text-muted">Weekly email · sending now</span>;
   if (!lastSend?.sentAt) return <span className="text-[11.5px] text-muted">Weekly email goes out Sundays at 18:00</span>;
   return (
     <span className="text-[11.5px] leading-snug text-muted">
@@ -151,7 +126,6 @@ function ThisWeek({ p, names, today }: { p: DigestPreview; names: Names; today: 
             </div>
           )}
         </div>
-        {p.days?.length === 7 && p.weekSpentMinor > 0 && <WeekChart days={p.days} today={today} />}
       </div>
 
       {m.overallMinor !== null && m.leftMinor !== null ? (

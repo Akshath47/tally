@@ -463,18 +463,15 @@ let lastSend: DigestPreview["lastSend"] = { weekStart: addDays(mondayOf(today), 
 
 function digestPreview(asOf: string): DigestPreview {
   const weekStart = mondayOf(today);
-  const resolved = transactions.map(resolve);
-  const days = [0, 1, 2, 3, 4, 5, 6].map((i) => {
-    const date = addDays(weekStart, i);
-    let spentMinor = 0;
-    let pendingSpentMinor = 0;
-    for (const t of resolved) {
-      if (countedDate(t) !== date || !countsIn(t, monthOf(date)) || !isBudgetSpend(t)) continue;
-      spentMinor += spendOf(t);
-      if (t.isPending) pendingSpentMinor += spendOf(t);
-    }
-    return { date, spentMinor, pendingSpentMinor };
-  });
+  // Budget spend counted Monday to today, as the Worker's spendByMonth over the week.
+  let weekSpentMinor = 0;
+  let weekPendingSpentMinor = 0;
+  for (const t of transactions.map(resolve)) {
+    const date = countedDate(t);
+    if (date < weekStart || date > today || !countsIn(t, monthOf(date)) || !isBudgetSpend(t)) continue;
+    weekSpentMinor += spendOf(t);
+    if (t.isPending) weekPendingSpentMinor += spendOf(t);
+  }
   const s = summary(monthOf(today));
   const dom = day(asOf);
   const dim = daysInMonth(monthOf(today));
@@ -486,11 +483,10 @@ function digestPreview(asOf: string): DigestPreview {
     weekStart,
     // Today, or the day a scenario pretends it is; the tab works out insights for this date.
     weekEnd: asOf,
-    weekSpentMinor: days.reduce((a, d) => a + d.spentMinor, 0),
-    weekPendingSpentMinor: days.reduce((a, d) => a + d.pendingSpentMinor, 0),
+    weekSpentMinor,
+    weekPendingSpentMinor,
     spansMonths: monthOf(weekStart) !== monthOf(today),
-    days,
-    month: { spentMinor: s.spentMinor, pendingSpentMinor: s.pendingSpentMinor, overallMinor: s.overallMinor, leftMinor: s.leftMinor, perWeekMinor: s.perWeekMinor, daysRemaining: s.daysRemaining ?? 1 },
+    month: { month: s.month, spentMinor: s.spentMinor, pendingSpentMinor: s.pendingSpentMinor, overallMinor: s.overallMinor, leftMinor: s.leftMinor, perWeekMinor: s.perWeekMinor, daysRemaining: s.daysRemaining ?? 1 },
     categories:
       s.overallMinor === null
         ? []
@@ -726,7 +722,7 @@ const ROUTES: [string, RegExp, Handler][] = [
   }],
   ["POST", /^\/api\/digest\/send$/, () => {
     lastSend = { weekStart: mondayOf(today), status: "sent", sentAt: new Date().toISOString() };
-    return ok({ status: "sent" });
+    return ok({ ok: true });
   }],
 ];
 

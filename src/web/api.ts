@@ -1,4 +1,4 @@
-import type { CATEGORY_KINDS, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
+import type { CATEGORY_KINDS, DIGEST_SEND_STATUSES, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
 import type { Insight } from "./insights";
 import type { LineCategory } from "./lines";
 
@@ -352,19 +352,15 @@ export type DigestPreview = {
   weekSpentMinor: number;
   weekPendingSpentMinor: number;
   spansMonths: boolean;
-  /**
-   * Monday to Sunday, budget spend per counted day; days after today are 0. Not in the spec yet:
-   * the Insights tab's week chart needs it (docs/insights-plan.md, P2.12), and hides without it.
-   */
-  days?: { date: string; spentMinor: number; pendingSpentMinor: number }[];
-  month: { spentMinor: number; pendingSpentMinor: number; overallMinor: number | null; leftMinor: number | null; perWeekMinor: number | null; daysRemaining: number };
+  month: { month: string; spentMinor: number; pendingSpentMinor: number; overallMinor: number | null; leftMinor: number | null; perWeekMinor: number | null; daysRemaining: number | null };
   /** Each allocated budgeted category, plus Misc (categoryId null). */
   categories: { categoryId: number | null; spentMinor: number; allocatedMinor: number; status: DigestStatus }[];
   insights: Insight[];
   inboxCount: number;
   staleAccountIds: number[];
   lastDataChangeAt: string | null;
-  lastSend: { weekStart: string; status: "sent" | "failed"; sentAt: string | null } | null;
+  /** The latest send; one stuck at "sending" for 15 minutes reads as "failed". */
+  lastSend: { weekStart: string; status: (typeof DIGEST_SEND_STATUSES)[number]; sentAt: string | null } | null;
 };
 
 export const getReview = (month: string) => request<MonthReview>(`/api/months/${month}/review`);
@@ -372,5 +368,5 @@ export const getTrends = () => request<Trends>("/api/trends");
 export const getMerchant = (key: string) => request<MerchantHistory>(`/api/merchants${query({ key })}`);
 export const getInsights = () => request<{ asOf: string; items: Insight[] }>("/api/insights");
 export const getDigestPreview = () => request<DigestPreview>("/api/digest/preview");
-/** Sends this week's digest now; it doesn't touch the weekly claim. */
-export const sendDigest = () => send<{ status: "sent" | "failed" }>("POST", "/api/digest/send");
+/** Sends this week's digest now; it doesn't touch the weekly claim. 502 send_failed when it didn't go. */
+export const sendDigest = () => send<{ ok: true }>("POST", "/api/digest/send");

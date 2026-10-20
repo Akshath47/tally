@@ -1,96 +1,14 @@
-import { addDays, addMonths, formatShortDate, monthName, monthOf } from "./dates";
-import { formatMoney } from "./format";
-import { formatPounds } from "./money";
+import type { Insight } from "../worker/insights/types";
+import { addDays, formatShortDate, monthOf } from "./dates";
 import { categoryHref, reviewHref } from "./routes";
 
 // Insights (docs/phase-2-insights-spec.md): what each one says, and how the Insights tab shows it.
-//
-// STAND-IN until P2.10 merges. `Insight` and `insightWords` belong to the Worker
-// (src/worker/insights/rules.ts and wording.ts), shared with the weekly email so the two never
-// disagree. They're copied here from docs/insights-plan.md (P2.10 Tasks 2 and 4) so the UI can be
-// built first. Once P2.10 lands, replace both with re-exports of the Worker's and delete the copies.
+// The type and the wording are the Worker's (src/worker/insights), shared with the weekly email so
+// the two never disagree.
 
-export type Insight =
-  | { id: string; type: "stale_account"; severity: "warn"; accountId: number; staleDays: number }
-  | {
-      id: string;
-      type: "pace";
-      severity: "over" | "warn";
-      state: "over" | "projected_over";
-      /** null = the whole budget. */
-      categoryId: number | null;
-      spentMinor: number;
-      allocatedMinor: number;
-      projectedMinor: number;
-    }
-  | { id: string; type: "unusual_category"; severity: "warn"; categoryId: number | null; spentMinor: number; baselineMinor: number }
-  | {
-      id: string;
-      type: "large_charge";
-      severity: "info";
-      transactionId: number;
-      merchantKey: string;
-      name: string;
-      spentMinor: number;
-      /** null = a new merchant. */
-      merchantAverageMinor: number | null;
-      countedDate: string;
-      isPending: boolean;
-    }
-  | { id: string; type: "month_change"; severity: "info"; categoryId: number | null; month: string; spentMinor: number; previousSpentMinor: number; changeMinor: number };
-
-export type Names = { category: (id: number | null) => string; account: (id: number) => string };
-export type Words = { headline: string; detail: string };
-
-/** "1st", "2nd", "16th". */
-export function ordinal(n: number): string {
-  const tens = n % 100;
-  const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
-  return `${n}${suffix}`;
-}
-
-const gbp = (minor: number) => formatMoney(minor, "GBP");
-const floorDiv = (a: number, b: number) => Math.floor(a / b);
-
-export function insightWords(item: Insight, names: Names, today: string): Words {
-  const byToday = `by the ${ordinal(Number(today.slice(8, 10)))}`;
-  switch (item.type) {
-    case "stale_account":
-      return { headline: `${names.account(item.accountId)} hasn't updated for ${item.staleDays} days`, detail: "Recent spending may be missing." };
-    case "pace": {
-      const spent = formatPounds(item.spentMinor);
-      const limit = formatPounds(item.allocatedMinor);
-      if (item.state === "over") {
-        const over = formatPounds(item.spentMinor - item.allocatedMinor);
-        return item.categoryId === null
-          ? { headline: `${over} over this month's budget`, detail: `${spent} of ${limit}` }
-          : { headline: `${names.category(item.categoryId)} is ${over} over`, detail: `${spent} of ${limit} this month` };
-      }
-      const over = formatPounds(item.projectedMinor - item.allocatedMinor);
-      return item.categoryId === null
-        ? { headline: `On course to end the month ${over} over`, detail: `${spent} ${byToday}, ${limit} budget` }
-        : { headline: `${names.category(item.categoryId)} is on course to end ${over} over`, detail: `${spent} ${byToday}, ${limit} allocated` };
-    }
-    case "unusual_category":
-      return {
-        headline: `${names.category(item.categoryId)} is running high`,
-        detail: `${formatPounds(item.spentMinor)} so far, usually about ${formatPounds(item.baselineMinor)} ${byToday}`,
-      };
-    case "large_charge": {
-      const pending = item.isPending ? "Pending · " : "";
-      const headline = `${gbp(item.spentMinor)} at ${item.name}`;
-      if (item.merchantAverageMinor === null) return { headline, detail: `${pending}New merchant · ${formatShortDate(item.countedDate, today)}` };
-      // Rounded to the nearest whole multiple: floor((2 × spent + average) ÷ (2 × average)).
-      const times = floorDiv(2 * item.spentMinor + item.merchantAverageMinor, 2 * item.merchantAverageMinor);
-      return { headline, detail: `${pending}About ${times}× your usual ${gbp(item.merchantAverageMinor)} there` };
-    }
-    case "month_change":
-      return {
-        headline: `${names.category(item.categoryId)} ${item.changeMinor > 0 ? "up" : "down"} ${formatPounds(Math.abs(item.changeMinor))} in ${monthName(item.month)}`,
-        detail: `${formatPounds(item.spentMinor)}, from ${formatPounds(item.previousSpentMinor)} in ${monthName(addMonths(item.month, -1))}`,
-      };
-  }
-}
+export type { Insight } from "../worker/insights/types";
+export { insightWords, type Names, type Words } from "../worker/insights/wording";
+export { ordinal } from "../worker/display";
 
 // --- How the Insights tab shows them (docs/insights-ui-brief.md) -------------------------------
 
