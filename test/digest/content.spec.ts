@@ -78,6 +78,18 @@ describe("GET /api/digest/preview", () => {
     ]);
   });
 
+  it("leaves Misc out when Home would: nothing unallocated and nothing spent there", async () => {
+    await insertOverall("2026-10", 100_000);
+    await insertAllocation(SEEDED.groceries, "2026-10", 105_000); // over-allocated: Misc is −£50
+    await txn(a, { merchant: "Grocer", amountMinor: -9_000, txnDate: "2026-10-05" });
+    expect((await preview()).categories.map((l) => l.categoryId)).toEqual([SEEDED.groceries]);
+  });
+
+  it("reports a send stuck in 'sending' for over 15 minutes as failed", async () => {
+    await env.DB.prepare("INSERT INTO digest_sends (week_start, status, attempted_at) VALUES ('2026-10-05', 'sending', '2026-10-11T17:00:00Z')").run();
+    expect((await preview()).lastSend).toEqual({ weekStart: "2026-10-05", status: "failed", sentAt: null });
+  });
+
   it("works with no budget set: no left, no pace, no category lines", async () => {
     await txn(a, { merchant: "Grocer", amountMinor: -9_000, txnDate: "2026-10-05" });
     const d = await preview();

@@ -21,6 +21,8 @@ const render = (over: Partial<Digest> = {}) => renderDigestEmail(digest(over), n
 describe("weekRange", () => {
   it("shares the month when it can", () => expect(weekRange("2026-10-12", "2026-10-18")).toBe("12–18 Oct"));
   it("names both months across a boundary", () => expect(weekRange("2026-09-28", "2026-10-04")).toBe("28 Sep – 4 Oct"));
+  it("shows no year across New Year", () => expect(weekRange("2026-12-28", "2027-01-03")).toBe("28 Dec – 3 Jan"));
+  it("is one date for a Monday", () => expect(weekRange("2026-10-12", "2026-10-12")).toBe("12 Oct"));
 });
 
 describe("renderDigestEmail", () => {
@@ -66,6 +68,12 @@ describe("renderDigestEmail", () => {
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
     expect(text).toContain(`<img src=x onerror="alert(1)">`);
+  });
+
+  it("declares UTF-8, for £ and dashes", () => expect(render().html).toContain('<meta charset="utf-8">'));
+
+  it("leaves out the freshness line before any data has changed", () => {
+    expect(render({ lastDataChangeAt: null }).text).not.toContain("Data last changed");
   });
 
   it("escapes the five HTML characters", () => expect(escapeHtml(`&<>"'`)).toBe("&amp;&lt;&gt;&quot;&#39;"));

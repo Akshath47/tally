@@ -32,21 +32,38 @@ async function readNames(db: D1Database): Promise<Names> {
 const errorCode = (e: unknown) =>
   typeof e === "object" && e !== null && "code" in e && typeof e.code === "string" && /^E_[A-Z_]{1,60}$/.test(e.code) ? e.code : "unknown";
 
-/** Builds this week's digest and sends it to the owner. Never throws. */
+/**
+ * Builds this week's digest and sends it to the owner. Never throws. A failure is the Email
+ * Service's code, or `build_failed` when the digest couldn't be read or rendered.
+ */
 export async function deliverDigest(env: DigestEnv, now: Date, trigger: "cron" | "manual"): Promise<Delivery> {
   const started = Date.now();
   let counts = { insights: 0, categories: 0 };
   let result: Delivery;
+  let email: ReturnType<typeof renderDigestEmail> | null = null;
   try {
     const [digest, names] = await Promise.all([readDigest(env.DB, now), readNames(env.DB)]);
     counts = { insights: digest.insights.length, categories: digest.categories.length };
-    await env.DIGEST_EMAIL.send({ from: env.DIGEST_FROM, to: env.ALLOWED_EMAIL, ...renderDigestEmail(digest, names, env.APP_URL) });
+    email = renderDigestEmail(digest, names, env.APP_URL);
+    await env.DIGEST_EMAIL.send({ from: env.DIGEST_FROM, to: env.ALLOWED_EMAIL, ...email });
     result = { ok: true };
   } catch (e) {
-    result = { ok: false, error: errorCode(e) };
+    result = { ok: false, error: email === null ? "build_failed" : errorCode(e) };
   }
   console.log(JSON.stringify({ event: "digest_send", trigger, status: result.ok ? "sent" : "failed", error: result.ok ? undefined : result.error, durationMs: Date.now() - started, ...counts }));
   return result;
+}
+
+/**
+ * A manual send that worked settles the latest week's row if it didn't (failed, or stuck
+ * sending), so the app stops offering Send now. It never creates a row: that would be this
+ * week's claim, and Sunday's cron would then skip.
+ */
+export async function settleLatestSend(db: D1Database, now: Date) {
+  await db
+    .prepare("UPDATE digest_sends SET status = 'sent', sent_at = ?1, error = NULL WHERE week_start = (SELECT max(week_start) FROM digest_sends) AND status <> 'sent'")
+    .bind(now.toISOString())
+    .run();
 }
 
 /** The Sunday cron: claims the week, then sends once, at 18:00 London. */

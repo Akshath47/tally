@@ -112,7 +112,8 @@ digest_sends              -- P2.11; one row per weekly digest, claimed before se
   week_start PK            YYYY-MM-DD, the week's Monday (London)
   status                   'sending' | 'sent' | 'failed'
   attempted_at · sent_at
-  error                    an Email Service code (E_…), never a message; never the email's content
+  error                    an Email Service code (E_…), build_failed (the digest couldn't be read) or unknown; never a message or the email's content
+  A claim left 'sending' over 15 minutes reads as failed; a working manual send settles the latest row
 
 monthly_budgets           -- P2.2; positive = spend
   effective_month PK       YYYY-MM

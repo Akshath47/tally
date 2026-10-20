@@ -1,7 +1,7 @@
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DIGEST_CRON, runScheduledDigest } from "../../src/worker/digest/send";
+import { DIGEST_CRON, deliverDigest, runScheduledDigest } from "../../src/worker/digest/send";
 import worker from "../../src/worker/index";
 import { resetDb } from "../db";
 import { send } from "../http";
@@ -90,10 +90,24 @@ describe("POST /api/digest/send", () => {
     expect((await sends()).results).toEqual([]);
   });
 
+  it("marks the latest failed week as sent once a manual send works", async () => {
+    await env.DB.prepare("INSERT INTO digest_sends (week_start, status, attempted_at, error) VALUES ('2026-10-12', 'failed', '2026-10-18T17:00:00Z', 'E_DELIVERY_FAILED')").run();
+    expect((await send("POST", "/api/digest/send", {}, {}, fakeEnv())).status).toBe(200);
+    expect((await sends()).results).toEqual([{ week_start: "2026-10-12", status: "sent", error: null }]);
+  });
+
   it("answers 502 when the send fails", async () => {
     fail = Object.assign(new Error("x"), { code: "E_RATE_LIMIT_EXCEEDED" });
     const res = await send("POST", "/api/digest/send", {}, {}, fakeEnv());
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "send_failed" });
+  });
+});
+
+describe("deliverDigest", () => {
+  it("tells a digest it couldn't build apart from a failed delivery", async () => {
+    const broken = { prepare: () => { throw new Error("d1 down"); } } as unknown as D1Database;
+    expect(await deliverDigest(fakeEnv({ DB: broken }), new Date("2026-10-18T17:00:00Z"), "manual")).toEqual({ ok: false, error: "build_failed" });
+    expect(sent).toEqual([]);
   });
 });

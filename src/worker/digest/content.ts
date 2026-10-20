@@ -30,13 +30,17 @@ function digestLines(s: MonthSummary, today: string) {
     (sum, l) => (l.categoryId === null ? sum + l.spentMinor - l.pendingSpentMinor : l.kind === "budgeted" && l.allocatedMinor === 0 ? sum + l.spentMinor : sum),
     0,
   );
-  return [
-    ...allocated.map((l) => ({ categoryId: l.categoryId, spentMinor: l.spentMinor, allocatedMinor: l.allocatedMinor, status: lineStatus(l.spentMinor, l.allocatedMinor, today) })),
-    { categoryId: null, spentMinor: miscSpent, allocatedMinor: s.miscMinor, status: lineStatus(miscSpent, s.miscMinor, today) },
-  ];
+  const lines = allocated.map((l) => ({ categoryId: l.categoryId, spentMinor: l.spentMinor, allocatedMinor: l.allocatedMinor, status: lineStatus(l.spentMinor, l.allocatedMinor, today) }));
+  // Like Home (src/web/lines.ts): Misc shows when something's left unallocated or spent there.
+  if (s.miscMinor > 0 || miscSpent !== 0) lines.push({ categoryId: null, spentMinor: miscSpent, allocatedMinor: s.miscMinor, status: lineStatus(miscSpent, s.miscMinor, today) });
+  return lines;
 }
 
-const LAST_SEND_SQL = "SELECT week_start AS weekStart, status, sent_at AS sentAt FROM digest_sends ORDER BY week_start DESC LIMIT 1";
+// A claim still 'sending' after this long belongs to a run that died before recording its result
+// (a Worker cut off mid-send never updates the row), so it reads as failed and offers Send now.
+const STUCK_SENDING_MS = 15 * 60_000;
+const LAST_SEND_SQL = `SELECT week_start AS weekStart, CASE WHEN status = 'sending' AND attempted_at < ?1 THEN 'failed' ELSE status END AS status,
+  sent_at AS sentAt FROM digest_sends ORDER BY week_start DESC LIMIT 1`;
 
 /** This week's digest, Monday to today in London. */
 export async function readDigest(db: D1Database, now: Date) {
@@ -46,7 +50,7 @@ export async function readDigest(db: D1Database, now: Date) {
     readMonthSummary(db, today.slice(0, 7), now),
     spendByMonth(db, weekStart, today),
     readInsightInput(db, now),
-    db.prepare(LAST_SEND_SQL).first<{ weekStart: string; status: string; sentAt: string | null }>(),
+    db.prepare(LAST_SEND_SQL).bind(new Date(now.getTime() - STUCK_SENDING_MS).toISOString()).first<{ weekStart: string; status: string; sentAt: string | null }>(),
   ]);
   return {
     weekStart,

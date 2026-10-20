@@ -14,9 +14,12 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-/** "12–18 Oct", or "28 Sep – 4 Oct" across months. The digest is always this week, so no year. */
-export const weekRange = (from: string, to: string) =>
-  from.slice(0, 7) === to.slice(0, 7) ? `${Number(from.slice(8, 10))}–${formatDayMonth(to, to)}` : `${formatDayMonth(from, to)} – ${formatDayMonth(to, to)}`;
+/** "12–18 Oct", "28 Sep – 4 Oct" across months, or "12 Oct" on a Monday. Always this week, so never a year. */
+export function weekRange(from: string, to: string): string {
+  // Each date as its own "today", so neither end gains a year across New Year.
+  if (from === to) return formatDayMonth(to, to);
+  return from.slice(0, 7) === to.slice(0, 7) ? `${Number(from.slice(8, 10))}–${formatDayMonth(to, to)}` : `${formatDayMonth(from, from)} – ${formatDayMonth(to, to)}`;
+}
 
 type Line = { main: string; sub?: string };
 type Block = { heading?: string; lines: Line[] };
@@ -68,7 +71,7 @@ function blocks(d: Digest, names: Names): Block[] {
   out.push({
     lines: [
       ...(d.inboxCount > 0 ? [{ main: `${d.inboxCount} transaction${d.inboxCount === 1 ? "" : "s"} to sort` }] : []),
-      { main: `Data last changed ${formatTimestamp(d.lastDataChangeAt)}` },
+      ...(d.lastDataChangeAt ? [{ main: `Data last changed ${formatTimestamp(d.lastDataChangeAt)}` }] : []),
     ],
   });
   return out;
@@ -78,7 +81,7 @@ const textOf = (bs: Block[], appUrl: string) =>
   [...bs.map((b) => [...(b.heading ? [b.heading.toUpperCase()] : []), ...b.lines.map((l) => (l.sub ? `${l.main}\n  ${l.sub}` : l.main))].join("\n")), `Open Tally: ${appUrl}`].join("\n\n");
 
 const htmlOf = (bs: Block[], appUrl: string) =>
-  `<!doctype html><html><body style="margin:0;padding:16px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.45">` +
+  `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.45">` +
   `<div style="max-width:600px;margin:0 auto"><h1 style="font-size:20px;font-weight:500;margin:0 0 16px">Your week in Tally</h1>` +
   bs
     .map(
