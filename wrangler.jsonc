@@ -17,26 +17,42 @@
 	"preview_urls": false,
 	"vars": {
 		// How far back the importer backfills. Revolut serves about 2 years (docs/lunchflow-findings.md).
-		"BACKFILL_DAYS": "730"
+		"BACKFILL_DAYS": "730",
+		// "true" once the owner's sending domain is set up (docs/phase-2-insights-spec.md, Owner setup).
+		"DIGEST_ENABLED": "false"
 	},
 	// Set with `wrangler secret put` in production and in .dev.vars locally; deploy fails if one is missing.
 	// The ACCESS_* values and ALLOWED_EMAIL aren't sensitive, just kept out of this public file. The Worker
 	// re-verifies the Access JWT against them because Workers with static assets don't receive ctx.access.
+	// DIGEST_FROM is the digest's sender on the owner's domain; APP_URL is the app's own URL for the email's
+	// link. Both stay out of this public file.
 	"secrets": {
 		"required": [
 			"LUNCHFLOW_API_KEY",
 			"ACCESS_TEAM_DOMAIN",
 			"ACCESS_AUD",
-			"ALLOWED_EMAIL"
+			"ALLOWED_EMAIL",
+			"DIGEST_FROM",
+			"APP_URL"
 		]
 	},
 	"observability": {
 		"enabled": true
 	},
+	// The weekly digest. No allowed_destination_addresses here: that would publish the address. The code
+	// sends only to ALLOWED_EMAIL, and the free plan only delivers to verified destinations.
+	"send_email": [
+		{
+			"name": "DIGEST_EMAIL"
+		}
+	],
 	// Cron is UTC. Every 3h: Lunch Flow only refreshes a few times a day (docs/phase1-assessment.md).
+	// The second is the weekly digest: 17:00 and 18:00 UTC on Sundays, of which exactly one is 18:00 in
+	// London (src/worker/digest/send.ts).
 	"triggers": {
 		"crons": [
-			"0 */3 * * *"
+			"0 */3 * * *",
+			"0 17,18 * * SUN"
 		]
 	},
 	"d1_databases": [

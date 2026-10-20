@@ -3,6 +3,7 @@ import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
+import { DIGEST_CRON, runScheduledDigest } from "./digest/send";
 import { runImport, type RunDeps } from "./importer";
 import { accountRoutes } from "./routes/accounts";
 import { budgetRoutes } from "./routes/budget";
@@ -74,8 +75,10 @@ const app = createApp();
 
 export default {
   fetch: app.fetch,
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
+    // Two crons (wrangler.jsonc): the weekly digest's, and the import's.
+    if (controller.cron === DIGEST_CRON) ctx.waitUntil(runScheduledDigest(env, new Date(controller.scheduledTime)));
     // runImport records its own failures; it never throws for a provider or per-account error.
-    ctx.waitUntil(runImport(env, "cron"));
+    else ctx.waitUntil(runImport(env, "cron"));
   },
 } satisfies ExportedHandler<Env>;
