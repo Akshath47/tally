@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backOf, homeHref, lineHref, newAccountHref, parseRoute, tabOf } from "../../src/web/routes";
+import { backOf, homeHref, lineHref, merchantHref, newAccountHref, parseRoute, reviewHref, tabOf } from "../../src/web/routes";
 
 describe("parseRoute", () => {
   it.each([
@@ -17,6 +17,11 @@ describe("parseRoute", () => {
     ["/spending/2026-13/1", "notFound"],
     ["/spending/2026-10/food", "notFound"],
     ["/spending/2026-10/constructor", "notFound"],
+    ["/insights", "insights"],
+    ["/insights/trends", "trends"],
+    ["/insights/review/2026-13", "notFound"],
+    ["/merchants/", "notFound"],
+    ["/merchants/%E0%A4%A", "notFound"],
   ])("%s → %s", (path, screen) => {
     expect(parseRoute(path).screen).toBe(screen);
   });
@@ -48,6 +53,41 @@ describe("parseRoute", () => {
 
   it("refuses a Home line in a future month, which the API would refuse too", () => {
     expect(parseRoute(lineHref("2026-11", 4), "2026-10-31").screen).toBe("notFound");
+  });
+});
+
+describe("insights routes", () => {
+  const today = "2026-10-15";
+
+  it("reviews completed months only", () => {
+    expect(parseRoute(reviewHref("2026-09"), today)).toEqual({ screen: "review", month: "2026-09" });
+    expect(parseRoute(reviewHref("2025-12"), today)).toEqual({ screen: "review", month: "2025-12" });
+    expect(parseRoute(reviewHref("2026-10"), today).screen).toBe("notFound");
+    expect(parseRoute(reviewHref("2026-11"), today).screen).toBe("notFound");
+  });
+
+  it("round-trips merchant keys with URL-special characters", () => {
+    for (const key of ["via roma kitchen", "50% off & more", "a/b", "café #1?", ".", "..", "a.b"]) {
+      expect(parseRoute(merchantHref(key), today)).toEqual({ screen: "merchant", key });
+    }
+    expect(parseRoute(merchantHref("x".repeat(201)), today).screen).toBe("notFound");
+  });
+
+  it("puts Insights in the tab bar and its screens behind back links", () => {
+    expect(tabOf({ screen: "insights" })).toBe("insights");
+    expect(tabOf({ screen: "trends" })).toBeNull();
+    expect(backOf({ screen: "review", month: "2026-09" }, today)).toEqual({ href: "/insights", label: "Insights" });
+    expect(backOf({ screen: "trends" }, today)).toEqual({ href: "/insights", label: "Insights" });
+  });
+
+  it("sends Merchant back to wherever it was opened from", () => {
+    const merchant = { screen: "merchant" as const, key: "shop" };
+    expect(backOf(merchant, today, "/insights/review/2026-09")).toEqual({ href: "/insights/review/2026-09", label: "September review" });
+    expect(backOf(merchant, today, "/transactions")).toEqual({ href: "/transactions", label: "Transactions" });
+    expect(backOf(merchant, today, "/")).toEqual({ href: "/", label: "Home" });
+    expect(backOf(merchant, today, "/to-sort")).toEqual({ href: "/to-sort", label: "To sort" });
+    expect(backOf(merchant, today, null)).toEqual({ href: "/insights", label: "Insights" });
+    expect(backOf(merchant, today, "/nope")).toEqual({ href: "/insights", label: "Insights" });
   });
 });
 

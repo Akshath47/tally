@@ -11,7 +11,8 @@ import "./index.css";
 // but nothing refetches until it's next shown (D1 bills every row a refetch reads). Between
 // writes, data stays fresh for 30 s rather than refetching on every tab switch, and returning
 // to the app refetches only the import runs: the import watcher refreshes the rest when a run
-// has finished since (components/ImportWatcher.ts). One retry, and none for
+// has finished since (components/ImportWatcher.ts). A write that changes nothing the other
+// screens read sets `meta: { invalidate: false }` and refreshes its own query. One retry, and none for
 // a client error: a 4xx won't change on retry, and the screens show their error state sooner.
 const queryClient: QueryClient = new QueryClient({
   mutationCache: new MutationCache({
@@ -19,7 +20,7 @@ const queryClient: QueryClient = new QueryClient({
     // still marked stale. Not returned: TanStack would wait for every refetch before the screen's
     // own onSettled runs.
     onSettled: (_data, error, _variables, _context, mutation) => {
-      if (error) return;
+      if (error || mutation.meta?.invalidate === false) return;
       void queryClient.invalidateQueries({
         predicate: (q) => q.queryKey[0] !== "import-runs",
         refetchType: mutation.meta?.refetch === "none" ? "none" : "active",

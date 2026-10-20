@@ -3054,12 +3054,29 @@ git commit -m "docs: record the weekly digest, its cron and its setup"
 
 # P2.12 Insights UI
 
-Depends on the owner's designs from [insights-ui-brief.md](insights-ui-brief.md). **Its plan is written once the designs exist**, because component structure, charts and layout follow from them, and planning screens in advance would be guessing. It will cover:
+Built from the owner's designs (the Insights rows of the design canvas, briefed in [insights-ui-brief.md](insights-ui-brief.md)), on the visual system in [ui-design.md](ui-design.md). One branch, `feat/insights-ui`, built while P2.8–P2.11 are in progress, against the response shapes in [phase-2-insights-spec.md](phase-2-insights-spec.md). It runs on the dev mock (`VITE_MOCK_API`) until each route merges, then on the real one with no screen changes.
 
-- the fourth tab and its routes (`/insights`, `/insights/review/:month`, `/insights/trends`, `/merchants/:key`);
-- `src/web/api.ts` types and fetchers for the P2.9–P2.11 endpoints, and `src/web/queries.ts` hooks;
-- mock handlers in `src/web/mock/index.ts` for each new endpoint, with `?mock=` scenarios for the brief's states;
-- the Insights tab (This week from `/api/digest/preview`, the list worded by `insightWords`, "Send now" on a failed digest), Monthly review, Trends and Merchant screens, the "All from <merchant>" link in the transaction sheets;
-- `docs/ui-design.md` updated to four tabs.
+**Coordination with the backend slices:**
 
-Before it starts, check the `dataviz` and `frontend-design` skills for the charts.
+- `insightWords` and `type Insight` are P2.10's. `src/web/insights.ts` re-exports them, so the app and the email can't drift. `Insight` lives in `src/worker/insights/types.ts`, which has no imports, so the web build can use it without pulling in D1 code.
+- P2.8's own web task (Home and Accounts stale states, `stale` fields on `Account` and `MonthSummary`) stays with P2.8. The Insights header takes stale accounts from the digest preview's `staleAccountIds`, so this slice doesn't touch those types.
+- **Left out, pending the owner:** the design's "This week" card has a Monday-to-Sunday bar chart, which needs per-day figures that `GET /api/digest/preview` doesn't return (P2.11 merged without them). The card shows the week's total without the chart. Adding it means a `days[]` field on the preview (7 entries, budget spend by counted date) and its rows-read check.
+- The design's Monthly review shows a Misc row, but `GET /api/months/:month/review` returns categories and Uncategorised, not a Misc pot. The screen follows the brief's order (budgeted categories, Uncategorised, tracked) rather than inventing Misc client-side.
+- No Worker code, migrations or Worker tests change here.
+
+**Files:**
+
+- `src/web/api.ts`: types and fetchers for `GET /api/months/:month/review`, `GET /api/trends`, `GET /api/merchants?key=`, `GET /api/insights`, `GET /api/digest/preview`, `POST /api/digest/send`.
+- `src/web/insights.ts`: re-exports `Insight` and `insightWords` (above), plus pure helpers for the screens: an insight's tone, icon and link target, the week's range, and the London send time.
+- `src/web/queries.ts`: `useReview`, `useTrends`, `useMerchant`, `useInsights`, `useDigestPreview`.
+- `src/web/mock/data.ts`, `src/web/mock/index.ts`: about 6 months of synthetic history so Trends and Review have data, handlers for each route, and `?mock=` scenarios: `insights-calm`, `insights-early`, `insights-new` (first month, no budget), `digest-failed`, `insights-error`.
+- `src/web/routes.ts`: an `insights` tab; pushed `review` (`/insights/review/:month`, completed months only), `trends` (`/insights/trends`) and `merchant` (`/merchants/:key`, key URL-encoded). Merchant's back link returns to wherever it was opened from.
+- `src/web/components/TabBar.tsx`: four tabs.
+- `src/web/screens/Insights.tsx`, `Review.tsx`, `Trends.tsx`, `Merchant.tsx`.
+- `src/web/components/TransactionSheet.tsx`: the "All from <merchant>" link on the editor and the read-only sheet.
+- `docs/ui-design.md`: four tabs and the new screens.
+- Tests in `test/web/`: routes, wording (the P2.10 cases), and the helpers.
+
+**Charts** (checked against the `dataviz` skill): single-series bars with no legend, value labels under each month as the direct labels, rounded data-ends on the baseline, a 2 px surface gap between stacked segments, pending hatched, a dashed budget line, and an `aria-label` on every chart listing its values. Months before history are drawn empty with "no data", never as £0. Over and warn states always carry a text flag, never colour alone.
+
+**Accept when (P2.12):** `npm run check` and `npm run build` pass; every screen and state in the designs renders on the mock with its `?mock=` scenario and matches its design; each screen switches to its real route as P2.9–P2.11 merge with no change other than deleting `src/web/insights.ts`'s copy; and the deployed Insights tab agrees with Home for the current month.

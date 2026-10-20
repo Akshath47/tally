@@ -87,3 +87,48 @@ export const SEED_TRANSACTIONS: SeedTxn[] = [
   [33, 1, "Northgate Lettings", -52_500],
   [35, 2, "Harlow's Market", -2210],
 ];
+
+/** A new merchant's big charge this week, so the Insights tab has a large charge to show. */
+export const SEED_LARGE_CHARGE: SeedTxn = [3, 2, "Halden Audio", -24_000];
+
+/**
+ * Older synthetic history, so Trends and the Monthly review have months to show: the same
+ * spending every month on these days, scaled per month. [day of month, account, merchant, amount].
+ */
+export const HISTORY_MONTHLY: [day: number, accountId: number, merchant: string, amountMinor: number][] = [
+  [1, 1, "Northgate Lettings", -52_500],
+  [3, 1, "Fernway Energy", -9_200],
+  [5, 1, "Harbour Mobile", -2_100],
+  [2, 1, "Greenleaf Grocers", -4_800],
+  [9, 2, "Greenleaf Grocers", -5_600],
+  [16, 1, "Greenleaf Grocers", -4_300],
+  [23, 2, "Greenleaf Grocers", -6_100],
+  [6, 2, "Harlow's Market", -2_200],
+  [19, 2, "Harlow's Market", -1_900],
+  [7, 2, "Via Roma Kitchen", -4_200],
+  [21, 2, "Via Roma Kitchen", -3_600],
+  [11, 2, "The Copper Kettle", -1_800],
+  [25, 2, "The Copper Kettle", -2_400],
+  [4, 1, "Metro Rail", -640],
+  [12, 1, "Metro Rail", -1_280],
+  [18, 1, "City Cabs", -1_500],
+  [26, 1, "Metro Rail", -640],
+  [14, 1, "Pinecrest Cinema", -2_200],
+  [10, 1, "Brightside Books", -1_100],
+  [28, 1, "Acme Payroll", 310_000],
+];
+
+/** Percent of HISTORY_MONTHLY each month spends, from 1 month back to 5. */
+export const HISTORY_SCALE = [100, 92, 112, 118, 96];
+
+/** Tracked clothes spending in some months back: [months back, day, amount]. */
+export const HISTORY_EXTRA: [monthsBack: number, day: number, accountId: number, merchant: string, amountMinor: number][] = [
+  [1, 15, 1, "Loomline", -8_500],
+  [3, 20, 1, "Loomline", -4_000],
+  [2, 13, 2, "Fernhill Garden Centre", -1_600],
+  [3, 8, 2, "Fernhill Garden Centre", -1_400],
+  [4, 17, 2, "Fernhill Garden Centre", -1_900],
+];
+
+/** Budgets take effect this many months back, so the oldest history months show "no budget". */
+export const BUDGET_MONTHS_BACK = 3;

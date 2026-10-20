@@ -73,9 +73,16 @@ export function findLine(
 /** A past month's line before any budget: a category, or Uncategorised (`null`); no pots. */
 export type SpendLine = Omit<Line, "category"> & { category: number | null; allocatedMinor: null };
 
+/** A category's name; `null` is uncategorised spend, or Misc where a screen calls it that. */
+export const categoryName = (id: number | null, byId: Map<number, { name: string }> | undefined, nullName = "Uncategorised") =>
+  id === null ? nullName : (byId?.get(id)?.name ?? "Category");
+
+/** "1 visit", "6 visits". */
+export const visitsText = (n: number) => (n === 1 ? "1 visit" : `${n} visits`);
+
 const spendLine = (c: SummaryLine, byId: Map<number, { name: string }>): SpendLine => ({
   category: c.categoryId,
-  name: c.categoryId === null ? "Uncategorised" : (byId.get(c.categoryId)?.name ?? "Category"),
+  name: categoryName(c.categoryId, byId),
   spentMinor: c.spentMinor,
   pendingSpentMinor: c.pendingSpentMinor,
   allocatedMinor: null,

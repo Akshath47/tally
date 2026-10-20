@@ -147,6 +147,9 @@ export function FieldError({ id, children }: { id?: string; children: ReactNode 
   );
 }
 
+/** The card look shared by the screens' grouped lists. */
+export const cardClass = "rounded-card border border-divider bg-surface";
+
 /** Small uppercase label above a group. */
 export function SectionLabel({ id, children }: { id?: string; children: ReactNode }) {
   return (

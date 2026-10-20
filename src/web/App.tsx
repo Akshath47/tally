@@ -1,12 +1,16 @@
 import { useImportWatcher } from "./components/ImportWatcher";
 import { PushedScreen } from "./components/Screen";
 import { TabBar } from "./components/TabBar";
-import { usePathname } from "./router";
+import { navFrom, usePathname } from "./router";
 import { backOf, parseRoute, tabOf, type Route } from "./routes";
 import { Accounts } from "./screens/Accounts";
 import { Budget } from "./screens/Budget";
 import { Categories, Rules } from "./screens/Categories";
 import { Home } from "./screens/Home";
+import { Insights } from "./screens/Insights";
+import { Merchant } from "./screens/Merchant";
+import { Review } from "./screens/Review";
+import { Trends } from "./screens/Trends";
 import { LineTransactions } from "./screens/LineTransactions";
 import { NewAccount } from "./screens/NewAccount";
 import { ToSort } from "./screens/ToSort";
@@ -18,6 +22,8 @@ function Screen({ route }: { route: Route }) {
       return <Home month={route.month} />;
     case "transactions":
       return <Transactions />;
+    case "insights":
+      return <Insights />;
     case "budget":
       return <Budget />;
     case "toSort":
@@ -32,6 +38,12 @@ function Screen({ route }: { route: Route }) {
       return <Accounts back={backOf(route)} />;
     case "line":
       return <LineTransactions back={backOf(route)} month={route.month} category={route.category} />;
+    case "review":
+      return <Review back={backOf(route)} month={route.month} />;
+    case "trends":
+      return <Trends back={backOf(route)} />;
+    case "merchant":
+      return <Merchant key={route.key} back={backOf(route, undefined, navFrom())} merchantKey={route.key} />;
     case "notFound":
       return (
         <PushedScreen back={backOf(route)} title="Page not found">

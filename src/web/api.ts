@@ -1,4 +1,5 @@
-import type { CATEGORY_KINDS, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
+import type { CATEGORY_KINDS, DIGEST_SEND_STATUSES, IMPORT_RUN_STATUSES, IMPORT_TRIGGERS, MATCH_TYPES } from "../worker/db/schema";
+import type { Insight } from "./insights";
 import type { LineCategory } from "./lines";
 
 // Request and response shapes from docs/schema-and-api.md and src/worker/routes. Money is
@@ -267,3 +268,104 @@ export const putCategoryBudget = (categoryId: number, amountMinor: number) =>
   send<Budget>("PUT", `/api/budget/categories/${categoryId}`, { amountMinor });
 
 export const getMonthSummary = (month: string) => request<MonthSummary>(`/api/months/${month}/summary`);
+
+// Insights, analytics and the weekly digest (docs/phase-2-insights-spec.md, P2.9–P2.11). Every
+// figure here is positive = spend and includes pending, with the pending part given apart.
+
+export type ReviewTotals = { spentMinor: number; overallMinor: number | null; trackedMinor: number };
+
+export type ReviewCategory = {
+  /** null = uncategorised spend. */
+  categoryId: number | null;
+  kind: CategoryKind | null;
+  spentMinor: number;
+  previousSpentMinor: number;
+  changeMinor: number;
+  allocatedMinor: number | null;
+  over: boolean;
+};
+
+export type TopMerchant = { merchantKey: string; name: string; spentMinor: number; visits: number };
+
+/** GET /api/months/:month/review: a completed month against the one before. */
+export type MonthReview = {
+  month: string;
+  previousMonth: string;
+  totals: ReviewTotals;
+  previousTotals: ReviewTotals;
+  categories: ReviewCategory[];
+  topMerchants: TopMerchant[];
+  /** False when the previous month has no counted transactions; its figures are then 0. */
+  hasPrevious: boolean;
+};
+
+export type TrendMonth = {
+  month: string;
+  /** True for the current month. */
+  partial: boolean;
+  spentMinor: number;
+  pendingSpentMinor: number;
+  overallMinor: number | null;
+  trackedMinor: number;
+  /** False before the first counted transaction: "no data", never £0. */
+  hasData: boolean;
+};
+
+export type TrendCategory = {
+  categoryId: number | null;
+  kind: CategoryKind | null;
+  /** Six spentMinor values aligned with `months`. */
+  series: number[];
+  /** Mean over completed months with data, floored; null when there are none. */
+  averageMinor: number | null;
+};
+
+/** GET /api/trends: the current month and the 5 before it, oldest first. */
+export type Trends = { months: TrendMonth[]; categories: TrendCategory[] };
+
+/** GET /api/merchants?key=: one merchant across both accounts. 404 when the key is unknown. */
+export type MerchantHistory = {
+  merchantKey: string;
+  /** The latest transaction's merchant text; untrusted. */
+  name: string;
+  /** The category a new transaction would get from the rules; overrides don't change it. */
+  categoryId: number | null;
+  categorySource: "rule" | null;
+  accountIds: number[];
+  firstSeenDate: string | null;
+  /** Six months aligned with GET /api/trends. */
+  months: { month: string; spentMinor: number; visits: number }[];
+  windowSpentMinor: number;
+  windowVisits: number;
+  averageChargeMinor: number | null;
+  /** The 20 most recent, newest first. */
+  recent: Transaction[];
+};
+
+export type DigestStatus = "over" | "projected_over" | "near" | "ok";
+
+/** GET /api/digest/preview: the weekly email's content for the week so far. */
+export type DigestPreview = {
+  /** Monday, and today. */
+  weekStart: string;
+  weekEnd: string;
+  weekSpentMinor: number;
+  weekPendingSpentMinor: number;
+  spansMonths: boolean;
+  month: { month: string; spentMinor: number; pendingSpentMinor: number; overallMinor: number | null; leftMinor: number | null; perWeekMinor: number | null; daysRemaining: number | null };
+  /** Each allocated budgeted category, plus Misc (categoryId null). */
+  categories: { categoryId: number | null; spentMinor: number; allocatedMinor: number; status: DigestStatus }[];
+  insights: Insight[];
+  inboxCount: number;
+  staleAccountIds: number[];
+  lastDataChangeAt: string | null;
+  /** The latest send; one stuck at "sending" for 15 minutes reads as "failed". */
+  lastSend: { weekStart: string; status: (typeof DIGEST_SEND_STATUSES)[number]; sentAt: string | null } | null;
+};
+
+export const getReview = (month: string) => request<MonthReview>(`/api/months/${month}/review`);
+export const getTrends = () => request<Trends>("/api/trends");
+export const getMerchant = (key: string) => request<MerchantHistory>(`/api/merchants${query({ key })}`);
+export const getDigestPreview = () => request<DigestPreview>("/api/digest/preview");
+/** Sends this week's digest now; it doesn't touch the weekly claim. 502 send_failed when it didn't go. */
+export const sendDigest = () => send<{ ok: true }>("POST", "/api/digest/send");
