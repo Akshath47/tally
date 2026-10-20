@@ -60,7 +60,7 @@ One card or row per insight, ranked by the server. Each has a tone (brick, amber
 | On course to go over (category) | amber | "Eating out is on course to end £40 over" / "£96 by the 12th, £160 allocated" | That category's transactions |
 | On course to go over (overall) | amber | "On course to end the month £120 over" / "£760 by the 16th, £1,440 budget" | Home |
 | Running high | amber | "Groceries is running high" / "£210 so far, usually about £120 by the 16th" | That category's transactions |
-| Large charge | neutral | "£240 at Halden Audio" / "New merchant · Tue 13 Oct" or "About 4× your usual £58 there" | The transaction (editor, or pending sheet if pending). A secondary link opens the Merchant screen. |
+| Large charge | neutral | "£240.00 at Halden Audio" / "New merchant · Tue 13 Oct" or "About 4× your usual £58.00 there" (single charges show pence) | The transaction (editor, or pending sheet if pending). A secondary link opens the Merchant screen. |
 | Month change | neutral, with an up arrow (amber) or down arrow (sage) | "Transport up £45 in September" / "£132, from £87 in August" | Monthly review for that month |
 
 Notes for the design:
