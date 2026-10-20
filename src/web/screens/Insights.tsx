@@ -9,6 +9,7 @@ import { ArrowUp, Check, ChevronRight, Clock, Flag, SectionLabel, Skeleton, Spin
 import { addDays, addMonths, daysInMonth, londonToday, monthName, monthOf } from "../dates";
 import { daysOfPreviousMonth, iconOf, insightWords, isMonthChangeOnly, londonDayTime, targetOf, toneOf, weekRange, type Insight, type InsightIcon, type Names, type Tone } from "../insights";
 import { categoryName } from "../lines";
+import { projectedMinor } from "../../worker/analytics/math";
 import { formatPounds } from "../money";
 import { ageText, fraction } from "../pace";
 import { merchantQuery, useAccounts, useCategories, useDigestPreview, useSummary } from "../queries";
@@ -61,8 +62,7 @@ function CategoryFlag({ c, today }: { c: DigestPreview["categories"][number]; to
       </Flag>
     );
   if (c.status === "projected_over") {
-    const dom = Number(today.slice(8, 10));
-    const projected = Math.floor((c.spentMinor * daysInMonth(monthOf(today))) / dom);
+    const projected = projectedMinor(c.spentMinor, Number(today.slice(8, 10)), daysInMonth(monthOf(today)));
     return <Flag tone="warn">on course for {formatPounds(projected - c.allocatedMinor)} over</Flag>;
   }
   return <Flag tone="warn">{formatPounds(c.allocatedMinor - c.spentMinor)} left</Flag>;
@@ -71,8 +71,9 @@ function CategoryFlag({ c, today }: { c: DigestPreview["categories"][number]; to
 const STATUS_ORDER = { over: 0, projected_over: 1, near: 2, ok: 3 } as const;
 
 function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; today: string }) {
-  // Sending changes no data, so nothing needs refetching (main.tsx).
-  const send = useMutation({ mutationFn: sendDigest, meta: { refetch: "none" } });
+  // A send only settles the latest digest_sends row, which only the preview reads (main.tsx).
+  const qc = useQueryClient();
+  const send = useMutation({ mutationFn: sendDigest, meta: { invalidate: false }, onSuccess: () => qc.invalidateQueries({ queryKey: ["digest"] }) });
   const sent = send.isSuccess;
   if (lastSend?.status === "failed" && !sent) {
     return (
@@ -99,8 +100,10 @@ function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; t
   );
 }
 
-function ThisWeek({ p, names, today }: { p: DigestPreview; names: Names; today: string }) {
-  const month = monthOf(today);
+/** Dated by the preview itself (its weekEnd is the server's today), so figures and labels agree. */
+function ThisWeek({ p, names }: { p: DigestPreview; names: Names }) {
+  const today = p.weekEnd;
+  const month = p.month.month;
   const m = p.month;
   const flagged = p.categories.filter((c) => c.status !== "ok").sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
   const earlier = p.spansMonths ? daysOfPreviousMonth(p.weekStart, today) : 0;
@@ -157,7 +160,7 @@ function ThisWeek({ p, names, today }: { p: DigestPreview; names: Names; today: 
                 <li key={c.categoryId ?? "misc"}>
                   <Link href={lineHref(month, c.categoryId ?? "misc")} className="-mx-4 flex min-h-11 items-center gap-2 border-t border-divider px-4 text-sm hover:bg-raised/50">
                     <span>{names.category(c.categoryId)}</span>
-                    <CategoryFlag c={c} today={p.weekEnd} />
+                    <CategoryFlag c={c} today={today} />
                     <span className="ml-auto">
                       <span className={`font-medium ${c.status === "over" ? "text-over-fg" : ""}`}>{formatPounds(c.spentMinor)}</span>{" "}
                       <span className="text-muted">/ {formatPounds(c.allocatedMinor)}</span>
@@ -420,7 +423,7 @@ export function Insights() {
     <TabScreen title="Insights" titleExtra={<Freshness preview={p} failed={preview.isError} />}>
       {p ? (
         <>
-          <ThisWeek p={p} names={names} today={today} />
+          <ThisWeek p={p} names={names} />
           {/* The preview carries the same insights as GET /api/insights, worked out for its weekEnd (today). */}
           <WorthALook items={p.insights} names={insightNames} asOf={p.weekEnd} />
           <Entries today={today} />
