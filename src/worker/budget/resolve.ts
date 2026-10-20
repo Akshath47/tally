@@ -35,7 +35,7 @@ export const RESOLVED_CTE = `resolved AS (
     t.is_pending, t.vanished_at, t.first_seen_at,
     o.category_id AS override_category_id, COALESCE(o.excluded, 0) AS excluded,
     o.counted_amount_minor, o.counted_date, o.note,
-    m.account_id AS match_account_id, m.rule_id AS match_rule_id,
+    m.account_id AS match_account_id, m.rule_id AS match_rule_id, m.merchant_key,
     COALESCE(o.category_id, r.category_id) AS category_id,
     CASE WHEN o.category_id IS NOT NULL THEN 'override' WHEN m.rule_id IS NOT NULL THEN 'rule' END AS category_source
   FROM transactions t
