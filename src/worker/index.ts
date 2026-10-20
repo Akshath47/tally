@@ -8,6 +8,7 @@ import { accountRoutes } from "./routes/accounts";
 import { budgetRoutes } from "./routes/budget";
 import { categoryRoutes } from "./routes/categories";
 import { inboxRoutes } from "./routes/inbox";
+import { insightRoutes } from "./routes/insights";
 import { ruleRoutes } from "./routes/rules";
 import { importRunRoutes } from "./routes/import-runs";
 import { merchantRoutes } from "./routes/merchants";
@@ -50,6 +51,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/months", monthRoutes);
   app.route("/trends", trendRoutes);
   app.route("/merchants", merchantRoutes);
+  app.route("/insights", insightRoutes);
   app.route("/import-runs", importRunRoutes(options.importDeps ?? {}));
 
   // Unknown /api paths must not fall through to the SPA's index.html.

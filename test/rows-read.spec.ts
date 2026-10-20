@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { runImport } from "../src/worker/importer";
+import { LARGE_CHARGE_MAX_CANDIDATES } from "../src/worker/insights/thresholds";
 import { AMEX, REVOLUT, txn, world } from "./fixtures/lunchflow";
 import { resetDb } from "./db";
 import { get, send } from "./http";
@@ -203,6 +204,29 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     expect(summary.rowsRead).toBeLessThan(3_000 + 4 * inboxRows);
     for (const r of [inbox, merchants]) expect(r.rowsRead).toBeLessThan(7 * inboxRows);
     for (const r of [sortedInbox, sortedMerchants]) expect(r.rowsRead).toBeLessThan(500);
+  });
+
+  // Last, since it adds rows. Mid-September, with the ledger's last months as the baseline, and
+  // the most large-charge candidates it looks at, each at a busy merchant with a long history.
+  it("keeps insights to their months and candidates, at their worst", async () => {
+    await env.DB.prepare(
+      `INSERT INTO transactions (account_id, provider_txn_id, amount_minor, provider_amount, currency, txn_date, merchant, description,
+         is_pending, fingerprint, first_seen_at, last_seen_at, updated_at, first_import_run_id)
+       SELECT 1, 'large' || value, -15000, '0', 'GBP', '2026-09-18', 'Synthetic Merchant ' || value, '', 0, 'fp', ?1, ?1, ?1, 1
+       FROM json_each(?2)`,
+    )
+      .bind("2026-09-18T12:00:00.000Z", JSON.stringify([...Array(LARGE_CHARGE_MAX_CANDIDATES).keys()]))
+      .run();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-20T12:00:00Z"));
+    try {
+      const insights = await measure("GET", "/api/insights");
+      console.log(`GET /api/insights (worst case)`.padEnd(50), String(insights.rowsRead).padStart(6));
+      expect((insights.json as { items: { type: string }[] }).items.some((i) => i.type === "large_charge")).toBe(true);
+      expect(insights.rowsRead).toBeLessThan(6_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
