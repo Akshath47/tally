@@ -106,7 +106,10 @@ describe("POST /api/digest/send", () => {
 
 describe("deliverDigest", () => {
   it("tells a digest it couldn't build apart from a failed delivery", async () => {
-    const broken = { prepare: () => { throw new Error("d1 down"); } } as unknown as D1Database;
+    // D1 fails asynchronously, when a statement runs.
+    const down = () => Promise.reject(new Error("d1 down"));
+    const statement = { bind: () => statement, all: down, first: down, run: down };
+    const broken = { prepare: () => statement } as unknown as D1Database;
     expect(await deliverDigest(fakeEnv({ DB: broken }), new Date("2026-10-18T17:00:00Z"), "manual")).toEqual({ ok: false, error: "build_failed" });
     expect(sent).toEqual([]);
   });
