@@ -298,6 +298,23 @@ export const merchantMatches = sqliteTable(
   ],
 );
 
+// Weekly digest sends (docs/phase-2-insights-spec.md, Sending): one row per week, claimed before
+// sending so a retried cron can't send twice. Status only, never the email's content.
+export const DIGEST_SEND_STATUSES = ["sending", "sent", "failed"] as const;
+export const digestSends = sqliteTable(
+  "digest_sends",
+  {
+    // The week's Monday, YYYY-MM-DD.
+    weekStart: text("week_start").primaryKey(),
+    status: text("status", { enum: DIGEST_SEND_STATUSES }).notNull(),
+    attemptedAt: text("attempted_at").notNull(),
+    sentAt: text("sent_at"),
+    // An Email Service error code (E_…), never a message: messages can carry addresses.
+    error: text("error"),
+  },
+  (t) => [check("digest_sends_status_ck", isOneOf(t.status, DIGEST_SEND_STATUSES))],
+);
+
 // Budgets are positive = spend. A month's figure is the row with the greatest
 // effective_month <= that month; writes only ever go to the current London month.
 export const monthlyBudgets = sqliteTable(
