@@ -7,6 +7,7 @@ import { runImport, type RunDeps } from "./importer";
 import { accountRoutes } from "./routes/accounts";
 import { budgetRoutes } from "./routes/budget";
 import { categoryRoutes } from "./routes/categories";
+import { digestRoutes } from "./routes/digest";
 import { inboxRoutes } from "./routes/inbox";
 import { insightRoutes } from "./routes/insights";
 import { ruleRoutes } from "./routes/rules";
@@ -52,6 +53,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/trends", trendRoutes);
   app.route("/merchants", merchantRoutes);
   app.route("/insights", insightRoutes);
+  app.route("/digest", digestRoutes);
   app.route("/import-runs", importRunRoutes(options.importDeps ?? {}));
 
   // Unknown /api paths must not fall through to the SPA's index.html.
