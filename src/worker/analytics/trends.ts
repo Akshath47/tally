@@ -20,7 +20,8 @@ export async function readTrends(db: D1Database, now: Date) {
   ]);
   const overallOf = new Map(overall.results.map((r) => [r.month, r.overallMinor]));
   const hasData = (m: string) => first !== null && m >= first;
-  const rowsOf = (m: string) => spend.filter((r) => r.month === m);
+  const byMonth = Map.groupBy(spend, (r) => r.month);
+  const rowsOf = (m: string) => byMonth.get(m) ?? [];
   // The average skips the partial month and months before the history starts.
   const averaged = months.filter((m) => m !== current && hasData(m));
 
@@ -40,7 +41,7 @@ export async function readTrends(db: D1Database, now: Date) {
     categories: [...kinds]
       .sort(([x], [y]) => (x ?? Infinity) - (y ?? Infinity))
       .map(([categoryId, kind]) => {
-        const series = months.map((m) => spend.find((r) => r.month === m && r.categoryId === categoryId)?.spentMinor ?? 0);
+        const series = months.map((m) => rowsOf(m).find((r) => r.categoryId === categoryId)?.spentMinor ?? 0);
         const total = averaged.reduce((sum, m) => sum + series[months.indexOf(m)]!, 0);
         return { categoryId, kind, series, averageMinor: averaged.length === 0 ? null : floorDiv(total, averaged.length) };
       }),

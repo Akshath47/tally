@@ -1,4 +1,4 @@
-import { readBudget } from "../budget/effective";
+import { effectiveOverallSql, readBudget } from "../budget/effective";
 import { COUNTS, IN_MONTH, RESOLVED_CTE, inMonthBinds } from "../budget/resolve";
 import { addMonths } from "../importer/dates";
 import { MAX_MERCHANT_KEY } from "./merchant";
@@ -41,7 +41,8 @@ export async function readReview(db: D1Database, month: string) {
   const [spend, budget, previousBudget, merchants] = await Promise.all([
     spendByMonth(db, `${previousMonth}-01`, `${month}-31`),
     readBudget(db, month),
-    readBudget(db, previousMonth),
+    // Only the previous month's overall figure is shown, so skip its allocations.
+    db.prepare(`SELECT ${effectiveOverallSql("?1")} AS overallMinor`).bind(previousMonth).first<{ overallMinor: number | null }>(),
     db.prepare(TOP_MERCHANTS_SQL).bind(...inMonthBinds(month)).all<{ merchantKey: string; name: string; spentMinor: number; visits: number }>(),
   ]);
   const thisRows = spend.filter((r) => r.month === month);
@@ -66,7 +67,7 @@ export async function readReview(db: D1Database, month: string) {
     month,
     previousMonth,
     totals: totals(thisRows, budget.overallMinor),
-    previousTotals: totals(previousRows, previousBudget.overallMinor),
+    previousTotals: totals(previousRows, previousBudget?.overallMinor ?? null),
     categories: [...lines.values()]
       .map((l) => ({ ...l, changeMinor: l.spentMinor - l.previousSpentMinor, over: l.allocatedMinor !== null && l.spentMinor > l.allocatedMinor }))
       .sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity)),
