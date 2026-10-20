@@ -1,6 +1,7 @@
+import { spendByMonth } from "../analytics/spend";
 import { daysInMonth, londonMonth, londonToday } from "../importer/dates";
 import { readBudget, sumAllocated } from "./effective";
-import { COUNTS, INBOX, IN_MONTH, RESOLVED_CTE, inMonthBinds } from "./resolve";
+import { INBOX, RESOLVED_CTE } from "./resolve";
 import { ENABLED_FRESHNESS_SQL, latestChange, staleIds, type AccountFreshness } from "./stale";
 
 // Everything the home screen needs for one month (docs/phase-2-spec.md, "What a transaction
@@ -9,20 +10,9 @@ import { ENABLED_FRESHNESS_SQL, latestChange, staleIds, type AccountFreshness } 
 // the transactions still to sort, or a handful of budget and account rows. The summary route and
 // the weekly digest share it.
 
-// One row per category_id among the counted rows (vanished_at IS NULL) that count in the month
-// (of counted_date ?? txn_date). Binds: inMonthBinds(month).
-const MONTH_SQL = `WITH ${RESOLVED_CTE}
-SELECT r.category_id, c.kind,
-  sum(-COALESCE(r.counted_amount_minor, r.amount_minor)) AS spent,
-  COALESCE(sum(CASE WHEN r.is_pending = 1 THEN -COALESCE(r.counted_amount_minor, r.amount_minor) END), 0) AS pending
-FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
-WHERE r.vanished_at IS NULL AND ${IN_MONTH} AND ${COUNTS}
-GROUP BY r.category_id`;
-
 // The inbox spans every month.
 const INBOX_COUNT_SQL = `WITH ${RESOLVED_CTE} SELECT count(*) AS n FROM resolved r WHERE ${INBOX}`;
 
-type Group = { category_id: number | null; kind: string | null; spent: number; pending: number };
 export type SummaryLine = { categoryId: number | null; kind: string | null; spentMinor: number; pendingSpentMinor: number; allocatedMinor: number };
 
 /** Integer division, so the per-week figure is floored exactly. */
@@ -34,16 +24,15 @@ export async function readMonthSummary(db: D1Database, month: string, now: Date)
   const current = londonMonth(now);
   const [budget, groups, inbox, freshness] = await Promise.all([
     readBudget(db, month),
-    db.prepare(MONTH_SQL).bind(...inMonthBinds(month)).all<Group>(),
+    // Every date in a month sorts between its -01 and -31.
+    spendByMonth(db, `${month}-01`, `${month}-31`),
     db.prepare(INBOX_COUNT_SQL).first<{ n: number }>(),
     db.prepare(ENABLED_FRESHNESS_SQL).all<AccountFreshness>(),
   ]);
 
   // Every category with a counting row this month, or an allocation above 0.
   const lines = new Map<number | null, SummaryLine>();
-  for (const g of groups.results) {
-    lines.set(g.category_id, { categoryId: g.category_id, kind: g.kind, spentMinor: g.spent, pendingSpentMinor: g.pending, allocatedMinor: 0 });
-  }
+  for (const { categoryId, kind, spentMinor, pendingSpentMinor } of groups) lines.set(categoryId, { categoryId, kind, spentMinor, pendingSpentMinor, allocatedMinor: 0 });
   for (const a of budget.allocations) {
     if (a.allocatedMinor === 0) continue;
     const existing = lines.get(a.categoryId);

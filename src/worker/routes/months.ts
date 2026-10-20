@@ -5,6 +5,7 @@ import { effectiveAllocationSql } from "../budget/effective";
 import { NAMED_LINES, type NamedLine } from "../budget/lines";
 import { cursorParam, listTransactions } from "../budget/listing";
 import { COUNTS, COUNTS_UNLESS_EXCLUDED, IN_MONTH, inMonthBinds } from "../budget/resolve";
+import { readReview } from "../analytics/review";
 import { readMonthSummary } from "../budget/summary";
 import { isYm, londonMonth } from "../importer/dates";
 import { limitParam, parseQuery } from "./query";
@@ -49,6 +50,13 @@ export const monthRoutes = new Hono<AppEnv>().get("/:month/summary", async (c) =
   if (month === null) return c.json({ error: "bad_request" }, 400);
   return c.json(await readMonthSummary(c.env.DB, month, now));
 })
+  // Completed months only: the current month's progress is what insights cover.
+  .get("/:month/review", async (c) => {
+    const current = londonMonth(new Date());
+    const month = monthParam(c, current);
+    if (month === null || month === current) return c.json({ error: "bad_request" }, 400);
+    return c.json(await readReview(c.env.DB, month));
+  })
   /**
    * The rows behind one Home line: those that count in the month (by counted date) in a
    * category or in one of the named lines (LINES). A budgeted or tracked category also lists its

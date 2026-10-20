@@ -157,6 +157,10 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     const allList = await record("GET /api/transactions (newest 100)", "GET", "/api/transactions?limit=100");
     const line = await record("GET /api/months/:month/transactions", "GET", "/api/months/2026-09/transactions?category=1");
     const misc = await record("GET /api/months/:month/transactions (misc)", "GET", "/api/months/2026-09/transactions?category=misc");
+    const review = await record("GET /api/months/2026-09/review", "GET", "/api/months/2026-09/review");
+    const trends = await record("GET /api/trends", "GET", "/api/trends");
+    // Merchant 0 is the busiest under the Zipf-ish draw.
+    const merchant = await record("GET /api/merchants (busiest)", "GET", `/api/merchants?key=${encodeURIComponent("synthetic merchant 0")}`);
     const inbox = await record("GET /api/inbox (backlog)", "GET", "/api/inbox?limit=100");
     const merchants = await record("GET /api/inbox/merchants (backlog)", "GET", "/api/inbox/merchants");
     const inboxRows = (inbox.json as { total: number }).total;
@@ -187,6 +191,13 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     for (const r of [sortedSummary, monthList, line, misc]) expect(r.rowsRead).toBeLessThan(3_000);
     expect(allList.rowsRead).toBeLessThan(1_000);
     expect(rules.rowsRead).toBeLessThan(10_000);
+    // Analytics read only their months or their merchant (docs/phase-2-insights-spec.md, Rows read).
+    // A review resolves two months' rows (about 5 reads each, like the summary's lines).
+    expect(review.rowsRead).toBeLessThan(4_000);
+    expect(trends.rowsRead).toBeLessThan(5_000);
+    // A merchant resolves its own rows, whatever the ledger's size.
+    const merchantRows = (await env.DB.prepare("SELECT count(*) AS n FROM transactions WHERE lower(trim(merchant)) = 'synthetic merchant 0'").first<{ n: number }>())!.n;
+    expect(merchant.rowsRead).toBeLessThan(10 * merchantRows);
     // A backlog costs a few rows per transaction still to sort (the summary counts them for the
     // inbox badge), never the whole history again. Once sorted, To sort costs almost nothing.
     expect(summary.rowsRead).toBeLessThan(3_000 + 4 * inboxRows);

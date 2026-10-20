@@ -59,3 +59,14 @@ export function daysBetween(from: string, to: string): number {
   if (!a || !b || !isYmd(from) || !isYmd(to)) throw new Error("daysBetween: not a YYYY-MM-DD date");
   return (Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000;
 }
+
+/** The month `n` months after `month` (YYYY-MM); a negative `n` goes back. */
+export function addMonths(month: string, n: number): string {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  const index = y * 12 + (m - 1) + n;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
+/** The `count` months ending with `last`, oldest first. */
+export const monthsEnding = (last: string, count: number) => Array.from({ length: count }, (_, i) => addMonths(last, i - count + 1));
