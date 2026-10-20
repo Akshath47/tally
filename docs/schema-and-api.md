@@ -172,6 +172,7 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | GET | `/api/months/:month/review` | A completed month against the month before: totals, per-category spend and change, and the top 5 merchants. `400` for the current month, a future month or a malformed one. Response in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.9) |
 | GET | `/api/trends` | The current month and the 5 before: budget and tracked spend per month, each month's overall budget, and each category's 6-month series and average over completed months with data. Response in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.9) |
 | GET | `/api/merchants?key=` | One merchant across both accounts by `merchantKey` (`lower(trim(merchant))`): its rule's category, accounts, first counted date, the 6 trend months' spend and visits, and the 20 most recent rows. `400` for an empty or overlong key, `404` when nothing has it. Response in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.9) |
+| GET | `/api/insights` | `{asOf, items}`: today's insights for the current London month, ranked (stale accounts, over and on-course-to-go-over pace, categories running high, large charges in the last 7 days, and last month's changes in the first week). Structured data; `src/worker/insights/wording.ts` words them for the app and the digest. Items and thresholds in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.10) |
 
 Responses use camelCase fields. Provider account and connection ids are not exposed.
 
