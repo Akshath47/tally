@@ -4,38 +4,13 @@ import type { BudgetRows } from "../budget/effective";
 import { isStale, staleDays, type AccountFreshness } from "../budget/stale";
 import { daysInMonth } from "../importer/dates";
 import * as T from "./thresholds";
+import type { Insight } from "./types";
 
 // Insights (docs/phase-2-insights-spec.md): fixed rules over figures read elsewhere (./read.ts).
 // Pure, so every rule is tested at its edges without D1. Words live in ./wording.ts.
 
-export type Insight =
-  | { id: string; type: "stale_account"; severity: "warn"; accountId: number; staleDays: number }
-  | {
-      id: string;
-      type: "pace";
-      severity: "over" | "warn";
-      state: "over" | "projected_over";
-      /** null = the whole budget. */
-      categoryId: number | null;
-      spentMinor: number;
-      allocatedMinor: number;
-      projectedMinor: number;
-    }
-  | { id: string; type: "unusual_category"; severity: "warn"; categoryId: number | null; spentMinor: number; baselineMinor: number }
-  | {
-      id: string;
-      type: "large_charge";
-      severity: "info";
-      transactionId: number;
-      merchantKey: string;
-      name: string;
-      spentMinor: number;
-      /** null = a new merchant. */
-      merchantAverageMinor: number | null;
-      countedDate: string;
-      isPending: boolean;
-    }
-  | { id: string; type: "month_change"; severity: "info"; categoryId: number | null; month: string; spentMinor: number; previousSpentMinor: number; changeMinor: number };
+// The type lives in ./types.ts, with no imports, so the web app can share it with the wording.
+export type { Insight } from "./types";
 
 type Of<K extends Insight["type"]> = Extract<Insight, { type: K }>;
 

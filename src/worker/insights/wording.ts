@@ -4,7 +4,7 @@ import { formatMoney, formatPounds, formatShortDate, monthName, ordinal } from "
 /** An overspend: whole pounds, or pence under £1 so a small one never reads "£0 over". */
 const overBy = (minor: number) => (minor < 100 ? formatMoney(minor, "GBP") : formatPounds(minor));
 import { addMonths } from "../importer/dates";
-import type { Insight } from "./rules";
+import type { Insight } from "./types";
 
 // What each insight says (docs/insights-ui-brief.md), shared by the Insights tab and the weekly
 // email so they never disagree. Pure: names come from the caller. Budget figures are whole
