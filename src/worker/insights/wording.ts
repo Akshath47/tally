@@ -1,5 +1,8 @@
 import { floorDiv } from "../analytics/math";
 import { formatMoney, formatPounds, formatShortDate, monthName, ordinal } from "../display";
+
+/** An overspend: whole pounds, or pence under £1 so a small one never reads "£0 over". */
+const overBy = (minor: number) => (minor < 100 ? formatMoney(minor, "GBP") : formatPounds(minor));
 import { addMonths } from "../importer/dates";
 import type { Insight } from "./rules";
 
@@ -21,12 +24,12 @@ export function insightWords(item: Insight, names: Names, today: string): Words 
       const spent = formatPounds(item.spentMinor);
       const limit = formatPounds(item.allocatedMinor);
       if (item.state === "over") {
-        const over = formatPounds(item.spentMinor - item.allocatedMinor);
+        const over = overBy(item.spentMinor - item.allocatedMinor);
         return item.categoryId === null
           ? { headline: `${over} over this month's budget`, detail: `${spent} of ${limit}` }
           : { headline: `${names.category(item.categoryId)} is ${over} over`, detail: `${spent} of ${limit} this month` };
       }
-      const over = formatPounds(item.projectedMinor - item.allocatedMinor);
+      const over = overBy(item.projectedMinor - item.allocatedMinor);
       return item.categoryId === null
         ? { headline: `On course to end the month ${over} over`, detail: `${spent} ${byToday}, ${limit} budget` }
         : { headline: `${names.category(item.categoryId)} is on course to end ${over} over`, detail: `${spent} ${byToday}, ${limit} allocated` };

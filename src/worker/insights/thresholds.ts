@@ -14,7 +14,7 @@ export const LARGE_CHARGE_MIN_HISTORY = 3;
 export const LARGE_CHARGE_LOOKBACK_DAYS = 7;
 /** "The previous 6 months" of a merchant's charges. */
 export const LARGE_CHARGE_HISTORY_DAYS = 182;
-/** Caps the per-candidate history reads, so a request stays well under D1's 50 statements. */
+/** At most this many large charges are reported, biggest first. */
 export const LARGE_CHARGE_MAX_CANDIDATES = 10;
 export const MONTH_CHANGE_MIN_MINOR = 2_500;
 export const MONTH_CHANGE_MIN_PCT = 25;

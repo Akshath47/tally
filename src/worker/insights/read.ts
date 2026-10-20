@@ -1,4 +1,4 @@
-import { OF_MERCHANT } from "../analytics/merchant";
+import { MAX_MERCHANT_KEY } from "../analytics/merchant";
 import { firstDataMonth, spendByMonth, type SpendRow } from "../analytics/spend";
 import { readBudget } from "../budget/effective";
 import { COUNTS, IN_DATES, RESOLVED_CTE, inDatesBinds } from "../budget/resolve";
@@ -12,23 +12,37 @@ import * as T from "./thresholds";
 const SPEND = "-COALESCE(r.counted_amount_minor, r.amount_minor)";
 const COUNTED_DATE = "COALESCE(r.counted_date, r.txn_date)";
 
-// Counting charges in the lookback window big enough to be a large_charge, biggest first.
+// The large charges in the lookback window, biggest first, in one statement. Every counting
+// charge over the minimum is scored against its merchant's earlier counting charges in the
+// history window (a correlated seek by merchant key, as OF_MERCHANT does), and only the new or out-of-line ones are
+// capped, so ordinary big bills can't crowd one out. The test repeats largeChargeItems' rule,
+// which stays the source of truth. A key the merchant page can't open is skipped.
 // Binds: inDatesBinds(from, to), then the minimum.
-const CANDIDATES_SQL = `WITH ${RESOLVED_CTE}
-SELECT r.id AS transactionId, lower(trim(r.merchant)) AS merchantKey, r.merchant AS name, ${SPEND} AS spentMinor,
-  ${COUNTED_DATE} AS countedDate, r.is_pending AS isPending
-FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
-WHERE r.vanished_at IS NULL AND ${IN_DATES} AND ${COUNTS} AND ${SPEND} >= ?
-ORDER BY spentMinor DESC, r.id
+const CANDIDATES_SQL = `WITH ${RESOLVED_CTE},
+candidates AS (
+  SELECT r.id AS transactionId, lower(trim(r.merchant)) AS merchantKey, r.merchant AS name, ${SPEND} AS spentMinor,
+    ${COUNTED_DATE} AS countedDate, r.is_pending AS isPending
+  FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
+  WHERE r.vanished_at IS NULL AND ${IN_DATES} AND ${COUNTS} AND ${SPEND} >= ?
+    AND lower(trim(r.merchant)) <> '' AND length(lower(trim(r.merchant))) <= ${MAX_MERCHANT_KEY}
+),
+scored AS MATERIALIZED (
+  SELECT k.*, (
+    SELECT json_array(count(*), COALESCE(sum(${SPEND}), 0))
+    FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
+    WHERE r.merchant_key = k.merchantKey AND r.vanished_at IS NULL AND ${COUNTS} AND ${SPEND} > 0
+      AND ${COUNTED_DATE} >= date(k.countedDate, '-${T.LARGE_CHARGE_HISTORY_DAYS} days')
+      AND (${COUNTED_DATE} < k.countedDate OR (${COUNTED_DATE} = k.countedDate AND r.id < k.transactionId))
+  ) AS history
+  FROM candidates k
+)
+SELECT transactionId, merchantKey, name, spentMinor, countedDate, isPending,
+  history ->> 0 AS earlierCount, history ->> 1 AS earlierSpentMinor
+FROM scored
+WHERE history ->> 0 = 0
+  OR (history ->> 0 >= ${T.LARGE_CHARGE_MIN_HISTORY} AND spentMinor * (history ->> 0) >= ${T.LARGE_CHARGE_RATIO} * (history ->> 1))
+ORDER BY spentMinor DESC, transactionId
 LIMIT ${T.LARGE_CHARGE_MAX_CANDIDATES}`;
-
-// The merchant's counting charges before this one, back to the history window's start.
-// Binds: merchant key, window start, the charge's date (twice), the charge's id.
-const HISTORY_SQL = `WITH ${RESOLVED_CTE}
-SELECT count(*) AS n, COALESCE(sum(${SPEND}), 0) AS spent
-FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
-WHERE ${OF_MERCHANT} AND r.vanished_at IS NULL AND ${COUNTS} AND ${SPEND} > 0
-  AND ${COUNTED_DATE} >= ? AND (${COUNTED_DATE} < ? OR (${COUNTED_DATE} = ? AND r.id < ?))`;
 
 /** Day `day` of `month`, capped at the month's last day. */
 const dayIn = (month: string, day: number) => `${month}-${String(Math.min(day, daysInMonth(month))).padStart(2, "0")}`;
@@ -49,20 +63,12 @@ export async function readInsightInput(db: D1Database, now: Date): Promise<Insig
     db
       .prepare(CANDIDATES_SQL)
       .bind(...inDatesBinds(addDays(today, 1 - T.LARGE_CHARGE_LOOKBACK_DAYS), today), T.LARGE_CHARGE_MIN_MINOR)
-      .all<Omit<Charge, "isPending" | "earlierCount" | "earlierSpentMinor"> & { isPending: number }>(),
+      .all<Omit<Charge, "isPending"> & { isPending: number }>(),
     db.prepare(ENABLED_FRESHNESS_SQL).all<AccountFreshness>(),
     firstDataMonth(db),
   ]);
 
-  const charges = await Promise.all(
-    candidates.results.map(async (c): Promise<Charge> => {
-      const h = await db
-        .prepare(HISTORY_SQL)
-        .bind(c.merchantKey, addDays(c.countedDate, -T.LARGE_CHARGE_HISTORY_DAYS), c.countedDate, c.countedDate, c.transactionId)
-        .first<{ n: number; spent: number }>();
-      return { ...c, isPending: c.isPending === 1, earlierCount: h?.n ?? 0, earlierSpentMinor: h?.spent ?? 0 };
-    }),
-  );
+  const charges = candidates.results.map((c): Charge => ({ ...c, isPending: c.isPending === 1 }));
 
   const hasData = (m: string) => first !== null && m >= first;
   const spendOf = (m: string, rows: SpendRow[]) => ({ month: m, hasData: hasData(m), rows: rows.filter((r) => r.month === m) });

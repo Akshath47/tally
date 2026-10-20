@@ -18,6 +18,12 @@ describe("insightWords", () => {
       detail: "Recent spending may be missing.",
     }));
 
+  it("shows pence when over by less than £1, never £0", () => {
+    const pace = { ...base, type: "pace" as const, severity: "over" as const, state: "over" as const, categoryId: 2, spentMinor: 10_001, allocatedMinor: 10_000, projectedMinor: 0 };
+    expect(words(pace).headline).toBe("Eating out is £0.01 over");
+    expect(words({ ...pace, severity: "warn", state: "projected_over", spentMinor: 5_000, projectedMinor: 10_040 }).headline).toBe("Eating out is on course to end £0.40 over");
+  });
+
   it("pace over, for a category and for the whole budget", () => {
     const pace = { ...base, type: "pace" as const, severity: "over" as const, state: "over" as const, spentMinor: 18_400, allocatedMinor: 16_000, projectedMinor: 0 };
     expect(words({ ...pace, categoryId: 2 })).toEqual({ headline: "Eating out is £24 over", detail: "£184 of £160 this month" });

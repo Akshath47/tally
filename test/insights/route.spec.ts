@@ -64,6 +64,21 @@ describe("GET /api/insights", () => {
     ]);
   });
 
+  it("finds a new merchant's charge behind more than 10 bigger, regular ones", async () => {
+    // Three earlier £200 charges make each recent £200 one ordinary for its merchant.
+    for (const d of ["2026-07-01", "2026-08-01", "2026-09-01"]) await txn(a, { merchant: "Regular", amountMinor: -20_000, txnDate: d });
+    for (let i = 0; i < 11; i++) await txn(a, { merchant: "Regular", amountMinor: -20_000, txnDate: "2026-10-14" });
+    await txn(a, { merchant: "New shop", amountMinor: -12_000, txnDate: "2026-10-13" });
+    const items = (await insights()).items.filter((i) => i.type === "large_charge");
+    expect(items).toEqual([expect.objectContaining({ merchantKey: "new shop", spentMinor: 12_000, merchantAverageMinor: null })]);
+  });
+
+  it("skips a large charge with no merchant page to link to", async () => {
+    await txn(a, { merchant: "   ", amountMinor: -15_000, txnDate: "2026-10-13" });
+    await txn(a, { merchant: "x".repeat(201), amountMinor: -15_000, txnDate: "2026-10-13" });
+    expect((await insights()).items.filter((i) => i.type === "large_charge")).toEqual([]);
+  });
+
   it("drops a pending large charge once it's vanished, and keeps a live one marked pending", async () => {
     await txn(a, { merchant: "Big shop", amountMinor: -20_000, txnDate: "2026-10-12", isPending: true, vanished: true });
     expect((await insights()).items.filter((i) => i.type === "large_charge")).toEqual([]);
