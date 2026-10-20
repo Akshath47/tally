@@ -90,7 +90,7 @@ One merchant's history. Returns `404` when no transaction has that key, and `400
 - `accountIds[]`: the accounts it has appeared on
 - `firstSeenDate`: the earliest counted date, or null if none of its rows count
 - `months[]`: 6 entries aligned with `/api/trends`, each with `month`, `spentMinor`, `visits`
-- `windowSpentMinor`, `windowVisits`, and `averageChargeMinor` = window spend ÷ window visits, floored (null with no visits)
+- `windowSpentMinor`, `windowVisits`, and `averageChargeMinor` = the window's charges (money out only) ÷ window visits, floored (null with no visits). Refunds net off `windowSpentMinor` but not the average, so it can't go negative
 - `recent[]`: the 20 most recent transactions, newest first, in the same row shape as `GET /api/transactions`
 
 ## Insights
