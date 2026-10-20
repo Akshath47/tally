@@ -18,7 +18,12 @@
    - The Access AUD tag and the team domain (from the login redirect) aren't secret, but they're Worker secrets rather than `wrangler.jsonc` vars so the public repo doesn't name the login page.
    - Recommended: turn on 2FA for the Cloudflare account.
 7. **Analytics token:** create a scoped **Account Analytics: Read** API token for `scripts/usage-report.ts`. Add `export CLOUDFLARE_ANALYTICS_TOKEN=...` and `export CLOUDFLARE_ACCOUNT_ID=...` to your shell profile (`~/.zshrc`) yourself, never via chat. The account id isn't secret (`wrangler whoami`).
-8. **Verification**
+8. **Weekly digest sender** (P2.11)
+   - Add the website's domain to Cloudflare (Free plan): note every DNS record at the registrar first, check Cloudflare imported them all, then switch the nameservers. Confirm the website still loads once the zone is Active.
+   - In the zone, enable **Email Routing** and verify the `ALLOWED_EMAIL` address under Destination addresses.
+   - In your own terminal: `npx wrangler secret put DIGEST_FROM` (the sender, e.g. `tally@<domain>`) and `npx wrangler secret put APP_URL` (the app's own URL, for the email's link). Add both to `.dev.vars` yourself too.
+   - The digest stays off until `DIGEST_ENABLED` is `"true"` in `wrangler.jsonc`, after a manual send works. Sending to a verified destination is free; enabling Email Sending for arbitrary recipients is not, and isn't needed.
+9. **Verification**
    - Compare the sample transactions with the Revolut and Amex apps.
    - Log in on the iPhone in Safari and from a Home Screen shortcut.
 

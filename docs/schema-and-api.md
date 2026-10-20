@@ -108,6 +108,12 @@ merchant_matches          -- P2.7; derived: which rule each (account, merchant) 
   src/worker/budget/matches.ts. Every transaction has a row; none is ever deleted.
   MATCHES_DRIFT_SQL counts pairs that disagree with matching from scratch (always 0).
 
+digest_sends              -- P2.11; one row per weekly digest, claimed before sending
+  week_start PK            YYYY-MM-DD, the week's Monday (London)
+  status                   'sending' | 'sent' | 'failed'
+  attempted_at · sent_at
+  error                    an Email Service code (E_…), never a message; never the email's content
+
 monthly_budgets           -- P2.2; positive = spend
   effective_month PK       YYYY-MM
   amount_minor             > 0
@@ -173,6 +179,8 @@ All endpoints are under `/api`, and every one sits behind Cloudflare Access **an
 | GET | `/api/trends` | The current month and the 5 before: budget and tracked spend per month, each month's overall budget, and each category's 6-month series and average over completed months with data. Response in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.9) |
 | GET | `/api/merchants?key=` | One merchant across both accounts by `merchantKey` (`lower(trim(merchant))`): its rule's category, accounts, first counted date, the 6 trend months' spend and visits, and the 20 most recent rows. `400` for an empty or overlong key, `404` when nothing has it. Response in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.9) |
 | GET | `/api/insights` | `{asOf, items}`: today's insights for the current London month, ranked (stale accounts, over and on-course-to-go-over pace, categories running high, large charges in the last 7 days, and last month's changes in the first week). Structured data; `src/worker/insights/wording.ts` words them for the app and the digest. Items and thresholds in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.10) |
+| GET | `/api/digest/preview` | This week's digest as JSON (week and month-to-date spend, category status, insights, to-sort count, freshness, last send): what the Sunday email contains, live. Shape in [phase-2-insights-spec.md](phase-2-insights-spec.md) (P2.11) |
+| POST | `/api/digest/send` | Sends this week's digest to `ALLOWED_EMAIL` now, outside the weekly claim: for the acceptance check and re-sending a failed week. `{ok: true}`, or `502 {error: "send_failed"}` (the `digest_send` log line has the Email Service code) (P2.11) |
 
 Responses use camelCase fields. Provider account and connection ids are not exposed.
 
