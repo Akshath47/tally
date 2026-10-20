@@ -3058,16 +3058,16 @@ Built from the owner's designs (the Insights rows of the design canvas, briefed 
 
 **Coordination with the backend slices:**
 
-- `insightWords` and `type Insight` belong to P2.10 (`src/worker/insights/wording.ts`, `rules.ts`). Until P2.10 merges, `src/web/insights.ts` holds a copy of both, taken verbatim from P2.10 Task 4 apart from using the web formatters. When P2.10 lands, that file becomes a re-export of the worker modules and its copy is deleted, so the app and the email can't drift.
+- `insightWords` and `type Insight` are P2.10's. `src/web/insights.ts` re-exports them, so the app and the email can't drift. `Insight` lives in `src/worker/insights/types.ts`, which has no imports, so the web build can use it without pulling in D1 code.
 - P2.8's own web task (Home and Accounts stale states, `stale` fields on `Account` and `MonthSummary`) stays with P2.8. The Insights header takes stale accounts from the digest preview's `staleAccountIds`, so this slice doesn't touch those types.
-- **One gap for P2.11:** the design's "This week" card has a Monday-to-Sunday bar chart, which needs per-day figures the spec's digest preview doesn't have. The UI reads `days: { date, spentMinor, pendingSpentMinor }[]` (7 entries, Monday first, budget spend by counted date, 0 after today) from `GET /api/digest/preview`. Until P2.11 adds it, the mock provides it and the card hides the chart when it's missing.
+- **Left out, pending the owner:** the design's "This week" card has a Monday-to-Sunday bar chart, which needs per-day figures that `GET /api/digest/preview` doesn't return (P2.11 merged without them). The card shows the week's total without the chart. Adding it means a `days[]` field on the preview (7 entries, budget spend by counted date) and its rows-read check.
 - The design's Monthly review shows a Misc row, but `GET /api/months/:month/review` returns categories and Uncategorised, not a Misc pot. The screen follows the brief's order (budgeted categories, Uncategorised, tracked) rather than inventing Misc client-side.
 - No Worker code, migrations or Worker tests change here.
 
 **Files:**
 
 - `src/web/api.ts`: types and fetchers for `GET /api/months/:month/review`, `GET /api/trends`, `GET /api/merchants?key=`, `GET /api/insights`, `GET /api/digest/preview`, `POST /api/digest/send`.
-- `src/web/insights.ts`: the stand-in `Insight` and `insightWords` (above), plus pure helpers for the screens: an insight's tone, icon and link target; the week's day columns; month labels.
+- `src/web/insights.ts`: re-exports `Insight` and `insightWords` (above), plus pure helpers for the screens: an insight's tone, icon and link target, the week's range, and the London send time.
 - `src/web/queries.ts`: `useReview`, `useTrends`, `useMerchant`, `useInsights`, `useDigestPreview`.
 - `src/web/mock/data.ts`, `src/web/mock/index.ts`: about 6 months of synthetic history so Trends and Review have data, handlers for each route, and `?mock=` scenarios: `insights-calm`, `insights-early`, `insights-new` (first month, no budget), `digest-failed`, `insights-error`.
 - `src/web/routes.ts`: an `insights` tab; pushed `review` (`/insights/review/:month`, completed months only), `trends` (`/insights/trends`) and `merchant` (`/merchants/:key`, key URL-encoded). Merchant's back link returns to wherever it was opened from.
