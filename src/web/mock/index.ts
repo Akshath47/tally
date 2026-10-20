@@ -6,6 +6,7 @@ import { isNamedLine, type NamedLine } from "../../worker/budget/lines";
 import type { Account, Budget, Category, CategoryKind, ImportRun, InboxMerchant, MatchType, MonthSummary, OverrideInput, Rule, SummaryCategory, Transaction } from "../api";
 import { addDays, daysRemaining, londonToday, monthOf } from "../dates";
 import { normalizePattern as normalize } from "../../worker/budget/resolve";
+import { latestChange, staleIds, withStale } from "../../worker/budget/stale";
 import { SEED_ACCOUNTS, SEED_BUDGET, SEED_CATEGORIES, SEED_NEW_ACCOUNT, SEED_RULES, SEED_TRANSACTIONS } from "./data";
 
 // Only reachable through api.ts's `import.meta.env.DEV` branch. If a production build ever
@@ -31,6 +32,8 @@ const ACCOUNT_DEFAULTS = {
   balanceFetchedAt: null,
   lastImportError: null,
   consecutiveFailures: 0,
+  stale: false,
+  staleDays: null,
 } satisfies Partial<Account>;
 
 const accounts: Account[] = [
@@ -145,6 +148,7 @@ const LINE_FILTERS: Record<NamedLine, (t: Transaction) => boolean> = {
 };
 
 function summary(month: string): MonthSummary {
+  const enabled = accounts.filter((a) => a.importEnabled);
   const byCategory = new Map<number | null, SummaryCategory>();
   const entry = (categoryId: number | null) => {
     let e = byCategory.get(categoryId);
@@ -193,7 +197,8 @@ function summary(month: string): MonthSummary {
     categories: [...byCategory.values()].sort((x, y) => (x.categoryId ?? Infinity) - (y.categoryId ?? Infinity)),
     trackedMinor: tracked,
     inboxCount: resolved.filter(isInbox).length,
-    lastDataChangeAt: accounts.filter((a) => a.importEnabled).reduce<string | null>((max, a) => (a.lastDataChangeAt && (!max || a.lastDataChangeAt > max) ? a.lastDataChangeAt : max), null),
+    lastDataChangeAt: latestChange(enabled),
+    staleAccountIds: month === monthOf(today) ? staleIds(enabled, new Date()) : [],
   };
 }
 
@@ -256,7 +261,7 @@ function upsertMerchantRule(merchant: string, categoryId: number) {
 
 /** [method, path pattern, handler]. */
 const ROUTES: [string, RegExp, Handler][] = [
-  ["GET", /^\/api\/accounts$/, () => ok({ accounts: accounts.filter((a) => a.importEnabled || a.needsReview) })],
+  ["GET", /^\/api\/accounts$/, () => ok({ accounts: accounts.filter((a) => a.importEnabled || a.needsReview).map((a) => withStale(a, new Date())) })],
   ["POST", /^\/api\/accounts\/(\d+)\/enable$/, (m) => {
     const a = accounts.find((x) => x.id === Number(m[1]));
     if (!a) return fail(404, "not_found");
@@ -424,7 +429,7 @@ const ROUTES: [string, RegExp, Handler][] = [
 /**
  * Screen states to review, picked with `?mock=<scenario>` on any URL and kept for the tab:
  * "firstrun" (no budget yet), "over" (spent past the budget), "error" (the summary fails),
- * "slow" (5 s latency, to see loading states).
+ * "slow" (5 s latency, to see loading states), "stale" (one account without new data for 5 days).
  */
 const scenario = (() => {
   const fromUrl = new URLSearchParams(window.location.search).get("mock");
@@ -443,6 +448,7 @@ if (scenario === "over") {
   budget.overallMinor = 20_000;
   budget.allocations = new Map([[4, 5_000], [1, 6_000], [2, 3_000], [3, 4_000]]);
 }
+if (scenario === "stale") accounts[1]!.lastDataChangeAt = hoursAgo(5 * 24);
 
 /** The mock's reply for any /api request. */
 export function handle(path: string, init: RequestInit | undefined): Promise<Response> {

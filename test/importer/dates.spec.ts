@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, daysInMonth, isYmd, londonMonth, londonToday } from "../../src/worker/importer/dates";
+import { addDays, daysBetween, daysInMonth, isYmd, londonMonth, londonToday } from "../../src/worker/importer/dates";
 
 describe("londonToday", () => {
   it("is the next calendar day at 23:30 UTC during BST", () => {
@@ -72,4 +72,16 @@ describe("isYmd", () => {
   it.each(["2026-10-02T00:00:00Z", "2026-1-2", "2026-02-30", "2025-02-29", "", "02/10/2026"])("rejects %s", (v) =>
     expect(isYmd(v)).toBe(false),
   );
+});
+
+describe("daysBetween", () => {
+  it.each([
+    ["2026-10-11", "2026-10-15", 4],
+    ["2026-10-15", "2026-10-15", 0],
+    ["2026-10-15", "2026-10-11", -4],
+    ["2026-02-27", "2026-03-01", 2],
+    ["2024-02-28", "2024-03-01", 2],
+  ])("%s → %s is %i", (from, to, days) => expect(daysBetween(from, to)).toBe(days));
+
+  it("rejects an impossible date", () => expect(() => daysBetween("2026-02-30", "2026-03-01")).toThrow());
 });

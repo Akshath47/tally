@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../auth";
+import { withStale } from "../budget/stale";
 import { enableAccount, isAwaitingReview, linkAccounts, loadAccount } from "../db/account-review";
 import { accounts } from "../db/schema";
 import { BUDGET_CURRENCY, isLockHeld } from "../importer";
@@ -34,7 +35,8 @@ export const accountRoutes = new Hono<AppEnv>()
       // A merged row only remembers a retired provider id; its history lives on the target.
       .where(isNull(accounts.mergedIntoAccountId))
       .orderBy(asc(accounts.id));
-    return c.json({ accounts: rows });
+    const now = new Date();
+    return c.json({ accounts: rows.map((a) => withStale(a, now)) });
   })
   // The owner says an account awaiting review is genuinely new: import it from the next run.
   .post("/:id/enable", async (c) => {

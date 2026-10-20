@@ -184,6 +184,9 @@ describe("GET /api/accounts", () => {
       newestTxnDate: "2026-10-01",
       backfillComplete: false,
       needsReview: false,
+      // Exact values against a fixed clock are in stale.spec.ts.
+      stale: expect.any(Boolean),
+      staleDays: expect.any(Number),
     });
     // The display label never carries the raw IBAN.
     expect(body.accounts[0]!.name).not.toContain("GB29NWBK");
