@@ -1,9 +1,9 @@
 // Money stays integer minor units (pence). Typed amounts become minor units by string
 // arithmetic, never through a float, as docs/phase-2-spec.md asks.
 
-import { formatMoney } from "./format";
+import { MINUS, formatMoney } from "../worker/display";
 
-const MINUS = "−";
+export { formatPounds } from "../worker/display";
 
 /**
  * A typed amount ("12", "12.5", "£1,234.56") as positive minor units, or null when it isn't a
@@ -31,14 +31,6 @@ export function poundsInput(minor: number): string {
   return pence === "00" ? grouped : `${grouped}.${pence}`;
 }
 
-const poundsFormat = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0, minimumFractionDigits: 0 });
-
-/** Budget figures in whole pounds, rounded half away from zero: 100_340 → "£1,003", −1_250 → "−£13". */
-export function formatPounds(minor: number): string {
-  const abs = Math.abs(minor);
-  const pounds = (abs - (abs % 100)) / 100 + (abs % 100 >= 50 ? 1 : 0);
-  return `${minor < 0 && pounds > 0 ? MINUS : ""}${poundsFormat.format(pounds)}`;
-}
 
 /** A transaction amount as feeds show it: money out "−£14.20", money in "+£14.20". */
 export function formatSigned(amountMinor: number, currency: string): string {
