@@ -964,4 +964,25 @@ Added 2026-10-06, after the first day of UI use reached 80% of D1's daily rows-r
 the measured results are in [stored-matches-plan.md](stored-matches-plan.md). It's checked off
 here once it's merged and deployed and the next day's usage report confirms the drop.
 
-**The first usable cut is done when P2.1–P2.6 are merged and deployed.** Bills, insights, stale-data warnings and the digest each get a short design before they're added here.
+**The first usable cut is done when P2.1–P2.6 are merged and deployed.** Bills still needs a short design before it's added here.
+
+## Insights, analytics and the weekly digest (P2.8–P2.12)
+
+Designed in [phase-2-insights-spec.md](phase-2-insights-spec.md), with the screens briefed in
+[insights-ui-brief.md](insights-ui-brief.md). The tasks, code and tests for each step are in
+[insights-plan.md](insights-plan.md), which also holds each step's full **Accept when**. Each
+step is checked off here once it's merged and deployed and its **Accept when** has passed.
+
+- [ ] **P2.8 Stale data.** `stale`/`staleDays` on accounts, `staleAccountIds` on the summary,
+  and Home's and Accounts' designed stale states. **Accept when** `npm run check` passes, `?mock=stale`
+  shows the designed states, and the deployed `/api/accounts` carries the flags.
+- [ ] **P2.9 Analytics API.** Monthly review, 6-month trends and merchant history. **Accept when**
+  the rows-read ceilings pass and the deployed review's spend for last month equals Home's.
+- [ ] **P2.10 Insights.** The rules, thresholds, shared wording and `GET /api/insights`. **Accept
+  when** every rule's edge tests and the rows-read ceiling pass, and the deployed insights agree
+  with Home and Transactions.
+- [ ] **P2.11 Weekly digest.** The preview, the email, the Sunday 18:00 London cron and a manual
+  send, after the owner sets up the sending domain. **Accept when** a manual send arrives, the
+  next Sunday's email arrives at 18:00 London with one `sent` row, and the cron's CPU is under 10 ms.
+- [ ] **P2.12 Insights UI.** The fourth tab and the Monthly review, Trends and Merchant screens,
+  from the owner's designs. It gets its own plan once the designs exist.

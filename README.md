@@ -68,6 +68,8 @@ Tally was planned in phases, and the docs are the record of those decisions.
 | [phase1-assessment.md](docs/phase1-assessment.md) | How fresh the data is, how pending charges behave, what Phase 2 had to allow for |
 | [phase-2-outline.md](docs/phase-2-outline.md) | The looser Phase 2 outline the spec grew from |
 | [phase-2-spec.md](docs/phase-2-spec.md) | Budgeting: categories, rules, overrides, budgets, month summary |
+| [phase-2-insights-spec.md](docs/phase-2-insights-spec.md) | Insights, analytics, stale-data warnings and the weekly email digest |
+| [insights-ui-brief.md](docs/insights-ui-brief.md) | What the Insights tab, review, trends, merchant and digest screens show, for design |
 | [schema-and-api.md](docs/schema-and-api.md) | D1 schema and API endpoints |
 | [ui-design.md](docs/ui-design.md) | Mobile UI spec: theme tokens, navigation, every screen and state |
 | [research/platform-constraints.md](docs/research/platform-constraints.md) | Verified Lunch Flow and Cloudflare free-tier facts, with sources |
