@@ -3,10 +3,12 @@ import { csrf } from "hono/csrf";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { accessAuth, type AppEnv, type AuthOptions } from "./auth";
+import { DIGEST_CRON, runScheduledDigest } from "./digest/send";
 import { runImport, type RunDeps } from "./importer";
 import { accountRoutes } from "./routes/accounts";
 import { budgetRoutes } from "./routes/budget";
 import { categoryRoutes } from "./routes/categories";
+import { digestRoutes } from "./routes/digest";
 import { inboxRoutes } from "./routes/inbox";
 import { insightRoutes } from "./routes/insights";
 import { ruleRoutes } from "./routes/rules";
@@ -52,6 +54,7 @@ export function createApp(options: AppOptions = {}) {
   app.route("/trends", trendRoutes);
   app.route("/merchants", merchantRoutes);
   app.route("/insights", insightRoutes);
+  app.route("/digest", digestRoutes);
   app.route("/import-runs", importRunRoutes(options.importDeps ?? {}));
 
   // Unknown /api paths must not fall through to the SPA's index.html.
@@ -72,8 +75,10 @@ const app = createApp();
 
 export default {
   fetch: app.fetch,
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
+    // Two crons (wrangler.jsonc): the weekly digest's, and the import's.
+    if (controller.cron === DIGEST_CRON) ctx.waitUntil(runScheduledDigest(env, new Date(controller.scheduledTime)));
     // runImport records its own failures; it never throws for a provider or per-account error.
-    ctx.waitUntil(runImport(env, "cron"));
+    else ctx.waitUntil(runImport(env, "cron"));
   },
 } satisfies ExportedHandler<Env>;

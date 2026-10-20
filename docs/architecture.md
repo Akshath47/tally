@@ -65,6 +65,7 @@ That is one statement per ~80 KB instead of one per row. The `WHERE` clause avoi
 
 - Cron runs every 3 hours (hourly during Phase 1 verification). Lunch Flow refreshes its data only a few times a day ([phase1-assessment.md](phase1-assessment.md)), so more frequent runs add nothing.
 - Cron expressions are in UTC.
+- The weekly digest has a second cron, `0 17,18 * * SUN`: 18:00 London is 17:00 UTC in BST and 18:00 UTC in GMT, so it fires at both and sends only in the run where London's hour is 18. The week is claimed in `digest_sends` first, so a retried or overlapping run can't send twice ([phase-2-insights-spec.md](phase-2-insights-spec.md), P2.11).
 - "Today" and month boundaries are calculated in `Europe/London`.
 
 ## Freshness semantics

@@ -55,7 +55,7 @@ npm run dev          # Vite + the Worker runtime, using a local D1
 npm run check        # typecheck, lint and tests
 ```
 
-Local values go in `.dev.vars`, which is gitignored: `LUNCHFLOW_API_KEY`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` and `ALLOWED_EMAIL`. In production, set the same four as Worker secrets with `wrangler secret put`; `wrangler deploy` refuses to deploy while any of them is missing. To deploy your own copy, change the D1 `database_id` in `wrangler.jsonc` and follow [docs/setup-responsibilities.md](docs/setup-responsibilities.md).
+Local values go in `.dev.vars`, which is gitignored: `LUNCHFLOW_API_KEY`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `ALLOWED_EMAIL`, `DIGEST_FROM` (the weekly email's sender) and `APP_URL` (the app's URL, for the email's link). In production, set the same six as Worker secrets with `wrangler secret put`; `wrangler deploy` refuses to deploy while any of them is missing. The weekly digest stays off until `DIGEST_ENABLED` is `"true"` in `wrangler.jsonc`. To deploy your own copy, change the D1 `database_id` in `wrangler.jsonc` and follow [docs/setup-responsibilities.md](docs/setup-responsibilities.md).
 
 ## Docs
 

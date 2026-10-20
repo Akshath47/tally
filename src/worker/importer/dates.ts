@@ -70,3 +70,16 @@ export function addMonths(month: string, n: number): string {
 
 /** The `count` months ending with `last`, oldest first. */
 export const monthsEnding = (last: string, count: number) => Array.from({ length: count }, (_, i) => addMonths(last, i - count + 1));
+
+/** The Monday on or before `date`; weeks run Monday to Sunday (docs/phase-2-insights-spec.md). */
+export function mondayOf(date: string): string {
+  const p = parts(date);
+  if (!p || !isYmd(date)) throw new Error("mondayOf: not a YYYY-MM-DD date");
+  const weekday = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); // 0 = Sunday
+  return addDays(date, -((weekday + 6) % 7));
+}
+
+const londonHourFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hourCycle: "h23" });
+
+/** The hour (0–23) on a London clock at `now`. */
+export const londonHour = (now: Date) => Number(londonHourFormat.format(now));
