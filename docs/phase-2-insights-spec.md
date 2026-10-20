@@ -183,7 +183,7 @@ Done by the owner. It can start any time, since nothing else depends on it:
 
 ## Rows read and limits
 
-- Each new endpoint gets a ceiling in `test/rows-read.spec.ts`, on the existing synthetic ledger of 4,000 transactions over 2 years (about 170 a month): review 2k, trends 5k, merchant 1k, insights 6k, digest preview 8k. A few opens a day stay far below the free tier's 5M rows read a day. A ceiling that fails means a read isn't seeking; it's reported to the owner rather than raised.
+- Each new endpoint gets a ceiling in `test/rows-read.spec.ts`, on the existing synthetic ledger of 4,000 transactions over 2 years (about 170 a month): review 4k, trends 5k, merchant under 10 reads per row of that merchant's own (so it proves the read seeks by merchant on any ledger size), insights 6k, digest preview 8k. Measured when P2.9 landed: review 2,737, trends 4,456, busiest merchant 2,785 for its 378 rows. A review and a merchant resolve every row they cover, at about 5–7 reads a row. A few opens a day stay far below the free tier's 5M rows read a day. A ceiling that fails means a read isn't seeking; it's reported to the owner rather than raised.
 - No endpoint scans the whole history. Merchant history seeks by merchant key. Baselines and trends read only their months.
 - Every statement stays within D1's 50-statements and 100-parameters limits.
 
