@@ -5,6 +5,7 @@
 import { isNamedLine, type NamedLine } from "../../worker/budget/lines";
 import type { Account, Budget, Category, CategoryKind, DigestPreview, DigestStatus, ImportRun, InboxMerchant, MatchType, MerchantHistory, MonthReview, MonthSummary, OverrideInput, ReviewCategory, Rule, SummaryCategory, Transaction, TrendMonth, Trends } from "../api";
 import { addDays, addMonths, daysInMonth, daysRemaining, londonToday, monthOf } from "../dates";
+import { projectedMinor } from "../../worker/analytics/math";
 import { mondayOf } from "../../worker/importer/dates";
 import type { Insight } from "../insights";
 import { normalizePattern as normalize } from "../../worker/budget/resolve";
@@ -462,41 +463,41 @@ function insights(asOf: string): Insight[] {
 let lastSend: DigestPreview["lastSend"] = { weekStart: addDays(mondayOf(today), -7), status: "sent", sentAt: `${addDays(mondayOf(today), -1)}T17:00:00.000Z` };
 
 function digestPreview(asOf: string): DigestPreview {
-  const weekStart = mondayOf(today);
+  // A scenario's pretend day stands in for today throughout, so the week and its figures agree.
+  const weekStart = mondayOf(asOf);
   // Budget spend counted Monday to today, as the Worker's spendByMonth over the week.
   let weekSpentMinor = 0;
   let weekPendingSpentMinor = 0;
   for (const t of transactions.map(resolve)) {
     const date = countedDate(t);
-    if (date < weekStart || date > today || !countsIn(t, monthOf(date)) || !isBudgetSpend(t)) continue;
+    if (date < weekStart || date > asOf || !countsIn(t, monthOf(date)) || !isBudgetSpend(t)) continue;
     weekSpentMinor += spendOf(t);
     if (t.isPending) weekPendingSpentMinor += spendOf(t);
   }
   const s = summary(monthOf(today));
   const dom = day(asOf);
-  const dim = daysInMonth(monthOf(today));
   const status = (spent: number, allocated: number): DigestStatus =>
-    spent > allocated ? "over" : dom >= 8 && Math.floor((spent * dim) / dom) > allocated ? "projected_over" : spent * 10 >= allocated * 9 ? "near" : "ok";
-  const allocatedLines = s.categories.filter((c) => c.categoryId !== null && c.allocatedMinor > 0);
-  const miscSpent = s.categories.filter((c) => c.categoryId === null || (c.kind === "budgeted" && c.allocatedMinor === 0)).reduce((a, c) => a + c.spentMinor, 0);
+    spent > allocated ? "over" : allocated > 0 && dom >= 8 && projectedMinor(spent, dom, daysInMonth(monthOf(asOf))) > allocated ? "projected_over" : allocated > 0 && spent * 10 >= allocated * 9 ? "near" : "ok";
+  // As the Worker's digestLines: allocated budgeted categories, then Misc as Home draws it
+  // (posted uncategorised spend plus unallocated budgeted categories), when it has something.
+  const allocatedLines = s.categories.filter((c) => c.kind === "budgeted" && c.allocatedMinor > 0);
+  const miscSpent = s.categories.reduce(
+    (sum, c) => (c.categoryId === null ? sum + c.spentMinor - c.pendingSpentMinor : c.kind === "budgeted" && c.allocatedMinor === 0 ? sum + c.spentMinor : sum),
+    0,
+  );
+  const lines = allocatedLines.map((c) => ({ categoryId: c.categoryId, spentMinor: c.spentMinor, allocatedMinor: c.allocatedMinor, status: status(c.spentMinor, c.allocatedMinor) }));
+  if (s.miscMinor !== null && (s.miscMinor > 0 || miscSpent !== 0)) lines.push({ categoryId: null, spentMinor: miscSpent, allocatedMinor: s.miscMinor, status: status(miscSpent, s.miscMinor) });
   return {
     weekStart,
-    // Today, or the day a scenario pretends it is; the tab works out insights for this date.
     weekEnd: asOf,
     weekSpentMinor,
     weekPendingSpentMinor,
-    spansMonths: monthOf(weekStart) !== monthOf(today),
-    month: { month: s.month, spentMinor: s.spentMinor, pendingSpentMinor: s.pendingSpentMinor, overallMinor: s.overallMinor, leftMinor: s.leftMinor, perWeekMinor: s.perWeekMinor, daysRemaining: s.daysRemaining ?? 1 },
-    categories:
-      s.overallMinor === null
-        ? []
-        : [
-            ...allocatedLines.map((c) => ({ categoryId: c.categoryId, spentMinor: c.spentMinor, allocatedMinor: c.allocatedMinor, status: status(c.spentMinor, c.allocatedMinor) })),
-            ...(s.miscMinor ? [{ categoryId: null, spentMinor: miscSpent, allocatedMinor: s.miscMinor, status: status(miscSpent, s.miscMinor) }] : []),
-          ],
+    spansMonths: monthOf(weekStart) !== monthOf(asOf),
+    month: { month: s.month, spentMinor: s.spentMinor, pendingSpentMinor: s.pendingSpentMinor, overallMinor: s.overallMinor, leftMinor: s.leftMinor, perWeekMinor: s.perWeekMinor, daysRemaining: s.daysRemaining },
+    categories: s.miscMinor === null ? [] : lines,
     insights: insights(asOf),
     inboxCount: s.inboxCount,
-    staleAccountIds: insights(asOf).flatMap((i) => (i.type === "stale_account" ? [i.accountId] : [])),
+    staleAccountIds: s.staleAccountIds,
     lastDataChangeAt: s.lastDataChangeAt,
     lastSend,
   };
@@ -720,8 +721,10 @@ const ROUTES: [string, RegExp, Handler][] = [
     const preview = digestPreview(asOf);
     return ok(scenario === "insights-calm" ? { ...preview, insights: [] } : preview);
   }],
+  // As the Worker: a send settles the latest row (it never claims a week), or fails with 502.
   ["POST", /^\/api\/digest\/send$/, () => {
-    lastSend = { weekStart: mondayOf(today), status: "sent", sentAt: new Date().toISOString() };
+    if (scenario === "digest-send-fails") return fail(502, "send_failed");
+    if (lastSend) lastSend = { ...lastSend, status: "sent", sentAt: new Date().toISOString() };
     return ok({ ok: true });
   }],
 ];
@@ -732,7 +735,7 @@ const ROUTES: [string, RegExp, Handler][] = [
  * "slow" (5 s latency, to see loading states), "stale" (one account without new data for 5 days).
  * Insights: "insights-calm" (nothing stands out), "insights-early" (the 3rd of the month: month
  * changes only), "insights-new" (the first month, no budget), "digest-failed" (last Sunday's email
- * didn't send), "insights-error".
+ * didn't send), "digest-send-fails" (and Send now fails too), "digest-sending", "insights-error".
  */
 const scenario = (() => {
   const fromUrl = new URLSearchParams(window.location.search).get("mock");
@@ -760,7 +763,8 @@ if (scenario === "insights-calm") {
   const i = transactions.findIndex((t) => t.merchant === SEED_LARGE_CHARGE[2]);
   if (i >= 0) transactions.splice(i, 1);
 }
-if (scenario === "digest-failed") lastSend = { weekStart: addDays(mondayOf(today), -7), status: "failed", sentAt: null };
+if (scenario === "digest-failed" || scenario === "digest-send-fails") lastSend = { weekStart: addDays(mondayOf(today), -7), status: "failed", sentAt: null };
+if (scenario === "digest-sending") lastSend = { weekStart: addDays(mondayOf(today), -7), status: "sending", sentAt: null };
 /** The day insights are worked out for: a scenario can pretend it's early in the month. */
 const asOf = scenario === "insights-early" ? `${monthOf(today)}-03` : today;
 if (scenario === "over") {
