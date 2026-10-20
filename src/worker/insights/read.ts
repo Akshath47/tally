@@ -57,7 +57,8 @@ export async function readInsightInput(db: D1Database, now: Date): Promise<Insig
   const [budget, monthSpend, baselineRows, changeRows, candidates, accounts, first] = await Promise.all([
     readBudget(db, month),
     spendByMonth(db, `${month}-01`, `${month}-31`),
-    Promise.all(previous.map((m) => spendByMonth(db, `${m}-01`, dayIn(m, dom)))),
+    // "Running high" waits for the 8th, so the baseline is only read from then.
+    dom >= T.UNUSUAL_FROM_DAY ? Promise.all(previous.map((m) => spendByMonth(db, `${m}-01`, dayIn(m, dom)))) : Promise.resolve(previous.map(() => [] as SpendRow[])),
     // Month changes only show in the first week, so the whole months are only read then.
     dom <= T.MONTH_CHANGE_SHOW_DAYS ? spendByMonth(db, `${monthBefore}-01`, `${lastMonth}-31`) : Promise.resolve([] as SpendRow[]),
     db
