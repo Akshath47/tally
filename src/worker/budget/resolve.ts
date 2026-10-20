@@ -25,7 +25,7 @@ export const isRulablePattern = (pattern: string) => pattern.length >= 1 && patt
  *
  * A plain join, not materialised, so SQLite pushes each consumer's conditions into it, and they
  * decide the cost: D1 bills rows read, so a consumer must give it something to seek (an id, a
- * month with IN_MONTH, or INBOX's match_rule_id), never filter the whole history. The rule's
+ * date range with IN_DATES, or INBOX's match_rule_id), never filter the whole history. The rule's
  * category and the override are read here, so neither needs anything stored. The triggers give
  * every transaction a match row; the join is still LEFT so that a row missing one counts as
  * uncategorised rather than vanishing from the totals (MATCHES_DRIFT_SQL finds it).
@@ -35,7 +35,7 @@ export const RESOLVED_CTE = `resolved AS (
     t.is_pending, t.vanished_at, t.first_seen_at,
     o.category_id AS override_category_id, COALESCE(o.excluded, 0) AS excluded,
     o.counted_amount_minor, o.counted_date, o.note,
-    m.account_id AS match_account_id, m.rule_id AS match_rule_id,
+    m.account_id AS match_account_id, m.rule_id AS match_rule_id, m.merchant_key,
     COALESCE(o.category_id, r.category_id) AS category_id,
     CASE WHEN o.category_id IS NOT NULL THEN 'override' WHEN m.rule_id IS NOT NULL THEN 'rule' END AS category_source
   FROM transactions t
@@ -45,18 +45,21 @@ export const RESOLVED_CTE = `resolved AS (
 )`;
 
 /**
- * On `resolved r`: the rows counted in a month, by `counted_date ?? txn_date`; bind
- * inMonthBinds(month). The first condition only narrows: it lets SQLite seek the month's bank
- * dates and the overrides that count a row in it. The second is the exact rule.
+ * On `resolved r`: the rows counted from `from` to `to` inclusive, by `counted_date ?? txn_date`;
+ * bind inDatesBinds(from, to). The first condition only narrows: it lets SQLite seek the range's
+ * bank dates and the overrides that count a row in it. The second is the exact rule.
  */
-export const IN_MONTH = `(r.txn_date BETWEEN ? AND ? OR r.id IN (SELECT transaction_id FROM transaction_overrides WHERE counted_date BETWEEN ? AND ?))
-  AND substr(COALESCE(r.counted_date, r.txn_date), 1, 7) = ?`;
+export const IN_DATES = `(r.txn_date BETWEEN ? AND ? OR r.id IN (SELECT transaction_id FROM transaction_overrides WHERE counted_date BETWEEN ? AND ?))
+  AND COALESCE(r.counted_date, r.txn_date) BETWEEN ? AND ?`;
+
+/** IN_DATES's binds. A bound past a month's last day (e.g. -31 in April) still sorts correctly as text. */
+export const inDatesBinds = (from: string, to: string) => [from, to, from, to, from, to];
+
+/** On `resolved r`: the rows counted in a month; bind inMonthBinds(month). */
+export const IN_MONTH = IN_DATES;
 
 /** IN_MONTH's binds. Every date in a month sorts between its -01 and -31. */
-export function inMonthBinds(month: string): string[] {
-  const [from, to] = [`${month}-01`, `${month}-31`];
-  return [from, to, from, to, month];
-}
+export const inMonthBinds = (month: string) => inDatesBinds(`${month}-01`, `${month}-31`);
 
 /**
  * On `resolved r`: what still needs sorting. Counted transactions that no override or rule

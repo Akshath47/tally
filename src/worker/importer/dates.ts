@@ -51,3 +51,35 @@ export function daysInMonth(month: string): number {
   // Day 0 of the next month is this month's last day.
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
 }
+
+/** Whole days from `from` to `to`, both YYYY-MM-DD; negative when `to` is earlier. */
+export function daysBetween(from: string, to: string): number {
+  const a = parts(from);
+  const b = parts(to);
+  if (!a || !b || !isYmd(from) || !isYmd(to)) throw new Error("daysBetween: not a YYYY-MM-DD date");
+  return (Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000;
+}
+
+/** The month `n` months after `month` (YYYY-MM); a negative `n` goes back. */
+export function addMonths(month: string, n: number): string {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  const index = y * 12 + (m - 1) + n;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+}
+
+/** The `count` months ending with `last`, oldest first. */
+export const monthsEnding = (last: string, count: number) => Array.from({ length: count }, (_, i) => addMonths(last, i - count + 1));
+
+/** The Monday on or before `date`; weeks run Monday to Sunday (docs/phase-2-insights-spec.md). */
+export function mondayOf(date: string): string {
+  const p = parts(date);
+  if (!p || !isYmd(date)) throw new Error("mondayOf: not a YYYY-MM-DD date");
+  const weekday = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); // 0 = Sunday
+  return addDays(date, -((weekday + 6) % 7));
+}
+
+const londonHourFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hourCycle: "h23" });
+
+/** The hour (0–23) on a London clock at `now`. */
+export const londonHour = (now: Date) => Number(londonHourFormat.format(now));

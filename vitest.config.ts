@@ -15,6 +15,8 @@ export default defineConfig({
           ACCESS_TEAM_DOMAIN: "https://test-team.cloudflareaccess.com",
           ACCESS_AUD: "test-aud",
           ALLOWED_EMAIL: "owner@example.com",
+          DIGEST_FROM: "tally@example.com",
+          APP_URL: "https://tally.example.workers.dev",
         },
       },
     }),

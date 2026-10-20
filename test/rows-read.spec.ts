@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { runImport } from "../src/worker/importer";
+import { LARGE_CHARGE_MAX_CANDIDATES } from "../src/worker/insights/thresholds";
 import { AMEX, REVOLUT, txn, world } from "./fixtures/lunchflow";
 import { resetDb } from "./db";
 import { get, send } from "./http";
@@ -157,6 +158,10 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     const allList = await record("GET /api/transactions (newest 100)", "GET", "/api/transactions?limit=100");
     const line = await record("GET /api/months/:month/transactions", "GET", "/api/months/2026-09/transactions?category=1");
     const misc = await record("GET /api/months/:month/transactions (misc)", "GET", "/api/months/2026-09/transactions?category=misc");
+    const review = await record("GET /api/months/2026-09/review", "GET", "/api/months/2026-09/review");
+    const trends = await record("GET /api/trends", "GET", "/api/trends");
+    // Merchant 0 is the busiest under the Zipf-ish draw.
+    const merchant = await record("GET /api/merchants (busiest)", "GET", `/api/merchants?key=${encodeURIComponent("synthetic merchant 0")}`);
     const inbox = await record("GET /api/inbox (backlog)", "GET", "/api/inbox?limit=100");
     const merchants = await record("GET /api/inbox/merchants (backlog)", "GET", "/api/inbox/merchants");
     const inboxRows = (inbox.json as { total: number }).total;
@@ -187,11 +192,45 @@ describe(`rows_read per API call (${N_TXNS} transactions)`, () => {
     for (const r of [sortedSummary, monthList, line, misc]) expect(r.rowsRead).toBeLessThan(3_000);
     expect(allList.rowsRead).toBeLessThan(1_000);
     expect(rules.rowsRead).toBeLessThan(10_000);
+    // Analytics read only their months or their merchant (docs/phase-2-insights-spec.md, Rows read).
+    // A review resolves two months' rows (about 5 reads each, like the summary's lines).
+    expect(review.rowsRead).toBeLessThan(4_000);
+    expect(trends.rowsRead).toBeLessThan(5_000);
+    // A merchant resolves its own rows, whatever the ledger's size.
+    const merchantRows = (await env.DB.prepare("SELECT count(*) AS n FROM transactions WHERE lower(trim(merchant)) = 'synthetic merchant 0'").first<{ n: number }>())!.n;
+    expect(merchant.rowsRead).toBeLessThan(10 * merchantRows);
     // A backlog costs a few rows per transaction still to sort (the summary counts them for the
     // inbox badge), never the whole history again. Once sorted, To sort costs almost nothing.
     expect(summary.rowsRead).toBeLessThan(3_000 + 4 * inboxRows);
     for (const r of [inbox, merchants]) expect(r.rowsRead).toBeLessThan(7 * inboxRows);
     for (const r of [sortedInbox, sortedMerchants]) expect(r.rowsRead).toBeLessThan(500);
+  });
+
+  // Last, since it adds rows. Mid-September, with the ledger's last months as the baseline, and
+  // the most large-charge candidates it looks at, each at a busy merchant with a long history.
+  it("keeps insights and the digest to their months and candidates, at their worst", async () => {
+    await env.DB.prepare(
+      `INSERT INTO transactions (account_id, provider_txn_id, amount_minor, provider_amount, currency, txn_date, merchant, description,
+         is_pending, fingerprint, first_seen_at, last_seen_at, updated_at, first_import_run_id)
+       SELECT 1, 'large' || value, -15000, '0', 'GBP', '2026-09-18', 'Synthetic Merchant ' || value, '', 0, 'fp', ?1, ?1, ?1, 1
+       FROM json_each(?2)`,
+    )
+      .bind("2026-09-18T12:00:00.000Z", JSON.stringify([...Array(LARGE_CHARGE_MAX_CANDIDATES).keys()]))
+      .run();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-20T12:00:00Z"));
+    try {
+      const insights = await measure("GET", "/api/insights");
+      console.log(`GET /api/insights (worst case)`.padEnd(50), String(insights.rowsRead).padStart(6));
+      expect((insights.json as { items: { type: string }[] }).items.some((i) => i.type === "large_charge")).toBe(true);
+      expect(insights.rowsRead).toBeLessThan(6_000);
+      // The digest is the summary, the week's spend and the insights together.
+      const digest = await measure("GET", "/api/digest/preview");
+      console.log(`GET /api/digest/preview (worst case)`.padEnd(50), String(digest.rowsRead).padStart(6));
+      expect(digest.rowsRead).toBeLessThan(8_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

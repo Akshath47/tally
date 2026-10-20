@@ -57,6 +57,13 @@
       "when": 1791302623611,
       "tag": "0007_merchant_match_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792501858686,
+      "tag": "0008_digest_sends",
+      "breakpoints": true
     }
   ]
 }

@@ -28,6 +28,10 @@ export type Account = {
   newestTxnDate: string | null;
   backfillComplete: boolean;
   needsReview: boolean;
+  /** No new data for 4+ London days (enabled accounts only). */
+  stale: boolean;
+  /** Whole days since the last data change; null if never, or for a disabled account. */
+  staleDays: number | null;
 };
 
 export type ImportRun = {
@@ -144,6 +148,8 @@ export type MonthSummary = {
   trackedMinor: number;
   inboxCount: number;
   lastDataChangeAt: string | null;
+  /** Enabled accounts with no new data for 4+ days; always empty for a past month. */
+  staleAccountIds: number[];
 };
 
 /** Error body; the named fields come with the spec's error codes the screens act on. */

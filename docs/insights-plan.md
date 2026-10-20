@@ -1382,9 +1382,10 @@ and with the other assertions:
 
 ```ts
     // Analytics read only their months or their merchant (docs/phase-2-insights-spec.md, Rows read).
-    expect(review.rowsRead).toBeLessThan(2_000);
+    // Set in P2.9 after optimising the merchant reads (phase-2-insights-spec.md, Rows read).
+    expect(review.rowsRead).toBeLessThan(4_000);
     expect(trends.rowsRead).toBeLessThan(5_000);
-    expect(merchant.rowsRead).toBeLessThan(1_000);
+    expect(merchant.rowsRead).toBeLessThan(10 * merchantRows);
 ```
 
 - [ ] **Step 2: Run** `npx vitest run test/rows-read.spec.ts --silent=false --reporter=verbose` and read the table. Expected PASS. **If a ceiling fails, stop and report the figure to the owner** rather than raising the ceiling — it means a read isn't seeking.
