@@ -71,6 +71,13 @@ describe("GET /api/merchants", () => {
     ]);
   });
 
+  it("averages charges only, so a refund can't make the average charge negative", async () => {
+    await insertRule("exact", "grocer", SEEDED.groceries);
+    await txn(accounts[0], { merchant: "Grocer", amountMinor: -5_000, txnDate: "2026-10-02" });
+    await txn(accounts[0], { merchant: "Grocer", amountMinor: 6_000, txnDate: "2026-10-03" });
+    expect((await (await merchant("grocer")).json()) as Merchant).toMatchObject({ windowSpentMinor: -1_000, windowVisits: 1, averageChargeMinor: 5_000 });
+  });
+
   it("takes the category from the rule, not from an override, and null without a rule", async () => {
     await insertRule("exact", "grocer", SEEDED.groceries);
     const id = await txn(accounts[0], { merchant: "Grocer", txnDate: "2026-10-02" });

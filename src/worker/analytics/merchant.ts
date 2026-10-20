@@ -13,6 +13,9 @@ export const OF_MERCHANT = "r.merchant_key = ?";
 
 const RECENT = 20;
 
+/** The longest key the route takes; the review only links to keys within it. */
+export const MAX_MERCHANT_KEY = 200;
+
 // The key's (account, merchant) pairs, each with the category its match's rule gives a new
 // transaction. A handful of rows.
 const PAIRS_SQL = `SELECT m.account_id AS accountId, m.merchant, mr.category_id AS categoryId
@@ -30,7 +33,8 @@ const MONTHS_SQL = `WITH ${RESOLVED_CTE}
 SELECT substr(COALESCE(r.counted_date, r.txn_date), 1, 7) AS month,
   min(COALESCE(r.counted_date, r.txn_date)) AS first,
   sum(-COALESCE(r.counted_amount_minor, r.amount_minor)) AS spentMinor,
-  sum(COALESCE(r.counted_amount_minor, r.amount_minor) < 0) AS visits
+  sum(COALESCE(r.counted_amount_minor, r.amount_minor) < 0) AS visits,
+  COALESCE(sum(CASE WHEN COALESCE(r.counted_amount_minor, r.amount_minor) < 0 THEN -COALESCE(r.counted_amount_minor, r.amount_minor) END), 0) AS chargedMinor
 FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
 WHERE ${OF_MERCHANT} AND r.vanished_at IS NULL AND ${COUNTS}
 GROUP BY month`;
@@ -40,7 +44,7 @@ export async function readMerchant(db: D1Database, key: string, now: Date) {
   const window = monthsEnding(londonMonth(now), TREND_MONTHS);
   const [pairs, monthRows, recent] = await Promise.all([
     db.prepare(PAIRS_SQL).bind(key).all<{ accountId: number; merchant: string; categoryId: number | null }>(),
-    db.prepare(MONTHS_SQL).bind(key).all<{ month: string; first: string; spentMinor: number; visits: number }>(),
+    db.prepare(MONTHS_SQL).bind(key).all<{ month: string; first: string; spentMinor: number; visits: number; chargedMinor: number }>(),
     listTransactions(db, { where: [[RECENT_IDS, key]], limit: RECENT }),
   ]);
   // Named by the latest row's text; its pair's rule gives the category.
@@ -52,6 +56,8 @@ export async function readMerchant(db: D1Database, key: string, now: Date) {
   const months = window.map((month) => ({ month, spentMinor: byMonth.get(month)?.spentMinor ?? 0, visits: byMonth.get(month)?.visits ?? 0 }));
   const windowSpentMinor = months.reduce((sum, m) => sum + m.spentMinor, 0);
   const windowVisits = months.reduce((sum, m) => sum + m.visits, 0);
+  // Charges only: refunds net off the spend, but an average charge is an average of charges.
+  const windowChargedMinor = window.reduce((sum, m) => sum + (byMonth.get(m)?.chargedMinor ?? 0), 0);
   return {
     merchantKey: key,
     name: latest.merchant,
@@ -63,7 +69,7 @@ export async function readMerchant(db: D1Database, key: string, now: Date) {
     months,
     windowSpentMinor,
     windowVisits,
-    averageChargeMinor: windowVisits === 0 ? null : floorDiv(windowSpentMinor, windowVisits),
+    averageChargeMinor: windowVisits === 0 ? null : floorDiv(windowChargedMinor, windowVisits),
     recent: recent.transactions,
   };
 }

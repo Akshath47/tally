@@ -1,6 +1,7 @@
 import { readBudget } from "../budget/effective";
 import { COUNTS, IN_MONTH, RESOLVED_CTE, inMonthBinds } from "../budget/resolve";
 import { addMonths } from "../importer/dates";
+import { MAX_MERCHANT_KEY } from "./merchant";
 import { budgetSpend, spendByMonth, trackedSpend, type SpendRow } from "./spend";
 
 // The Monthly review (docs/phase-2-insights-spec.md): a completed month against the one before.
@@ -16,7 +17,8 @@ SELECT lower(trim(r.merchant)) AS merchantKey, r.merchant AS name, max(r.txn_dat
 FROM resolved r LEFT JOIN categories c ON c.id = r.category_id
 WHERE r.vanished_at IS NULL AND ${IN_MONTH} AND ${COUNTS}
 GROUP BY merchantKey
-HAVING spentMinor > 0
+-- Only keys the merchant page can open: a blank merchant has no page to link to.
+HAVING spentMinor > 0 AND merchantKey <> '' AND length(merchantKey) <= ${MAX_MERCHANT_KEY}
 ORDER BY spentMinor DESC, merchantKey
 LIMIT ${TOP_MERCHANTS}`;
 
@@ -33,7 +35,7 @@ export type ReviewCategory = {
 
 const totals = (rows: SpendRow[], overallMinor: number | null): Totals => ({ spentMinor: budgetSpend(rows), overallMinor, trackedMinor: trackedSpend(rows) });
 
-/** `month` must be a completed month. Five statements. */
+/** `month` must be a completed month. Four statements. */
 export async function readReview(db: D1Database, month: string) {
   const previousMonth = addMonths(month, -1);
   const [spend, budget, previousBudget, merchants] = await Promise.all([

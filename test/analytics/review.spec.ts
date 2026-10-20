@@ -76,6 +76,13 @@ describe("GET /api/months/:month/review", () => {
     ]);
   });
 
+  it("leaves out merchant keys the merchant page can't open (blank, or over 200 characters)", async () => {
+    await txn(accounts[0], { merchant: "   ", amountMinor: -9_000, txnDate: "2026-09-02" });
+    await txn(accounts[0], { merchant: "x".repeat(201), amountMinor: -8_000, txnDate: "2026-09-02" });
+    await txn(accounts[0], { merchant: "Grocer", amountMinor: -100, txnDate: "2026-09-02" });
+    expect((await review("2026-09")).topMerchants.map((m) => m.merchantKey)).toEqual(["grocer"]);
+  });
+
   it("says there's nothing to compare in the first month of history", async () => {
     await txn(accounts[0], { merchant: "Grocer", amountMinor: -1_000, txnDate: "2026-09-02" });
     expect(await review("2026-09")).toMatchObject({ hasPrevious: false, previousTotals: { spentMinor: 0, overallMinor: null, trackedMinor: 0 } });
