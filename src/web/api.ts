@@ -366,7 +366,6 @@ export type DigestPreview = {
 export const getReview = (month: string) => request<MonthReview>(`/api/months/${month}/review`);
 export const getTrends = () => request<Trends>("/api/trends");
 export const getMerchant = (key: string) => request<MerchantHistory>(`/api/merchants${query({ key })}`);
-export const getInsights = () => request<{ asOf: string; items: Insight[] }>("/api/insights");
 export const getDigestPreview = () => request<DigestPreview>("/api/digest/preview");
 /** Sends this week's digest now; it doesn't touch the weekly claim. 502 send_failed when it didn't go. */
 export const sendDigest = () => send<{ ok: true }>("POST", "/api/digest/send");

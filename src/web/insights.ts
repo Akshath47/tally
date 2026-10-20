@@ -7,8 +7,7 @@ import { categoryHref, reviewHref } from "./routes";
 // the two never disagree.
 
 export type { Insight } from "../worker/insights/types";
-export { insightWords, type Names, type Words } from "../worker/insights/wording";
-export { ordinal } from "../worker/display";
+export { insightWords, type Names } from "../worker/insights/wording";
 
 // --- How the Insights tab shows them (docs/insights-ui-brief.md) -------------------------------
 

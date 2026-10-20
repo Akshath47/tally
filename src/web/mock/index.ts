@@ -477,7 +477,7 @@ function digestPreview(asOf: string): DigestPreview {
   const s = summary(monthOf(today));
   const dom = day(asOf);
   const status = (spent: number, allocated: number): DigestStatus =>
-    spent > allocated ? "over" : allocated > 0 && dom >= 8 && projectedMinor(spent, dom, daysInMonth(monthOf(asOf))) > allocated ? "projected_over" : allocated > 0 && spent * 10 >= allocated * 9 ? "near" : "ok";
+    spent > allocated ? "over" : allocated <= 0 ? "ok" : dom >= 8 && projectedMinor(spent, dom, daysInMonth(monthOf(asOf))) > allocated ? "projected_over" : spent * 10 >= allocated * 9 ? "near" : "ok";
   // As the Worker's digestLines: allocated budgeted categories, then Misc as Home draws it
   // (posted uncategorised spend plus unallocated budgeted categories), when it has something.
   const allocatedLines = s.categories.filter((c) => c.kind === "budgeted" && c.allocatedMinor > 0);
@@ -763,8 +763,8 @@ if (scenario === "insights-calm") {
   const i = transactions.findIndex((t) => t.merchant === SEED_LARGE_CHARGE[2]);
   if (i >= 0) transactions.splice(i, 1);
 }
-if (scenario === "digest-failed" || scenario === "digest-send-fails") lastSend = { weekStart: addDays(mondayOf(today), -7), status: "failed", sentAt: null };
-if (scenario === "digest-sending") lastSend = { weekStart: addDays(mondayOf(today), -7), status: "sending", sentAt: null };
+if (scenario === "digest-failed" || scenario === "digest-send-fails" || scenario === "digest-sending")
+  lastSend = { weekStart: addDays(mondayOf(today), -7), status: scenario === "digest-sending" ? "sending" : "failed", sentAt: null };
 /** The day insights are worked out for: a scenario can pretend it's early in the month. */
 const asOf = scenario === "insights-early" ? `${monthOf(today)}-03` : today;
 if (scenario === "over") {

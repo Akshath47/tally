@@ -3,7 +3,7 @@ import { PushedScreen } from "../components/Screen";
 import { ScreenError } from "../components/ScreenError";
 import { SectionLabel, Skeleton, cardClass as card } from "../components/ui";
 import { londonToday, monthName, monthOf } from "../dates";
-import { ordinal } from "../insights";
+import { ordinal } from "../../worker/display";
 import { categoryName } from "../lines";
 import { formatPounds } from "../money";
 import { fraction } from "../pace";

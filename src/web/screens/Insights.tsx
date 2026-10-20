@@ -71,9 +71,15 @@ function CategoryFlag({ c, today }: { c: DigestPreview["categories"][number]; to
 const STATUS_ORDER = { over: 0, projected_over: 1, near: 2, ok: 3 } as const;
 
 function EmailLine({ lastSend, today }: { lastSend: DigestPreview["lastSend"]; today: string }) {
-  // A send only settles the latest digest_sends row, which only the preview reads (main.tsx).
+  // A send only settles the latest digest_sends row, so the cached preview is patched to match
+  // rather than re-read (the preview is the app's heaviest read), and nothing else is touched.
   const qc = useQueryClient();
-  const send = useMutation({ mutationFn: sendDigest, meta: { invalidate: false }, onSuccess: () => qc.invalidateQueries({ queryKey: ["digest"] }) });
+  const send = useMutation({
+    mutationFn: sendDigest,
+    meta: { invalidate: false },
+    onSuccess: () =>
+      qc.setQueryData<DigestPreview>(["digest", "preview"], (p) => (p?.lastSend ? { ...p, lastSend: { ...p.lastSend, status: "sent", sentAt: new Date().toISOString() } } : p)),
+  });
   const sent = send.isSuccess;
   if (lastSend?.status === "failed" && !sent) {
     return (

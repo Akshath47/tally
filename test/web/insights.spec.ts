@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { iconOf, isMonthChangeOnly, targetOf, toneOf, weekRange, type Insight } from "../../src/web/insights";
+import { daysOfPreviousMonth, iconOf, isMonthChangeOnly, londonDayTime, targetOf, toneOf, weekRange, type Insight } from "../../src/web/insights";
 
 // Synthetic figures. The wording itself is the Worker's, tested in test/insights/wording.spec.ts.
 
@@ -37,14 +37,12 @@ describe("how the tab shows them", () => {
 });
 
 describe("week card helpers", () => {
-  it("formats a send time in London, across the clock change", async () => {
-    const { londonDayTime } = await import("../../src/web/insights");
+  it("formats a send time in London, across the clock change", () => {
     expect(londonDayTime("2026-10-11T17:00:00Z", "2026-10-16")).toBe("Sun 11 Oct, 18:00");
     expect(londonDayTime("2026-11-08T18:00:00Z", "2026-11-10")).toBe("Sun 8 Nov, 18:00");
   });
 
-  it("counts the week's days from the previous month", async () => {
-    const { daysOfPreviousMonth } = await import("../../src/web/insights");
+  it("counts the week's days from the previous month", () => {
     expect(daysOfPreviousMonth("2026-09-28", "2026-10-02")).toBe(3);
     expect(daysOfPreviousMonth("2026-10-12", "2026-10-16")).toBe(0);
   });
