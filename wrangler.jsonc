@@ -18,8 +18,8 @@
 	"vars": {
 		// How far back the importer backfills. Revolut serves about 2 years (docs/lunchflow-findings.md).
 		"BACKFILL_DAYS": "730",
-		// "true" once the owner's sending domain is set up (docs/phase-2-insights-spec.md, Owner setup).
-		"DIGEST_ENABLED": "false"
+		// The owner's sending domain is set up; "false" pauses the Sunday digest without a code change.
+		"DIGEST_ENABLED": "true"
 	},
 	// Set with `wrangler secret put` in production and in .dev.vars locally; deploy fails if one is missing.
 	// The ACCESS_* values and ALLOWED_EMAIL aren't sensitive, just kept out of this public file. The Worker
