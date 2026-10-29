@@ -149,7 +149,7 @@ There is no per-account sign column: P1.1 found both institutions already use ne
 
 ## API endpoints
 
-All endpoints are under `/api`, and every one sits behind Cloudflare Access **and** the Worker's JWT middleware.
+All endpoints are under `/api`, and every one sits behind Cloudflare Access **and** the Worker's JWT middleware. A scripted caller may instead use an Access service token plus `Authorization: Bearer <API_TOKEN>`, which allows only `GET`/`HEAD` on `/months/*`, `/transactions`, `/inbox`, `/accounts`, `/budget`, `/categories`, `/rules` and `/health` ([architecture.md](architecture.md), Read-only machine path).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -187,4 +187,4 @@ Responses use camelCase fields. Provider account and connection ids are not expo
 
 `POST`, `PUT`, `PATCH` and `DELETE` requests must send `Content-Type: application/json` (otherwise `415`). Cross-site form-style POSTs are rejected (Hono `csrf()`), and cross-origin JSON POSTs fail CORS preflight.
 
-Errors are JSON: `400 {error:"bad_request"}` (invalid query parameter), `401 {error:"unauthenticated"}` (no or invalid Access JWT), `403 {error:"forbidden"}` (valid JWT, wrong email), `404 {error:"not_found"}`, `500 {error:"internal"}` (no details leaked).
+Errors are JSON: `400 {error:"bad_request"}` (invalid query parameter), `401 {error:"unauthenticated"}` (no or invalid Access JWT), `403 {error:"forbidden"}` (valid JWT, wrong email; or the API token on a route or method it may not use), `404 {error:"not_found"}`, `500 {error:"internal"}` (no details leaked).

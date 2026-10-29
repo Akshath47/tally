@@ -1,7 +1,8 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type JWK, type JWTVerifyGetKey } from "jose";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { bearerMatches } from "../src/worker/auth";
 import { createApp } from "../src/worker";
 import { resetDb } from "./db";
 import { world } from "./fixtures/lunchflow";
@@ -134,5 +135,124 @@ describe("API routes when authenticated", () => {
     const res = await importApp.request(`${ORIGIN}/api/import-runs`, { method: "POST", headers, body: "{}" }, env, ctx);
     expect(res.status).toBe(202);
     await waitOnExecutionContext(ctx);
+  });
+});
+
+describe("read-only API token", () => {
+  const bearer = (value = env.API_TOKEN) => ({ Authorization: `Bearer ${value}` });
+
+  function call(method: string, path: string, headers: Record<string, string>, workerEnv: Env = env) {
+    return app.request(`${ORIGIN}${path}`, { method, headers }, workerEnv);
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("authenticates as the owner, with no Access JWT", async () => {
+    const res = await call("GET", "/api/health", bearer());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, email: env.ALLOWED_EMAIL });
+  });
+
+  it("returns a month summary", async () => {
+    await resetDb();
+    expect((await call("GET", "/api/months/2026-10/summary", bearer())).status).toBe(200);
+  });
+
+  it.each([
+    "/api/months/2026-10/summary",
+    "/api/months/2026-10/transactions",
+    "/api/transactions",
+    "/api/inbox",
+    "/api/inbox/merchants",
+    "/api/accounts",
+    "/api/budget",
+    "/api/categories",
+    "/api/rules",
+    "/api/health",
+  ])("may read %s", async (path) => {
+    await resetDb();
+    expect((await call("GET", path, bearer())).status).not.toBe(403);
+    expect((await call("HEAD", path, bearer())).status).not.toBe(403);
+  });
+
+  it.each(["/api/import-runs", "/api/trends", "/api/insights", "/api/merchants", "/api/nope", "/api", "/api/monthsx", "/api/budgets"])(
+    "may not read %s (403)",
+    async (path) => {
+      const res = await call("GET", path, bearer());
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+    },
+  );
+
+  // Same-origin JSON, so the request gets past the Origin check and reaches auth.
+  it.each([
+    ["POST", "/api/import-runs"],
+    ["POST", "/api/rules"],
+    ["PATCH", "/api/categories/1"],
+    ["PUT", "/api/budget/overall"],
+    ["DELETE", "/api/rules/1"],
+    ["PUT", "/api/transactions/1/override"],
+    ["OPTIONS", "/api/health"],
+  ])("may not %s %s (403)", async (method, path) => {
+    const headers = { ...bearer(), Origin: ORIGIN, "Content-Type": "application/json" };
+    const res = await app.request(`${ORIGIN}${path}`, { method, headers, body: method === "OPTIONS" ? undefined : "{}" }, env);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "forbidden" });
+  });
+
+  it.each([
+    ["a wrong token", bearer("wrong-token")],
+    ["a token that only shares a prefix", bearer(`${env.API_TOKEN}x`)],
+    ["a different scheme", { Authorization: `Basic ${env.API_TOKEN}` }],
+    ["an empty bearer", { Authorization: "Bearer " }],
+  ])("treats %s like no token (401)", async (_, headers) => {
+    const res = await call("GET", "/api/health", headers);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+  });
+
+  it("never accepts a token while API_TOKEN is unset or empty", async () => {
+    for (const API_TOKEN of [undefined, ""]) {
+      const workerEnv = { ...env, API_TOKEN } as Env;
+      expect((await call("GET", "/api/health", { Authorization: "Bearer " }, workerEnv)).status).toBe(401);
+      expect((await call("GET", "/api/health", bearer("anything"), workerEnv)).status).toBe(401);
+    }
+  });
+
+  it("leaves a valid Access login unaffected by a wrong token", async () => {
+    const res = await call("GET", "/api/health", { ...bearer("wrong-token"), "Cf-Access-Jwt-Assertion": await token() });
+    expect(res.status).toBe(200);
+  });
+
+  it("restricts a valid token even alongside a valid Access login", async () => {
+    const headers = { ...bearer(), "Cf-Access-Jwt-Assertion": await token() };
+    expect((await call("GET", "/api/import-runs", headers)).status).toBe(403);
+  });
+
+  // Vitest runs with import.meta.env.DEV = true; the token's limits still apply on localhost.
+  it("restricts a valid token on localhost too", async () => {
+    expect((await app.request("http://localhost/api/import-runs", { headers: bearer() }, env)).status).toBe(403);
+  });
+
+  it("compares fixed-length digests with a constant-time compare", async () => {
+    const compare = vi.spyOn(crypto.subtle, "timingSafeEqual");
+    expect(await bearerMatches(`Bearer ${env.API_TOKEN}`, env.API_TOKEN)).toBe(true);
+    expect(await bearerMatches("Bearer short", env.API_TOKEN)).toBe(false);
+    expect(compare).toHaveBeenCalledTimes(2);
+    for (const [a, b] of compare.mock.calls) {
+      expect((a as ArrayBuffer).byteLength).toBe(32);
+      expect((b as ArrayBuffer).byteLength).toBe(32);
+    }
+  });
+
+  it("keeps the token out of logs and response bodies", async () => {
+    const logs = [vi.spyOn(console, "log"), vi.spyOn(console, "error"), vi.spyOn(console, "warn")];
+    const responses = await Promise.all([
+      call("GET", "/api/health", bearer()),
+      call("GET", "/api/import-runs", bearer()),
+      call("GET", "/api/health", bearer(`${env.API_TOKEN}x`)),
+    ]);
+    for (const res of responses) expect(await res.text()).not.toContain(env.API_TOKEN);
+    for (const log of logs) for (const args of log.mock.calls) expect(JSON.stringify(args)).not.toContain(env.API_TOKEN);
   });
 });

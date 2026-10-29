@@ -25,7 +25,8 @@
 	// The ACCESS_* values and ALLOWED_EMAIL aren't sensitive, just kept out of this public file. The Worker
 	// re-verifies the Access JWT against them because Workers with static assets don't receive ctx.access.
 	// DIGEST_FROM is the digest's sender on the owner's domain; APP_URL is the app's own URL for the email's
-	// link. Both stay out of this public file.
+	// link. Both stay out of this public file. API_TOKEN is the read-only bearer token for scripted callers
+	// (src/worker/auth.ts); rotate it with `wrangler secret put API_TOKEN` (docs/setup-responsibilities.md).
 	"secrets": {
 		"required": [
 			"LUNCHFLOW_API_KEY",
@@ -33,7 +34,8 @@
 			"ACCESS_AUD",
 			"ALLOWED_EMAIL",
 			"DIGEST_FROM",
-			"APP_URL"
+			"APP_URL",
+			"API_TOKEN"
 		]
 	},
 	"observability": {

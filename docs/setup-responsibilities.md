@@ -23,7 +23,13 @@
    - In the zone, enable **Email Routing** and verify the `ALLOWED_EMAIL` address under Destination addresses.
    - In your own terminal: `npx wrangler secret put DIGEST_FROM` (the sender, e.g. `tally@<domain>`) and `npx wrangler secret put APP_URL` (the app's own URL, for the email's link). Add both to `.dev.vars` yourself too.
    - The digest stays off until `DIGEST_ENABLED` is `"true"` in `wrangler.jsonc`, after a manual send works. Sending to a verified destination is free; enabling Email Sending for arbitrary recipients is not, and isn't needed.
-9. **Verification**
+9. **Read-only API token** (issue 50, for an assistant that queries budgets)
+   - **Generate** the token in your own terminal, e.g. `openssl rand -base64 32` (256 bits; at least 128 are required), then `npx wrangler secret put API_TOKEN` and paste it there. Add `API_TOKEN` to `.dev.vars` yourself too, with a different value. Never paste it into chat.
+   - **Access service token:** in Zero Trust, Access controls > Service credentials > Service Tokens, create one (e.g. `tally-assistant`). Then add a policy to the `tally` Access application with action **Service Auth** and the selector **Service Token** set to it. The caller sends `Cf-Access-Client-Id` and `Cf-Access-Client-Secret` to pass the edge, and `Authorization: Bearer <API_TOKEN>` for the Worker. The edge pass alone grants nothing: without the bearer token the Worker answers 401.
+   - **What it can do:** `GET`/`HEAD` on `/api/months/*`, `/api/transactions`, `/api/inbox`, `/api/accounts`, `/api/budget`, `/api/categories`, `/api/rules` and `/api/health`. Every write, `/api/import-runs` and any other route is 403.
+   - **Rotate:** generate a new value, run `npx wrangler secret put API_TOKEN` again, and update the caller. No code change or deploy is needed; the old value stops working as soon as the secret updates. To revoke without a replacement, put a fresh random value nobody holds, and delete or revoke the Access service token.
+   - Optionally, also rotate the Access service token (Zero Trust can refresh its secret) whenever the caller changes.
+10. **Verification**
    - Compare the sample transactions with the Revolut and Amex apps.
    - Log in on the iPhone in Safari and from a Home Screen shortcut.
 

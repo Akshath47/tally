@@ -37,6 +37,8 @@ On Workers with Static Assets, the internal asset router **does not pass `ctx.ac
 
 Anything else gets 401/403. `POST` requests also have their `Origin` checked. This protects the API even if the Access configuration is changed by mistake.
 
+**Read-only machine path.** A scripted caller (an assistant answering budget questions) passes the edge with an Access **service token** and sends `Authorization: Bearer <API_TOKEN>`. The Worker compares the token with the `API_TOKEN` secret in constant time (SHA-256 of both, then `crypto.subtle.timingSafeEqual`, since `nodejs_compat` is off). A match authenticates as `ALLOWED_EMAIL` but only for `GET`/`HEAD` on an allow-list of read routes in `src/worker/auth.ts`; everything else, including routes added later, is 403. A wrong or malformed token is ignored, so the request falls through to the JWT check and gets the usual 401. The service token alone grants nothing, so the two layers stay two layers. Rotation is in [setup-responsibilities.md](setup-responsibilities.md).
+
 ## Why bulk upserts use `json_each`
 
 The D1 free tier allows 50 queries per invocation, and each statement in `batch()` counts separately. It also allows 100 bound parameters per query and 100 KB per statement. So each chunk of transactions is sent as **one JSON parameter** in one statement:
