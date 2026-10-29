@@ -17,6 +17,7 @@ export default defineConfig({
           ALLOWED_EMAIL: "owner@example.com",
           DIGEST_FROM: "tally@example.com",
           APP_URL: "https://tally.example.workers.dev",
+          API_TOKEN: "test-api-token",
         },
       },
     }),
